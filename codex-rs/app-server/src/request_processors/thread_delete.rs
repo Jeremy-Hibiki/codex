@@ -41,6 +41,9 @@ impl ThreadRequestProcessor {
         self.validate_root_thread_delete(thread_id, thread_ids.len() > 1)
             .await?;
         for thread_id_to_delete in thread_ids.iter().copied() {
+            if let Ok(thread) = self.thread_manager.get_thread(thread_id_to_delete).await {
+                thread.clear_encrypted_skills();
+            }
             self.prepare_thread_for_delete(thread_id_to_delete).await;
         }
 

@@ -5,6 +5,7 @@ use std::io::Cursor;
 use std::io::Write;
 use std::sync::Arc;
 
+use anyhow::Context;
 use anyhow::Result;
 use codex_config::config_toml::EncryptedSkillsSdkToml;
 use codex_exec_server::CreateDirectoryOptions;
@@ -516,6 +517,78 @@ async fn compaction_request_rehydrates_encrypted_skill_content() -> Result<()> {
             .iter()
             .all(|text| !text.contains("/dev/shm/fm-agent-security")),
         "compaction request must never contain the decrypted path"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn resumed_session_keeps_stale_skill_tokens_unreplaced() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let responses_mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("r1"),
+                ev_assistant_message("m1", "first"),
+                ev_completed("r1"),
+            ]),
+            sse(vec![
+                ev_response_created("r2"),
+                ev_assistant_message("m2", "after resume"),
+                ev_completed("r2"),
+            ]),
+        ],
+    )
+    .await;
+
+    let builder = test_codex().with_config(|config| {
+        config.encrypted_skills_sdk = EncryptedSkillsSdkToml::TestZip;
+    });
+    let initial = builder
+        .with_workspace_setup(move |cwd, fs| async move { write_encrypted_skill(cwd, fs).await })
+        .build_with_auto_env(&server)
+        .await?;
+    let home = initial.home.clone();
+    let rollout_path = initial
+        .session_configured
+        .rollout_path
+        .clone()
+        .context("rollout path")?;
+
+    submit_single_turn(&initial, "please use $secret-skill").await?;
+
+    // Resume into a fresh session whose runtime cache is empty: the token in
+    // the resumed history must stay as a stale placeholder, never plaintext.
+    let mut resume_builder = test_codex().with_config(|config| {
+        config.encrypted_skills_sdk = EncryptedSkillsSdkToml::TestZip;
+    });
+    let resumed = resume_builder.resume(&server, home, rollout_path).await?;
+    submit_single_turn(&resumed, "continue without mentioning skills").await?;
+
+    let requests = responses_mock.requests();
+    assert_eq!(requests.len(), 2, "expected one request per session");
+    let resumed_request = &requests[1];
+    let user_texts = resumed_request.message_input_texts("user");
+    assert!(
+        user_texts
+            .iter()
+            .any(|text| text.contains("[SENSITIVE_SKILL_TOKEN:")),
+        "resumed history should carry the stale token placeholder, got {user_texts:?}"
+    );
+    assert!(
+        user_texts
+            .iter()
+            .all(|text| !text.contains("REAL_SKILL_CONTENT_MARKER")),
+        "resumed request must not rehydrate stale tokens into plaintext"
+    );
+    assert!(
+        user_texts
+            .iter()
+            .all(|text| !text.contains("/dev/shm/fm-agent-security")),
+        "resumed request must never contain the decrypted path"
     );
     Ok(())
 }

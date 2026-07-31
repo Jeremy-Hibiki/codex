@@ -275,6 +275,17 @@ network_access = false                                      # shell 断网；推
 ### 本轮修正：解密前容量预检查
 
 原容量检查在解密之后（entries 已进内存）——超大加密包会把 64MB `/dev/shm` 与内存先打满。新增 `check_capacity_for_package`：解密前按包文件大小 + 余量预检查，不足则拒绝且 **SDK 解密不会被调用**（新增测试断言 calls==0）。crate 84/84、Windows 交叉编译通过。
+
+## 18. 常驻清理增强与容器生命周期（2026-07-31 v21）
+
+### 请求级 TTL 清理（已修正）
+
+TTL sweep 原只在 **turn 边界**（`build_skills_and_plugins`）执行——常驻服务器上用户长时间无新 turn 时，空闲线程的解密目录会驻留到容器重启。修正：`rehydrate_framed`（每次模型请求的重水合入口）先执行 `sweep()`，使**任何请求活动都会触发两级 TTL 清理**；活跃 token 由重水合续费（`touch`）保护，不会被误删。时序正确：sweep 先于重水合，过期内容被卸载后 token 自然 stale（重新提及恢复）。新增测试 `request_rehydration_enforces_ttl_for_idle_skills`（61s 空闲后重水合返回 stale token），crate 85/85。
+
+### 容器生命周期说明
+
+- **容器重启即 /dev/shm 清空**：Docker 销毁重建后 `/dev/shm` 是新挂载，解密明文自动消失（部署优势）；audit 日志依赖 `audit_path` 持久卷保留；
+- 同容器内 codex 进程重启（app-server 崩溃拉起）：per-process 命名空间 + pid 存活清理处理残留（pid 复用极端场景下残留由容量门控与 audit 轮转兜底，风险已记录）。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

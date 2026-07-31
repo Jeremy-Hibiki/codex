@@ -183,6 +183,10 @@ impl EncryptedSkillRuntime {
     /// Rehydrates tokens with trust-tier framing, skill name, and the skill's
     /// original base directory anchor. Never emits the decrypted path.
     pub fn rehydrate_framed(&self, owner_session: Option<&str>, text: &str) -> String {
+        // Request-level TTL sweep: any model request activity also enforces
+        // the two-tier TTL, so long-idle threads on persistent servers do not
+        // keep decrypted content resident between turns.
+        self.sweep();
         let cache = match self.cache.lock() {
             Ok(cache) => cache,
             Err(_) => return text.to_string(),

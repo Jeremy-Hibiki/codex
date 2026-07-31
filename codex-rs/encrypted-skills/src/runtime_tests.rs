@@ -451,6 +451,34 @@ fn evicting_one_shared_content_skill_keeps_the_other_token_alive() {
     );
 }
 
+#[test]
+fn request_rehydration_enforces_ttl_for_idle_skills() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let clock = Arc::new(FakeClock::new(1000));
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime = EncryptedSkillRuntime::new_with_clock(
+        sdk,
+        TtlConfig {
+            skill_idle: Duration::from_secs(60),
+            thread_idle: Duration::from_secs(600),
+        },
+        tmp.path().join("mem-root"),
+        clock.clone(),
+    );
+    let token = runtime
+        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+        .unwrap();
+
+    // No activity for longer than the skill TTL: the request itself (the
+    // rehydration call) must sweep the idle skill, leaving the token stale.
+    clock.advance(61_000);
+    assert_eq!(
+        runtime.rehydrate_framed(Some("t1"), &token),
+        token,
+        "idle skill must be unloaded by the request-level sweep"
+    );
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn load_or_register_fails_when_memory_root_is_full() {

@@ -235,18 +235,33 @@ impl EncryptedSkillRuntime {
                 registry.sweep_expired_threads(),
             )
         };
+        // Only drop cache entries that no remaining skill references. Two
+        // skills with identical content share one token via cache dedup, so
+        // evicting one must not invalidate the other's cached plaintext.
+        let remove_from_cache: Vec<(String, String)> = match self.registry.lock() {
+            Ok(registry) => skill_evictions
+                .iter()
+                .filter(|evicted| {
+                    registry.token_ref_count(&evicted.session_id, &evicted.token) == 0
+                })
+                .map(|evicted| (evicted.session_id.clone(), evicted.token.clone()))
+                .collect(),
+            Err(_) => Vec::new(),
+        };
         let mut cache = match self.cache.lock() {
             Ok(cache) => cache,
             Err(_) => return,
         };
         for evicted in &skill_evictions {
             let _ = secure_wipe(&evicted.dir);
-            cache.remove(&evicted.session_id, &evicted.token);
             self.emit(AuditEvent::Cleanup {
                 session_id: evicted.session_id.clone(),
                 dirs_removed: 1,
                 reason: "skill_ttl_sweep".to_string(),
             });
+        }
+        for (session_id, token) in &remove_from_cache {
+            cache.remove(session_id, token);
         }
         let mut removed = 0usize;
         for (session_id, dirs) in &thread_evictions {

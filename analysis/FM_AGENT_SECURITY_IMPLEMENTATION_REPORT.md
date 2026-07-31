@@ -132,6 +132,11 @@ opencode → codex 工具映射（guard 迁移依据）：
 
 1. **P1 `guard_read` 与 `guard_shell` 语义不一致（已修复）**：`view_image` 此前只检查会话已注册的解密目录，指向 mem root 下未知/其他会话子路径时不拦截；`guard_shell` 同时检查运行时 root 与默认常量前缀。修复：`guard_read` 合并检查（注册目录 + 运行时 root + `MEM_ROOT` 常量前缀）；新增 3 个单测（未知子路径 Blocked、默认常量前缀 Blocked、外部路径 Allow），guard 12/12。
 2. **集成覆盖补全**：新增 `view_image_on_mem_root_is_blocked`（模型调 view_image 指向 mem root → 拦截）与 `skill_ttl_expiry_forces_redecryption_on_reminder`（1s 短 TTL 配置，TTL 过期后重提产生新 token）——集成 8/8。
+
+## 8. 续深 Review 记录（2026-07-31 v11）
+
+1. **P1 共享 token 的缓存误删（已修复）**：内容去重使两个 skill 共享同一 token，skill 级 TTL 卸载其中一个时会无条件 `cache.remove`，导致另一个仍在 TTL 内的 skill token 失效。修复：`Registry::token_ref_count` 统计 token 存活引用，sweep 仅在无剩余引用时移除缓存项；新增对照测试（共享内容双 skill，evict 一个后另一个仍可重水合），crate 81/81。
+2. **集成覆盖补全（compaction）**：新增 `compaction_request_rehydrates_encrypted_skill_content`——`Op::Compact` 触发的本地 compaction 请求体断言包含 framed 技能内容（`REAL_SKILL_CONTENT_MARKER` + `base_directory`）且不含 `/dev/shm` 路径，验证 spec「Rehydration covers all request paths」的 compaction 分支——集成 9/9。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

@@ -115,7 +115,7 @@ async fn encrypted_skill_keeps_plaintext_out_of_context_and_rollout() -> Result<
         &server,
         sse(vec![
             ev_response_created("resp-1"),
-            ev_assistant_message("msg-1", "done"),
+            ev_assistant_message("msg-1", "the skill says: # REAL_SKILL_CONTENT_MARKER"),
             ev_completed("resp-1"),
         ]),
     )
@@ -176,6 +176,10 @@ async fn encrypted_skill_keeps_plaintext_out_of_context_and_rollout() -> Result<
     assert!(
         !rollout.contains("REAL_SKILL_CONTENT_MARKER"),
         "rollout must not contain skill plaintext"
+    );
+    assert!(
+        rollout.contains("[REDACTED]"),
+        "assistant reply quoting skill plaintext must be redacted in rollout"
     );
     assert!(
         !rollout.contains("echo guarded"),

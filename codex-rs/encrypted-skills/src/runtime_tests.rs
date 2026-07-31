@@ -360,3 +360,52 @@ fn audit_events_cover_skill_ttl_eviction() {
         reason: "skill_ttl_sweep".into(),
     }));
 }
+
+#[test]
+fn rehydration_hit_refreshes_skill_ttl() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |path| {
+        if path.to_string_lossy().contains("fresh") {
+            "fresh content"
+        } else {
+            "stale content"
+        }
+    }));
+    let clock = Arc::new(FakeClock::new(1000));
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime = EncryptedSkillRuntime::new_with_clock(
+        sdk,
+        TtlConfig {
+            skill_idle: Duration::from_secs(60),
+            thread_idle: Duration::from_secs(600),
+        },
+        tmp.path().join("mem-root"),
+        clock.clone(),
+    );
+    let refreshed = runtime
+        .load_or_register("t1", "fresh", Path::new("/skills/fresh.zip.enc"))
+        .unwrap();
+    let untouched = runtime
+        .load_or_register("t1", "stale", Path::new("/skills/stale.zip.enc"))
+        .unwrap();
+
+    // 50s into the 60s TTL: a rehydration hit refreshes `last_used_at` for the
+    // fresh skill, while the stale skill is left untouched.
+    clock.advance(50_000);
+    let _ = runtime.rehydrate_framed(Some("t1"), &refreshed);
+    clock.advance(20_000);
+    runtime.sweep();
+
+    // The refreshed skill (touched at t=51s) survives the sweep at t=71s; the
+    // untouched skill is evicted and its token goes stale.
+    assert!(
+        runtime
+            .rehydrate_framed(Some("t1"), &refreshed)
+            .contains("fresh content"),
+        "refreshed content should still be available after the sweep"
+    );
+    assert_eq!(
+        runtime.rehydrate_framed(Some("t1"), &untouched),
+        untouched,
+        "untouched skill should be evicted and its token should go stale"
+    );
+}

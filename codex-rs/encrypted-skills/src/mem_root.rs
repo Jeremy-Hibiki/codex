@@ -10,7 +10,6 @@ use std::sync::OnceLock;
 use rand::RngCore;
 
 use crate::sdk::EnvelopeError;
-use crate::sdk::EnvelopeSdk;
 use crate::sdk::PackageEntry;
 
 pub const DEFAULT_MEM_ROOT: &str = "/dev/shm/fm-agent-security";
@@ -104,17 +103,6 @@ fn pid_alive(pid: u64) -> bool {
 
 pub fn decrypted_dir_name(hex: &str) -> String {
     format!("{DECRYPTED_DIR_PREFIX}{hex}")
-}
-
-/// Orchestrates a decryption: SDK yields package entries, then the entries are
-/// safely written into `target` preserving the package layout.
-pub fn decrypt_to_dir(
-    sdk: &dyn EnvelopeSdk,
-    package_path: &Path,
-    target: &Path,
-) -> Result<(), EnvelopeError> {
-    let entries = sdk.decrypt_package(package_path)?;
-    write_package_entries(&entries, target)
 }
 
 /// Writes decrypted package entries into `target`, rejecting Zip-Slip style

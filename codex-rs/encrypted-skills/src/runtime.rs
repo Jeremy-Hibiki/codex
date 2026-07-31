@@ -180,9 +180,13 @@ impl EncryptedSkillRuntime {
             Err(_) => return text.to_string(),
         };
         let mut replaced = 0usize;
+        let mut touched_skills: Vec<String> = Vec::new();
         let out = rehydrate_text_mapped(text, owner_session, &mut |token| {
             cache.lookup(&token.session_id, &token.hex).map(|content| {
                 replaced += 1;
+                if !touched_skills.contains(&content.skill_name) {
+                    touched_skills.push(content.skill_name.clone());
+                }
                 wrap_with_framing(
                     &content.plaintext,
                     &content.skill_name,
@@ -190,7 +194,13 @@ impl EncryptedSkillRuntime {
                 )
             })
         });
+        drop(cache);
         if replaced > 0 {
+            if let Some(session_id) = owner_session {
+                for skill_name in &touched_skills {
+                    self.touch(session_id, skill_name);
+                }
+            }
             self.emit(AuditEvent::Rehydration {
                 session_id: owner_session.unwrap_or("").to_string(),
                 token_count: replaced,

@@ -48,7 +48,10 @@ fn keep_forked_rollout_item(item: &RolloutItem, preserve_reference_context_item:
     match item {
         RolloutItem::ResponseItem(ResponseItem::Message { role, phase, .. }) => match role.as_str()
         {
-            "system" | "developer" | "user" => true,
+            "system" | "developer" => true,
+            // Encrypted skill tokens must not cross the fork boundary; the
+            // child re-mentions the skill to trigger its own decryption.
+            "user" => !contains_encrypted_skill_token(item),
             "assistant" => *phase == Some(MessagePhase::FinalAnswer),
             _ => false,
         },
@@ -78,6 +81,19 @@ fn keep_forked_rollout_item(item: &RolloutItem, preserve_reference_context_item:
         RolloutItem::TurnContext(_) | RolloutItem::WorldState(_) => preserve_reference_context_item,
         RolloutItem::Compacted(_) | RolloutItem::EventMsg(_) | RolloutItem::SessionMeta(_) => true,
     }
+}
+
+fn contains_encrypted_skill_token(item: &RolloutItem) -> bool {
+    let RolloutItem::ResponseItem(ResponseItem::Message { content, .. }) = item else {
+        return false;
+    };
+    content.iter().any(|content_item| {
+        matches!(
+            content_item,
+            codex_protocol::models::ContentItem::InputText { text }
+                if text.contains(codex_encrypted_skills::token::TOKEN_PREFIX)
+        )
+    })
 }
 
 fn is_multi_agent_v2_usage_hint_message(item: &ResponseItem, usage_hint_texts: &[String]) -> bool {
@@ -1011,3 +1027,7 @@ impl AgentControl {
         Ok((resumed_thread.thread_id, multi_agent_version))
     }
 }
+
+#[cfg(test)]
+#[path = "spawn_tests.rs"]
+mod tests;

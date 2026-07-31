@@ -47,10 +47,10 @@ Tool outputs containing the decrypted storage path SHALL be redacted before the 
 - **THEN** the references resolve inside the decrypted directory without requiring the absolute storage path in model-visible context
 
 ### Requirement: Script source isolation
-Read access to decrypted skill directories SHALL be limited to text files with allowed extensions; script files SHALL be executable but their source SHALL NOT be readable through file or search tools.
+Direct reads of decrypted skill directories through file-viewing or shell tools SHALL be blocked so script sources never enter the model context outside rehydration; script files SHALL remain executable. Codex has no standalone `read` tool, so this covers the actual file-viewing surface: `view_image` and shell read/search commands.
 
-#### Scenario: Read tool blocks script source
-- **WHEN** the `read` tool targets a script file (for example `.py`, `.sh`, `.js`) inside a decrypted skill directory
+#### Scenario: File-viewing tool blocks decrypted directory access
+- **WHEN** a file-viewing tool (for example `view_image`) targets any file inside a decrypted skill directory
 - **THEN** the invocation is blocked
 
 #### Scenario: Bash read commands block script source

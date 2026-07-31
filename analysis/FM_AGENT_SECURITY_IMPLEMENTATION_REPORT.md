@@ -137,6 +137,10 @@ opencode → codex 工具映射（guard 迁移依据）：
 
 1. **P1 共享 token 的缓存误删（已修复）**：内容去重使两个 skill 共享同一 token，skill 级 TTL 卸载其中一个时会无条件 `cache.remove`，导致另一个仍在 TTL 内的 skill token 失效。修复：`Registry::token_ref_count` 统计 token 存活引用，sweep 仅在无剩余引用时移除缓存项；新增对照测试（共享内容双 skill，evict 一个后另一个仍可重水合），crate 81/81。
 2. **集成覆盖补全（compaction）**：新增 `compaction_request_rehydrates_encrypted_skill_content`——`Op::Compact` 触发的本地 compaction 请求体断言包含 framed 技能内容（`REAL_SKILL_CONTENT_MARKER` + `base_directory`）且不含 `/dev/shm` 路径，验证 spec「Rehydration covers all request paths」的 compaction 分支——集成 9/9。
+
+## 9. 续深 Review 记录（2026-07-31 v12）
+
+**集成覆盖补全（resumed-session）**：新增 `resumed_session_keeps_stale_skill_tokens_unreplaced`——turn 1 提及加密 skill 后，用同一 home + rollout 在新会话 `resume`（新 runtime 缓存为空），turn 2 断言请求体保留 stale token 占位符、不重水合为明文、无 `/dev/shm` 路径。至此 spec「Rehydration covers all request paths」的常规 turn、compaction、resumed-session 三个分支均有集成验证——集成 10/10。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

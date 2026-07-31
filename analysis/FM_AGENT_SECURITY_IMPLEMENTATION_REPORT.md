@@ -91,6 +91,33 @@ exclude_slash_tmp = false
 | 10 | ~~工具覆盖不完整~~ | **已解决（2026-07-31 v5）**：`view_image` 新增 pre payload 并被 guard 拦截（`path` 键）；`read` 分支同时兼容 `filePath`/`path` 键；`mcp_resource` 为服务端资源 URI 不涉及宿主路径 | — | — |
 
 > 注（v6 复核）：扩展工具（`web_search`/`webfetch`）实现 `ToolExecutor<ToolCall>`，不暴露 `pre_tool_use_payload`，guard 的 web 导出拦截分支**在现网实际不触发**；弥补手段是沙箱 `network_access = false`（模型拿不到路径也传不出去）。分支保留以兼容未来暴露 pre payload 的 handler。
+
+## 5. 工具匹配全量核对（2026-07-31 v8）
+
+codex 全部 handler 的 hook 名与 guard 归属：
+
+| handler（模型工具名） | hook 名 | guard 分支 | 验证 |
+|---|---|---|---|
+| `shell_command` | `Bash` | guard_shell（读取/搜索 Blocked、执行改写） | 集成 ✓ |
+| `exec_command`（unified_exec，参数键 `cmd` 归一化为 `command`） | `Bash` | guard_shell（同上） | 集成 ✓（`exec_command_direct_read_is_blocked_by_the_same_guard`） |
+| `write_stdin` | 无（有意不重复触发） | 不参与（原 exec 已过 guard） | 代码注释确认 |
+| `apply_patch`（自定义工具） | `apply_patch` | guard_export（参数含已知明文 Blocked） | 集成 ✓ |
+| `view_image` | `view_image` | guard_read（`path` 指向解密目录 Blocked） | 单测 ✓ |
+| `mcp__<server>__<tool>`（MCP 工具） | `mcp__*` | 放行 | 单测 ✓（`mcp_tools_pass_through`） |
+| 其余 Function 工具（current_time/plan/sleep/request_*/mcp_resource/tool_search/get_context_remaining/multi_agents 等） | 默认 `function_hook_tool_name`（= 工具名） | 放行 | 盘点：均无宿主文件读取通道（`mcp_resource` 读取 MCP server 声明的资源，模型不能构造任意宿主路径） |
+| 扩展工具（extension_tools / `web/run`） | 无 pre payload | 不参与 | 靠沙箱网络隔离 |
+
+opencode → codex 工具映射（guard 迁移依据）：
+
+| opencode 工具 | codex 对应 | guard 落点 |
+|---|---|---|
+| `read` | 无独立工具（读取走 shell/apply_patch 上下文/view_image） | Bash + view_image 分支 |
+| `bash` | `shell_command` / `exec_command` | Bash 分支 |
+| `grep` / `glob` | 无独立工具（搜索走 shell 命令） | Bash 搜索命令分支 |
+| `write` / `edit` / `apply_patch` | `apply_patch` | apply_patch 分支 |
+| `webfetch` / `web_search` | 扩展 `web/run`（无 pre payload） | 沙箱网络隔离 |
+
+权限/审批（PermissionRequest）与沙箱工具分类与 guard 无冲突：guard 在工具分发前置先执行，审批不改变工具名匹配。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

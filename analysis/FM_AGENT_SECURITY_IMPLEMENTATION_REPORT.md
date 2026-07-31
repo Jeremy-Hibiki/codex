@@ -235,6 +235,31 @@ opencode → codex 工具映射（guard 迁移依据）：
 ### 验证
 
 encrypted-skills 83/83（含容量门控测试）、config 229/229（含 audit_path 解析）、集成 10/10、Windows 交叉编译通过。
+
+## 16. 部署配置示例与验证清单（2026-07-31 v19）
+
+### 推荐容器 config.toml 片段
+
+```toml
+[encrypted_skills]
+sdk = "unavailable"              # 真实 SDK 接入前保持 fail-closed
+skill_idle_ttl_secs = 600        # Skill 层空闲 TTL
+thread_idle_ttl_secs = 1800      # Thread 层空闲 TTL
+audit_path = "/var/log/codex/encrypted-skills-audit.log"  # 持久卷，防容器重启丢失
+
+[sandbox_workspace_write]
+writable_roots = ["./", "/dev/shm/fm-agent-security"]      # shell 可执行解密脚本
+network_access = false                                      # shell 断网；推理服务由 host 进程调用，不受影响
+```
+
+### 部署验证清单
+
+1. **bwrap 可用性**：容器内执行 `bwrap --ro-bind / / /bin/true`；失败则需容器授权 user namespace，或接受 guard-only 并收紧容器网络（命令混淆绕过的缓解依赖网络隔离）；
+2. **/dev/shm 容量**：`df -h /dev/shm`，建议 ≥ 256MB；容量门控默认 4MiB 余量（`set_min_free_bytes` 可调），多 skill 并发按需评估；
+3. **/dev/shm 可写性**：非 root 用户可写入；初始化失败现在会输出 `failed to initialize encrypted-skill memory root` 告警（2026-07-31 修正静默失败）；
+4. **skill 包位置**：`<name>.zip.enc` 只放执行容器私有路径（如 codex_home/skills），**不得**挂载/暴露给 OpenChamber 容器（用户有 SSH 且 workspace 双挂载）；
+5. **审计持久化**：`audit_path` 指向持久卷，验证 10MB 轮转（`.1` 文件）与容器重启后审计保留；
+6. **网络策略**：容器 `--network none` 或出口白名单；局域网推理服务经白名单可达（模型 API 由 host 进程发起，不经 bwrap）。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

@@ -325,6 +325,18 @@ TTL sweep 原只在 **turn 边界**（`build_skills_and_plugins`）执行——�
 - **工具拦截已迁移到 Codex 工具体系**：`hook_names.rs` 的 `HookToolName` 是 Codex 自身 hook 契约——`shell_command`/`unified_exec::exec_command` 两个 handler 的 `pre_tool_use_payload` 都发出 `HookToolName::bash()`（序列化名 `Bash`），`apply_patch`/`view_image` 同理；guard 在 `tools/registry.rs` 工具分发前置按该类型化名称匹配，非 opencode 字符串匹配。exec_command 的 `cmd` 参数改写经 `with_updated_hook_input` 正确回写。
 - **MCP/扩展工具放行**为文档化设计决策（外部信任边界）；部署清单补充建议：受限部署不启用带宿主文件访问能力的 MCP server，或容器层隔离 MCP 进程。
 - **部署清单配置键**已对照 `config/permissions.rs`/`config/mod.rs` 复核：`[sandbox_workspace_write] writable_roots` 与 `network_access` 均为真实键名，示例 config 可直接使用。
+
+### 复核中发现并修复的绕过（P1，`5ff15ef99e`）
+
+`guard_shell` 原实现只对「命令串直接包含 mem root 或已知解密目录」的读/搜索命令拦截，路径改写（原目录 → 解密目录）发生在拦截判断**之后**。因此 `cat /skills/secret/SKILL.md`、`grep -r secret /skills/secret`、`ls /skills/secret` 等引用**原目录**的读/搜索命令会被改写为指向 `/dev/shm/.../fm_skill_security_<hex>/...` 后照常执行，直接绕过脚本源码隔离。
+
+修复（TDD，先写 2 个失败单测复现 `Updated` 行为）：`guard_shell` 在改写后对读/搜索命令**二次检查改写结果**，命中 mem root/解密目录即 `Blocked`（reason `direct_read`/`search_probe`）；执行型命令（`bash .../build.sh`）不受影响，继续改写放行。guard 单测 18/18、集成 10/10。
+
+### 残余风险记录（本轮复核新增）
+
+- **`write_stdin` 无 pre-tool payload**：guard 无法拦截写入既有 shell 会话的键盘输入；缓解依赖路径随机化 + 输出脱敏（模型无法获知 `fm_skill_security_<hex>` 真实地址，`echo /dev/shm/*` 类探测输出被脱敏）。如后续要求严格拦截，需为 `WriteStdinHandler` 增加 pre payload（会改变全量 hook 可见性，属其他模块行为变更，当前不做）。
+- **`mcp__*`/扩展工具放行**：外部信任边界；受限部署建议不启用带宿主文件访问能力的 MCP server，或容器层隔离 MCP 进程。
+- **工具输出/函数调用参数中的明文**：skill 脚本可能合法输出密钥/令牌（多步流程需要），脱敏会破坏功能；`apply_patch` 文件写出口已 Blocked。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

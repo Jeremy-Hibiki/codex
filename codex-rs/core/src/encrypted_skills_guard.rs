@@ -59,10 +59,12 @@ pub(crate) fn before_tool_with_runtime(
     let decision = match tool_name {
         name if name == &HookToolName::bash() => guard_shell(runtime, session_id, tool_input),
         name if name == &HookToolName::view_image() => guard_read(runtime, session_id, tool_input),
-        name if name == &HookToolName::apply_patch() => {
-            guard_export(runtime, session_id, tool_input)
-        }
-        _ => GuardDecision::Allow,
+        // Every other tool (file writes, web search, MCP, extension tools)
+        // is an outbound-capable surface: block arguments containing known
+        // skill plaintext. Shell remains the sole runtime channel for
+        // legitimate in-session secret use, and its commands are path-guarded
+        // and executed inside the sandbox.
+        _ => guard_export(runtime, session_id, tool_input),
     };
     if let GuardDecision::Blocked { reason, .. } = &decision {
         runtime.record_blocked(session_id, tool_name.name(), reason);

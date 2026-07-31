@@ -197,6 +197,12 @@ opencode → codex 工具映射（guard 迁移依据）：
 | fork 丢弃 token 消息 | U spawn_tests 4 例（token 丢弃/普通保留/assistant/function call） |
 | 子代理重新提及 | 设计语义（集成受 v1 spawn 时序限制，见 §11） |
 | 跨会话不可共享 | U registry/cache 隔离 + rehydrate 门禁 |
+
+## 13. 最终回归与边界评估（2026-07-31 v16）
+
+- **全量 codex-core lib 回归**：2135/2137——与上次完全一致（2 个已知环境失败：沙箱代理环境变量、tracing 并行偶发），guard reason 重构与 view_image 语义调整后**无新增回归**；
+- **线程删除清理集成测试评估**：`thread/delete` 的 `clear_encrypted_skills` 接线（3 行）已编译验证，`clear_thread` 行为有单测；集成级验证需 app-server 子进程基建（TestAppServer + config.toml + skill 包 + 线程生命周期），成本/收益比不佳，记录为待扩展项；
+- 最终验证矩阵（v15 覆盖矩阵 + 全量回归）确认三个 spec 全部场景有测试锚点，本地可执行验证全绿。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

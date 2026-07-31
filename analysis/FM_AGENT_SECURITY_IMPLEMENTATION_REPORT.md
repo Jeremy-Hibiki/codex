@@ -27,7 +27,7 @@
 - **元数据**：core-skills loader 解析 frontmatter `metadata.encrypted` / `metadata.encryption`；`SkillMetadata` / `EnvironmentSkillMetadata` 增加 `encrypted` + `encryption`（`is_encrypted()`）；app-server v2 `SkillMetadata` 增加可选字段并重生成 schema fixtures。
 - **注入**：`build_skill_injections(..., encrypted_skills, session_id, ...)` 加密分支解密 → 只注入 Token；失败出 warning + error 指标；`SkillInstructions::body()` 加密分支返回哨兵。
 - **重水合**：`Prompt.encrypted_skills` → `get_formatted_input_for_request` 对 `InputText` 做 `rehydrate_framed`（信任层级 + skill 名 + 原目录 base anchor，绝不出现 `/dev/shm`），覆盖常规 turn + compaction 三条路径。
-- **拦截**：`encrypted_skills_guard` 在工具分发前置执行——Bash 读取/搜索命令 Blocked（含 `ls` 探测与自定义 mem root）、执行命令原目录→解密目录改写、read/view_image/grep/glob 拦截（view_image 通过 handler 暴露 pre payload）、write/apply_patch 等导出明文 Blocked；`RedactingToolOutput` 对所有工具输出按**运行时实际 mem root** 脱敏。
+- **拦截**：`encrypted_skills_guard` 在工具分发前置执行，工具匹配基于 **codex 真实工具体系**（`HookToolName` 类型化匹配，非 opencode 风格字符串）——`Bash`（`shell_command`/`unified_exec`）读取/搜索命令 Blocked（含 `ls` 探测与自定义 mem root）、执行命令原目录→解密目录改写；`view_image` 读取解密目录 Blocked（handler 暴露 pre payload）；`apply_patch` 参数含已知明文 Blocked；其余工具（`mcp__*`、扩展工具等）放行。`RedactingToolOutput` 对所有工具输出按**运行时实际 mem root** 脱敏。
 - **Fork**：`keep_forked_rollout_item` 丢弃含哨兵 token 的用户消息。
 - **TTL**：turn 边界 `runtime.sweep()`（Skill 10min / Thread 30min 默认值）；`thread/delete` 时 `CodexThread::clear_encrypted_skills()` 立即清理。
 - **审计**：`AuditSink` / `FileAuditSink`（JSONL + 10MB 轮转）；runtime 在解密（含 cache_hit）、token 化、重水合、清理时发射事件；guard 拦截时 `record_blocked`；host 在 Session 构建时注入 sink（`$TMPDIR/fm_skill_security_audit.log`）。

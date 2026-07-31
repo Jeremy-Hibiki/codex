@@ -111,6 +111,21 @@ impl Registry {
             .flat_map(|bucket| bucket.values())
     }
 
+    /// Number of live skill records in `session_id` that reference `token`.
+    /// Content dedup can share one cache entry across skills, so an eviction
+    /// must not drop the cache entry while another skill still references it.
+    pub fn token_ref_count(&self, session_id: &str, token: &str) -> usize {
+        self.skills
+            .get(session_id)
+            .map(|bucket| {
+                bucket
+                    .values()
+                    .filter(|record| record.token == token)
+                    .count()
+            })
+            .unwrap_or(0)
+    }
+
     /// True when the skill is registered and its idle time is within the
     /// skill-level TTL (idempotent hit — no re-decryption needed).
     pub fn is_loaded(&self, session_id: &str, skill_name: &str) -> bool {

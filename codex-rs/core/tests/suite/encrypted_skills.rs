@@ -459,6 +459,68 @@ async fn skill_ttl_expiry_forces_redecryption_on_reminder() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn compaction_request_rehydrates_encrypted_skill_content() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let test = build_test_with_encrypted_skill(&server).await?;
+    let request_log = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("r1"),
+                ev_assistant_message("m1", "first"),
+                ev_completed("r1"),
+            ]),
+            sse(vec![
+                ev_response_created("r2"),
+                ev_assistant_message("m2", "summary"),
+                ev_completed("r2"),
+            ]),
+            sse(vec![
+                ev_response_created("r3"),
+                ev_assistant_message("m3", "done"),
+                ev_completed("r3"),
+            ]),
+        ],
+    )
+    .await;
+
+    submit_single_turn(&test, "please use $secret-skill").await?;
+    test.codex.submit(Op::Compact).await?;
+    core_test_support::wait_for_event(test.codex.as_ref(), |event| {
+        matches!(event, codex_protocol::protocol::EventMsg::TurnComplete(_))
+    })
+    .await;
+    submit_single_turn(&test, "continue").await?;
+
+    let requests = request_log.requests();
+    assert_eq!(requests.len(), 3, "expected three requests");
+    let compaction_request = &requests[1];
+    let user_texts = compaction_request.message_input_texts("user");
+    assert!(
+        user_texts
+            .iter()
+            .any(|text| text.contains("REAL_SKILL_CONTENT_MARKER")),
+        "compaction request should rehydrate skill content, got {user_texts:?}"
+    );
+    assert!(
+        user_texts
+            .iter()
+            .any(|text| text.contains("base_directory")),
+        "compaction request should carry framed content, got {user_texts:?}"
+    );
+    assert!(
+        user_texts
+            .iter()
+            .all(|text| !text.contains("/dev/shm/fm-agent-security")),
+        "compaction request must never contain the decrypted path"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn script_execution_rewrites_original_path_and_redacts_output() -> Result<()> {
     skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
     skip_if_no_network!(Ok(()));

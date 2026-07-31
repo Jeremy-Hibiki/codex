@@ -409,3 +409,44 @@ fn rehydration_hit_refreshes_skill_ttl() {
         "untouched skill should be evicted and its token should go stale"
     );
 }
+
+#[test]
+fn evicting_one_shared_content_skill_keeps_the_other_token_alive() {
+    // Both skills decrypt to identical plaintext, so they share one cache
+    // entry (and therefore one token) via dedup.
+    let sdk = Arc::new(counting_sdk(
+        Arc::new(AtomicUsize::new(0)),
+        |_| "shared content",
+    ));
+    let clock = Arc::new(FakeClock::new(1000));
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime = EncryptedSkillRuntime::new_with_clock(
+        sdk,
+        TtlConfig {
+            skill_idle: Duration::from_secs(60),
+            thread_idle: Duration::from_secs(600),
+        },
+        tmp.path().join("mem-root"),
+        clock.clone(),
+    );
+    let first = runtime
+        .load_or_register("t1", "alpha", Path::new("/skills/alpha.zip.enc"))
+        .unwrap();
+    let second = runtime
+        .load_or_register("t1", "beta", Path::new("/skills/beta.zip.enc"))
+        .unwrap();
+    assert_eq!(first, second, "identical plaintext must dedup to one token");
+
+    // Let alpha expire but keep beta fresh, then sweep.
+    clock.advance(61_000);
+    runtime.touch("t1", "beta");
+    runtime.sweep();
+
+    // Beta still rehydrates because its shared cache entry survived.
+    assert!(
+        runtime
+            .rehydrate_framed(Some("t1"), &second)
+            .contains("shared content"),
+        "the surviving skill must keep its token rehydratable after the sweep"
+    );
+}

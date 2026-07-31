@@ -1,0 +1,100 @@
+# FM Agent Security — 实现成果与安全报告
+
+> 日期：2026-07-31（v2）· 对应 OpenSpec change：`encrypt-agent-security-skills`（35/35 任务完成，strict 校验通过）
+> 前序设计：`FM_AGENT_SECURITY_SKILL_ENCRYPTION_IMPLEMENTATION.md`（v2.0 主 Agent + Token 重水合）
+
+## 1. 实现成果
+
+### 1.1 独立 crate：`codex-rs/encrypted-skills`（`codex-encrypted-skills`）
+
+| 模块 | 职责 | 单测 |
+|---|---|---|
+| `token.rs` | 哨兵 `[SENSITIVE_SKILL_TOKEN:{session_id}:{hex}]` 序列化/解析 | 7 |
+| `sdk.rs` | `EnvelopeSdk` trait、`UnavailableSdk`（fail-closed）、`TestZipSdk`（模拟加密）、`SdkKind` 选择 | 3 |
+| `mem_root.rs` | `/dev/shm/fm-agent-security/p<pid>/fm_skill_security_<hex>` 布局、`resolve_default_mem_root`（非 Linux 回退 temp dir）、Zip-Slip 拒绝、0700、`init_mem_root_once`（按 pid 存活清理跨进程残留）、secure wipe | 10 |
+| `cache.rs` | 每会话明文内容缓存（去重、条目上限 64、总大小上限 8MiB、FIFO） | 7 |
+| `registry.rs` | 两级 TTL 注册表（可注入时钟）、幂等命中、Skill/Thread 卸载 | 9 |
+| `rehydrate.rs` | 请求时重水合（跨会话门禁、失效保留、信任层级框架 + base anchor） | 9 |
+| `paths.rs` | 原目录→解密目录改写、`/dev/shm` 输出脱敏、读取/搜索/执行命令分类、扩展名白名单 | 10 |
+| `export_guard.rs` | 出站明文检测（整段/整行/20 字符前缀） | 6 |
+| `runtime.rs` | 宿主 runtime：解密编排、幂等复用、TTL sweep、`rehydrate_framed`、路径改写、脱敏 | 7 |
+| `audit.rs` | 审计事件类型与 JSONL 序列化 | 4 |
+
+合计 70 个单测全绿，clippy（`--tests`）干净。
+
+### 1.2 核心接线（薄接线点）
+
+- **元数据**：core-skills loader 解析 frontmatter `metadata.encrypted` / `metadata.encryption`；`SkillMetadata` / `EnvironmentSkillMetadata` 增加 `encrypted` + `encryption`（`is_encrypted()`）；app-server v2 `SkillMetadata` 增加可选字段并重生成 schema fixtures。
+- **注入**：`build_skill_injections(..., encrypted_skills, session_id, ...)` 加密分支解密 → 只注入 Token；失败出 warning + error 指标；`SkillInstructions::body()` 加密分支返回哨兵。
+- **重水合**：`Prompt.encrypted_skills` → `get_formatted_input_for_request` 对 `InputText` 做 `rehydrate_framed`（信任层级 + skill 名 + 原目录 base anchor，绝不出现 `/dev/shm`），覆盖常规 turn + compaction 三条路径。
+- **拦截**：`encrypted_skills_guard` 在工具分发前置执行——Bash 读取/搜索命令 Blocked（含 `ls` 探测与自定义 mem root）、执行命令原目录→解密目录改写、read/view_image/grep/glob 拦截（view_image 通过 handler 暴露 pre payload）、write/apply_patch 等导出明文 Blocked；`RedactingToolOutput` 对所有工具输出按**运行时实际 mem root** 脱敏。
+- **Fork**：`keep_forked_rollout_item` 丢弃含哨兵 token 的用户消息。
+- **TTL**：turn 边界 `runtime.sweep()`（Skill 10min / Thread 30min 默认值）；`thread/delete` 时 `CodexThread::clear_encrypted_skills()` 立即清理。
+- **审计**：`AuditSink` / `FileAuditSink`（JSONL + 10MB 轮转）；runtime 在解密（含 cache_hit）、token 化、重水合、清理时发射事件；guard 拦截时 `record_blocked`；host 在 Session 构建时注入 sink（`$TMPDIR/fm_skill_security_audit.log`）。
+- **配置**：`config.toml` 新增 `[encrypted_skills]` 表——`sdk`（`unavailable` 默认 / `test_zip` 测试）、`skill_idle_ttl_secs`（默认 600）、`thread_idle_ttl_secs`（默认 1800），config schema 已重生成。
+
+### 1.3 验证数据
+
+| 套件 | 结果 |
+|---|---|
+| codex-encrypted-skills | 75/75 |
+| codex-core-skills | 131/131（含 3 个 frontmatter 解析 + 4 个注入分支测试） |
+| codex-app-server-protocol | 277/277（含 schema 一致性） |
+| codex-config | 227/227 |
+| codex-core（client_common / guard / spawn） | 8 / 8 / 4 |
+| core/suite `encrypted_skills` 集成 | 5/5：rollout 只含 Token；请求带 framed 内容且无 `/dev/shm`；原地址改写执行 + 输出脱敏；直接读取被拦；TTL 内重提复用同一 token；导出明文拦截 |
+| codex-core 全量单元测试 | 2132/2134：仅 2 个环境相关失败——① `user_shell_commands_do_not_inherit_managed_network_proxy`（本沙箱设置了环境级 `HTTPS_PROXY`，隔离复跑同样失败）；② `post_sampling_token_estimate_is_disabled_by_always_on_sinks`（并行下 tracing 状态偶发，隔离运行通过）。均与本次改动无关，无回归 |
+| codex-core 全量测试（lib + 集成） | 3195 项：**测试基建修复**——`rmcp-client` 的 5 个 stdio 测试服务二进制只有 Bazel `extra_binaries`、无 Cargo `[[bin]]`，导致 `just test` 下 rmcp/search/truncation/sqlite/token_budget 等约 40 项套件测试找不到二进制而失败；已补 `[[bin]]` 声明，这些测试全部转绿。剩余失败均为环境项：zsh fork approval 超时（需交互式 zsh）、网络 denial/approval 测试（沙箱代理+网络策略）、compact_remote token 估算（预算/环境敏感）、tracing 并行偶发；均不触及加密技能代码路径（guard 对 `mcp__*` 与非匹配工具恒放行） |
+
+`just fmt`、`just fix -p codex-core-skills` / `just fix -p codex-core` 均干净。
+
+## 2. 沙箱配置建议
+
+威胁模型：模型通过 shell 执行解密后的脚本；`/dev/shm/fm-agent-security/` 是机器级共享内存目录。进程内 guard（已接线）是第一道控制，沙箱是**纵深防御**——不能只依赖 guard 的字符串匹配。
+
+### 2.1 现状
+
+- codex 沙箱配置（`config.toml`）只有：`sandbox_workspace_write.writable_roots`、`network_access`、`exclude_tmpdir_env_var`、`exclude_slash_tmp`。
+- exec crate 的 bwrap/landlock 挂载由 workspace 根 + writable roots 推导；`/dev/shm` 可作为 writable root（exec/tests/suite/sandbox.rs:171 已验证）。
+- **没有** per-tool 的只读 bind 粒度配置。
+
+### 2.2 推荐配置（workspace-write 沙箱）
+
+```toml
+[sandbox_workspace_write]
+writable_roots = ["./", "/dev/shm/fm-agent-security"]   # 允许执行解密脚本
+network_access = false                                    # 阻断脚本外泄明文（curl/wget 通道）
+exclude_slash_tmp = false
+```
+
+要点：
+
+1. **网络隔离优先**：`network_access = false` 是投入产出比最高的项——脚本即使拿到明文也无法外传。若业务需要网络，改用出口白名单代理。
+2. **解密目录的可见性**：`/dev/shm/fm-agent-security` 作为 writable root 只服务于 shell 执行；文件读取类工具由 guard 拦截，理想情况下还应由权限层（PermissionProfile）拒绝 `read` 工具对该前缀的访问。
+3. **不要用 ro-bind**：bwrap 的 `--ro-bind` 是把目录**只读暴露**进沙箱，会让 `cat` 等读取成功——它不能表达「可执行但不可读」。解密目录必须以 writable root（`--bind`）挂载供解释器读取脚本；读拦截只能留在进程内 guard + 权限层。
+4. **会话级隔离（后续）**：多会话并发时，bwrap 只挂当前 session 的解密子目录（`/dev/shm/fm-agent-security/fm_skill_security_*`），而不是整个根目录，避免跨会话可读。
+5. **macOS / Windows**：seatbelt 与 Windows 沙箱需要等价规则（允许 exec 该前缀、拒绝 file-read）；当前集成测试 `cfg(not(target_os = "windows"))`，Windows 尚未覆盖。
+
+## 3. 未解决的安全隐患
+
+| # | 隐患 | 现状 | 风险 | 缓解 / 后续 |
+|---|---|---|---|---|
+| 1 | **沙箱纵深缺失** | 只靠 guard 字符串匹配，沙箱未显式限制 `/dev/shm/fm-agent-security` | 命令混淆可绕过字符串检查 | 按 2.2 配置网络隔离 + writable roots；exec crate 增加只读 bind（后续） |
+| 2 | ~~审计日志未接线~~ | **已解决（2026-07-31 v2/v3）**：`AuditSink`/`FileAuditSink` + runtime 事件发射 + guard `record_blocked` + host 注入（见 1.2）；集成测试断言审计文件含 `decryption`/`blocked` 事件 | — | — |
+| 3 | **命令混淆绕过 guard** | `command_references_dir` 是子串匹配 | `bash -c 'cat /dev/shm/fm-agent$(printf security)...'`、环境变量拼路径可绕过 | 沙箱只读 bind + 网络隔离兜底；后续可加命令归一化解析 |
+| 4 | **输出脱敏是尽力而为** | `redact_decrypted_paths` 只匹配字面路径 | 脚本打印 base64/改写形式的路径可泄露地址 | 信任层级框架引导 + 未来输入端 safe guard 模型（设计已声明） |
+| 5 | **进程内明文缓存** | `ContentCache` 持有明文（TTL 有界、每会话上限 64） | 「明文不长期驻留内存」依赖 TTL 扫描正确触发 | 保持 TTL 扫描；必要时对缓存条目做透明加密（后续） |
+| 6 | ~~多进程竞态~~ | **已解决（2026-07-31 v4）**：解密目录位于 `/dev/shm/fm-agent-security/p<pid>/` 进程命名空间；`init_mem_root_once` 按 pid 存活（Linux `/proc`）清理其他进程残留，本进程命名空间与存活进程不受影响；非 Linux 平台保守不清除 | — | — |
+| 7 | ~~线程结束未即时清理~~ | **已解决（2026-07-31 v2）**：`thread/delete` 处理器对每个待删线程调用 `CodexThread::clear_encrypted_skills()` | — | — |
+| 8 | **测试 SDK 配置暴露** | `[encrypted_skills] sdk = "test_zip"` 出现在生产 config schema | 误配置把 `.zip.enc` 当普通 zip 解（真加密包会解压失败，fail 保守） | 真实 SDK 接入后收敛该枚举；或移到 `#[cfg(test)]` 注入 |
+| 9 | **外部 hook 信任边界** | guard 在外部 PreToolUse hook 之前执行，hook 可继续改写工具输入 | 被攻陷/恶意 hook 可注入 `/dev/shm` 路径 | hook 属于宿主信任配置；文档声明边界 |
+| 10 | ~~工具覆盖不完整~~ | **已解决（2026-07-31 v5）**：`view_image` 新增 pre payload 并被 guard 拦截（`path` 键）；`read` 分支同时兼容 `filePath`/`path` 键；`mcp_resource` 为服务端资源 URI 不涉及宿主路径 | — | — |
+
+> 注（v6 复核）：扩展工具（`web_search`/`webfetch`）实现 `ToolExecutor<ToolCall>`，不暴露 `pre_tool_use_payload`，guard 的 web 导出拦截分支**在现网实际不触发**；弥补手段是沙箱 `network_access = false`（模型拿不到路径也传不出去）。分支保留以兼容未来暴露 pre payload 的 handler。
+| 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
+
+## 4. 环境注记
+
+- `just bazel-lock-update` 因 GitHub 下载 v8 源码握手失败无法本地执行；workspace crate 不影响 Bazel 模块锁，CI 会校验。
+- 本环境 `/tmp` 存在杂散 `.git` 目录，会导致 2 个既有 loader 测试失败（已移开验证归因），与本次改动无关。
+- OpenSpec change：`openspec/changes/encrypt-agent-security-skills/`（proposal / design / specs / tasks 全部完成，strict 校验通过）。

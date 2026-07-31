@@ -7,6 +7,8 @@ pub struct SkillInstructions {
     name: String,
     path: String,
     contents: String,
+    encrypted: bool,
+    token: Option<String>,
 }
 
 impl From<&SkillInjection> for SkillInstructions {
@@ -15,6 +17,8 @@ impl From<&SkillInjection> for SkillInstructions {
             name: skill.name.clone(),
             path: skill.path.clone(),
             contents: skill.contents.clone(),
+            encrypted: skill.encrypted,
+            token: skill.token.clone(),
         }
     }
 }
@@ -33,9 +37,18 @@ impl ContextualUserFragment for SkillInstructions {
     }
 
     fn body(&self) -> String {
+        if self.encrypted
+            && let Some(token) = &self.token
+        {
+            return token.clone();
+        }
         format!(
             "\n<name>{}</name>\n<path>{}</path>\n{}\n",
             self.name, self.path, self.contents
         )
     }
 }
+
+#[cfg(test)]
+#[path = "skill_instructions_tests.rs"]
+mod tests;

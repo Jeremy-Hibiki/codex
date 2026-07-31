@@ -106,6 +106,10 @@ pub(crate) async fn build_prompt_input_from_session(
         step_context.tool_router.as_ref(),
         turn_context.as_ref(),
         base_instructions,
+        Some(crate::client_common::EncryptedSkillRehydrator {
+            runtime: Arc::clone(&sess.services.encrypted_skills_runtime),
+            session_id: sess.thread_id.to_string(),
+        }),
     );
 
     Ok(prompt.input)

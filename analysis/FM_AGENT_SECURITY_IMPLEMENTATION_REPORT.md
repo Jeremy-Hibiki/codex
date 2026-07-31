@@ -245,7 +245,7 @@ encrypted-skills 83/83（含容量门控测试）、config 229/229（含 audit_p
 sdk = "unavailable"              # 真实 SDK 接入前保持 fail-closed
 skill_idle_ttl_secs = 600        # Skill 层空闲 TTL
 thread_idle_ttl_secs = 1800      # Thread 层空闲 TTL
-audit_path = "/var/log/codex/encrypted-skills-audit.log"  # 持久卷，防容器重启丢失
+audit_path = "/data/codex/audit/encrypted-skills-audit.log"  # 持久卷且非 root 可写，防容器重启丢失
 
 [sandbox_workspace_write]
 writable_roots = ["./", "/dev/shm/fm-agent-security"]      # shell 可执行解密脚本
@@ -258,7 +258,7 @@ network_access = false                                      # shell 断网；推
 2. **/dev/shm 容量**：`df -h /dev/shm`，建议 ≥ 256MB；容量门控默认 4MiB 余量（`set_min_free_bytes` 可调），多 skill 并发按需评估；
 3. **/dev/shm 可写性**：非 root 用户可写入；初始化失败现在会输出 `failed to initialize encrypted-skill memory root` 告警（2026-07-31 修正静默失败）；
 4. **skill 包位置**：`<name>.zip.enc` 只放执行容器私有路径（如 codex_home/skills），**不得**挂载/暴露给 OpenChamber 容器（用户有 SSH 且 workspace 双挂载）；
-5. **审计持久化**：`audit_path` 指向持久卷，验证 10MB 轮转（`.1` 文件）与容器重启后审计保留；
+5. **审计持久化**：`audit_path` 指向**非 root 可写**的持久卷（如 `/data/codex/audit/`，避免 `/var/log` 等 root 目录），验证 10MB 轮转（`.1` 文件）与容器重启后审计保留；打开失败会输出 `failed to open encrypted-skill audit log` 告警（2026-07-31 修正静默降级）；
 6. **网络策略**：容器 `--network none` 或出口白名单；局域网推理服务经白名单可达（模型 API 由 host 进程发起，不经 bwrap）。
 7. **TTL 保洁语义**：两级 TTL 在 turn 边界与**每次模型请求**（重水合入口）双触发——常驻服务器上任何活动都会清理过期解密内容；完全无请求时内容驻留到容器重启（/dev/shm 自动清空），无残留跨容器；
 8. **审计保留**：`audit_path` 指向持久卷，容器重启后审计保留；`/dev/shm` 内明文随容器销毁自动消失。

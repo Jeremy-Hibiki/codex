@@ -1087,16 +1087,25 @@ impl Session {
                     codex_encrypted_skills::sdk::SdkKind::TestZip
                 }
             });
+            let encrypted_skills_audit_path = config
+                .encrypted_skills_audit_path
+                .clone()
+                .unwrap_or_else(|| std::env::temp_dir().join("fm_skill_security_audit.log"));
             let encrypted_skills_audit: Option<
                 Arc<dyn codex_encrypted_skills::audit::AuditSink>,
-            > = codex_encrypted_skills::audit::FileAuditSink::new(
-                config
-                    .encrypted_skills_audit_path
-                    .clone()
-                    .unwrap_or_else(|| std::env::temp_dir().join("fm_skill_security_audit.log")),
-            )
-            .ok()
-            .map(|sink| Arc::new(sink) as Arc<dyn codex_encrypted_skills::audit::AuditSink>);
+            > = match codex_encrypted_skills::audit::FileAuditSink::new(
+                encrypted_skills_audit_path.clone(),
+            ) {
+                Ok(sink) => Some(Arc::new(sink) as Arc<dyn codex_encrypted_skills::audit::AuditSink>),
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        path = %encrypted_skills_audit_path.display(),
+                        "failed to open encrypted-skill audit log; security events will not be persisted"
+                    );
+                    None
+                }
+            };
             let mcp_resource_client = Arc::new(McpResourceClient::new(Arc::clone(&mcp_runtime)));
             let extension_metrics =
                 extension_metrics::from_session_telemetry(session_telemetry.clone());

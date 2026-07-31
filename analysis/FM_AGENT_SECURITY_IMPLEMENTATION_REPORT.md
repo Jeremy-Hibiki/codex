@@ -103,9 +103,9 @@ codex 全部 handler 的 hook 名与 guard 归属：
 | `write_stdin` | 无（有意不重复触发） | 不参与（原 exec 已过 guard） | 代码注释确认 |
 | `apply_patch`（自定义工具） | `apply_patch` | guard_export（参数含已知明文 Blocked） | 集成 ✓ |
 | `view_image` | `view_image` | guard_read（`path` 指向解密目录 Blocked） | 单测 ✓ |
-| `mcp__<server>__<tool>`（MCP 工具） | `mcp__*` | 放行 | 单测 ✓（`mcp_tools_pass_through`） |
-| 其余 Function 工具（current_time/plan/sleep/request_*/mcp_resource/tool_search/get_context_remaining/multi_agents 等） | 默认 `function_hook_tool_name`（= 工具名） | 放行 | 盘点：均无宿主文件读取通道（`mcp_resource` 读取 MCP server 声明的资源，模型不能构造任意宿主路径） |
-| 扩展工具（extension_tools / `web/run`） | 无 pre payload | 不参与 | 靠沙箱网络隔离 |
+| `mcp__<server>__<tool>`（MCP 工具） | `mcp__*` | guard_export（参数含已知明文 Blocked；路径探测仍放行） | 单测 ✓（`mcp_tools_pass_through` + `blocks_extension_tool_args_containing_known_plaintext`） |
+| 其余 Function 工具（current_time/plan/sleep/request_*/mcp_resource/tool_search/get_context_remaining/multi_agents 等） | 默认 `function_hook_tool_name`（= 工具名） | guard_export（参数含已知明文 Blocked） | 单测 ✓ |
+| 扩展工具（extension_tools / `web/run` → hook 名 `webrun`） | 默认 `function_hook_tool_name` | guard_export（搜索/请求参数含已知明文 Blocked） | 单测 ✓（`blocks_web_search_tool_containing_known_plaintext`） |
 
 opencode → codex 工具映射（guard 迁移依据）：
 
@@ -335,7 +335,7 @@ TTL sweep 原只在 **turn 边界**（`build_skills_and_plugins`）执行——�
 ### 残余风险记录（本轮复核新增）
 
 - **`write_stdin` 无 pre-tool payload**：guard 无法拦截写入既有 shell 会话的键盘输入；缓解依赖路径随机化 + 输出脱敏（模型无法获知 `fm_skill_security_<hex>` 真实地址，`echo /dev/shm/*` 类探测输出被脱敏）。如后续要求严格拦截，需为 `WriteStdinHandler` 增加 pre payload（会改变全量 hook 可见性，属其他模块行为变更，当前不做）。
-- **`mcp__*`/扩展工具放行**：外部信任边界；受限部署建议不启用带宿主文件访问能力的 MCP server，或容器层隔离 MCP 进程。
+- **`mcp__*`/扩展工具路径通道**：参数含已知明文现已被 guard_export 拦截；但路径探测（如 `mcp__filesystem__list_directory("/dev/shm")`）仍放行，属外部信任边界；受限部署建议不启用带宿主文件访问能力的 MCP server，或容器层隔离 MCP 进程。
 - **工具输出/函数调用参数中的明文**：skill 脚本可能合法输出密钥/令牌（多步流程需要），脱敏会破坏功能；`apply_patch` 文件写出口已 Blocked。
 
 ### 复核中发现并修复的落盘副本（P1，`64ebd25942`）
@@ -347,6 +347,12 @@ TTL sweep 原只在 **turn 边界**（`build_skills_and_plugins`）执行——�
 3. **`ResponseItem::Reasoning`**：reasoning summary/content 也经 `record_conversation_items` 落盘，原脱敏只覆盖 assistant Message/AgentMessage。
 
 修复（TDD）：在**模型流入口** `handle_output_item_done` 对输出项先做 `redact_assistant_reply_item`（Message/AgentMessage/Reasoning 全覆盖），使 ResponseItem、派生 TurnItem、`last_agent_message` 全部在源头即干净；`emit_turn_item_started/completed` 保留 TurnItem 级二次兜底（覆盖其他 TurnItem 发射路径）。E2E 断言 rollout 只含 `[REDACTED]`；guard 22/22、集成 10/10、`just fmt` + clippy 全绿。
+
+### 与部署汇报逐项核对：网络/扩展工具明文导出拦截（P1，`f7fa0b941a`）
+
+汇报 V1 安全矩阵明确要求「`write` / `edit` / `apply_patch` / `webfetch` / `web_search` 参数含明文直接拦截」。核对发现 guard_export 此前只覆盖 `apply_patch`：独立 web_search（扩展工具 `web/run`，hook 平面名 `webrun`）与 MCP/扩展工具的参数明文均放行，模型可把 Skill 明文直接放入搜索/请求参数外泄。
+
+修复（TDD，3 个新单测红→绿）：`before_tool_with_runtime` 改为——`Bash` → guard_shell、`view_image` → guard_read、**其余所有工具默认 guard_export**（参数含已知明文 Blocked，reason `export_plaintext`）；shell 保持唯一允许运行时使用明文的通道（脚本经路径改写执行）。Codex 无独立 `webfetch` 工具（盘点确认），未来新增网络工具自动落入默认拦截。guard 25/25、集成 10/10。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

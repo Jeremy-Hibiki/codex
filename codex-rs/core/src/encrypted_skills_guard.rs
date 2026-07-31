@@ -7,11 +7,15 @@ use std::sync::Arc;
 use codex_encrypted_skills::export_guard;
 use codex_encrypted_skills::paths;
 use codex_encrypted_skills::runtime::EncryptedSkillRuntime;
+use codex_protocol::items::AgentMessageContent;
+use codex_protocol::items::TurnItem;
 use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputBody;
 use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::FunctionCallOutputPayload;
+use codex_protocol::models::ReasoningItemContent;
+use codex_protocol::models::ReasoningItemReasoningSummary;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
 use serde_json::Value;
@@ -208,27 +212,69 @@ pub(crate) fn redact_assistant_reply_items<'a>(
     let known: Vec<&str> = known.iter().map(String::as_str).collect();
     let mut items = items;
     for item in items.to_mut() {
-        match item {
-            ResponseItem::Message { role, content, .. } if role == "assistant" => {
-                for content_item in content {
-                    if let ContentItem::InputText { text } | ContentItem::OutputText { text } =
-                        content_item
-                    {
-                        *text = export_guard::redact_known_plaintext(text, &known);
-                    }
-                }
-            }
-            ResponseItem::AgentMessage { content, .. } => {
-                for content_item in content {
-                    if let AgentMessageInputContent::InputText { text } = content_item {
-                        *text = export_guard::redact_known_plaintext(text, &known);
-                    }
-                }
-            }
-            _ => {}
-        }
+        redact_response_item_text(item, &known);
     }
     items
+}
+
+/// Redacts one assistant reply item (used at the model stream intake so every
+/// derived copy — response item, turn item, and `last_agent_message` — is
+/// already clean before it can be persisted).
+pub(crate) fn redact_assistant_reply_item(
+    runtime: &EncryptedSkillRuntime,
+    session_id: &str,
+    mut item: ResponseItem,
+) -> ResponseItem {
+    if !contains_redactable_text(&item) {
+        return item;
+    }
+    let known = runtime.known_plaintexts(session_id);
+    if known.is_empty() {
+        return item;
+    }
+    let known: Vec<&str> = known.iter().map(String::as_str).collect();
+    redact_response_item_text(&mut item, &known);
+    item
+}
+
+fn redact_response_item_text(item: &mut ResponseItem, known: &[&str]) {
+    match item {
+        ResponseItem::Message { role, content, .. } if role == "assistant" => {
+            for content_item in content {
+                if let ContentItem::InputText { text } | ContentItem::OutputText { text } =
+                    content_item
+                {
+                    *text = export_guard::redact_known_plaintext(text, known);
+                }
+            }
+        }
+        ResponseItem::AgentMessage { content, .. } => {
+            for content_item in content {
+                if let AgentMessageInputContent::InputText { text } = content_item {
+                    *text = export_guard::redact_known_plaintext(text, known);
+                }
+            }
+        }
+        ResponseItem::Reasoning {
+            summary, content, ..
+        } => {
+            for entry in summary {
+                let ReasoningItemReasoningSummary::SummaryText { text } = entry;
+                *text = export_guard::redact_known_plaintext(text, known);
+            }
+            if let Some(content) = content {
+                for entry in content {
+                    match entry {
+                        ReasoningItemContent::ReasoningText { text }
+                        | ReasoningItemContent::Text { text } => {
+                            *text = export_guard::redact_known_plaintext(text, known);
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 fn contains_redactable_text(item: &ResponseItem) -> bool {
@@ -245,8 +291,45 @@ fn contains_redactable_text(item: &ResponseItem) -> bool {
         ResponseItem::AgentMessage { content, .. } => content
             .iter()
             .any(|content_item| matches!(content_item, AgentMessageInputContent::InputText { .. })),
+        ResponseItem::Reasoning {
+            summary, content, ..
+        } => !summary.is_empty() || content.as_ref().is_some_and(|content| !content.is_empty()),
         _ => false,
     }
+}
+
+/// Redacts known skill plaintext from assistant turn items (messages and
+/// reasoning) before they are emitted or persisted, covering the
+/// `ItemStarted`/`ItemCompleted` event surface that `record_conversation_items`
+/// does not reach.
+pub(crate) fn redact_turn_item(
+    runtime: &EncryptedSkillRuntime,
+    session_id: &str,
+    mut item: TurnItem,
+) -> TurnItem {
+    let known = runtime.known_plaintexts(session_id);
+    if known.is_empty() {
+        return item;
+    }
+    let known: Vec<&str> = known.iter().map(String::as_str).collect();
+    match &mut item {
+        TurnItem::AgentMessage(agent_message) => {
+            for content in &mut agent_message.content {
+                let AgentMessageContent::Text { text } = content;
+                *text = export_guard::redact_known_plaintext(text, &known);
+            }
+        }
+        TurnItem::Reasoning(reasoning) => {
+            for text in &mut reasoning.summary_text {
+                *text = export_guard::redact_known_plaintext(text, &known);
+            }
+            for text in &mut reasoning.raw_content {
+                *text = export_guard::redact_known_plaintext(text, &known);
+            }
+        }
+        _ => {}
+    }
+    item
 }
 
 /// Wraps a tool output so any decrypted storage path string is redacted before

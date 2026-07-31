@@ -2082,12 +2082,17 @@ impl Session {
             .turn_timing_state
             .record_item_started(item.id(), now_unix_timestamp_ms())
             .await;
+        let item = crate::encrypted_skills_guard::redact_turn_item(
+            &self.services.encrypted_skills_runtime,
+            &self.thread_id.to_string(),
+            item.clone(),
+        );
         self.send_event(
             turn_context,
             EventMsg::ItemStarted(ItemStartedEvent {
                 thread_id: self.thread_id,
                 turn_id: turn_context.sub_id.clone(),
-                item: item.clone(),
+                item,
                 started_at_ms,
             }),
         )
@@ -2115,6 +2120,11 @@ impl Session {
                 );
                 completed_at_ms
             });
+        let item = crate::encrypted_skills_guard::redact_turn_item(
+            &self.services.encrypted_skills_runtime,
+            &self.thread_id.to_string(),
+            item,
+        );
         self.send_event(
             turn_context,
             EventMsg::ItemCompleted(ItemCompletedEvent {

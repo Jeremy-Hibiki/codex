@@ -9,8 +9,12 @@ use codex_encrypted_skills::runtime::EncryptedSkillRuntime;
 use codex_encrypted_skills::sdk::EnvelopeError;
 use codex_encrypted_skills::sdk::EnvelopeSdk;
 use codex_encrypted_skills::sdk::PackageEntry;
+use codex_protocol::items::AgentMessageContent;
+use codex_protocol::items::TurnItem;
 use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::ContentItem;
+use codex_protocol::models::ReasoningItemContent;
+use codex_protocol::models::ReasoningItemReasoningSummary;
 use codex_protocol::models::ResponseItem;
 use serde_json::json;
 
@@ -225,6 +229,53 @@ fn redacts_only_assistant_reply_items() {
 }
 
 #[test]
+fn redacts_reasoning_response_item_text() {
+    let (runtime, _tmp) = loaded_runtime();
+    let reasoning = ResponseItem::Reasoning {
+        id: None,
+        summary: vec![ReasoningItemReasoningSummary::SummaryText {
+            text: "summary: # Guarded content".to_string(),
+        }],
+        content: Some(vec![
+            ReasoningItemContent::ReasoningText {
+                text: "raw: # Guarded content".to_string(),
+            },
+            ReasoningItemContent::Text {
+                text: "plain: # Guarded content".to_string(),
+            },
+        ]),
+        encrypted_content: None,
+        internal_chat_message_metadata_passthrough: None,
+    };
+
+    let redacted = redact_assistant_reply_item(&runtime, "t1", reasoning);
+
+    let ResponseItem::Reasoning {
+        summary, content, ..
+    } = redacted
+    else {
+        panic!("expected reasoning item");
+    };
+    assert_eq!(
+        summary,
+        vec![ReasoningItemReasoningSummary::SummaryText {
+            text: "summary: [REDACTED]".to_string(),
+        }]
+    );
+    assert_eq!(
+        content,
+        Some(vec![
+            ReasoningItemContent::ReasoningText {
+                text: "raw: [REDACTED]".to_string(),
+            },
+            ReasoningItemContent::Text {
+                text: "plain: [REDACTED]".to_string(),
+            },
+        ])
+    );
+}
+
+#[test]
 fn redacts_plaintext_in_agent_messages() {
     let (runtime, _tmp) = loaded_runtime();
     let agent_message = ResponseItem::AgentMessage {
@@ -259,6 +310,61 @@ fn redacts_plaintext_in_agent_messages() {
             },
         ]
     );
+}
+
+#[test]
+fn redacts_turn_item_agent_message_text() {
+    let (runtime, _tmp) = loaded_runtime();
+    let item = TurnItem::AgentMessage(codex_protocol::items::AgentMessageItem {
+        id: "msg-1".to_string(),
+        content: vec![AgentMessageContent::Text {
+            text: "the skill says: # Guarded content".to_string(),
+        }],
+        phase: None,
+        memory_citation: None,
+    });
+
+    let redacted = redact_turn_item(&runtime, "t1", item);
+
+    let TurnItem::AgentMessage(agent_message) = redacted else {
+        panic!("expected agent message turn item");
+    };
+    let [AgentMessageContent::Text { text }] = agent_message.content.as_slice() else {
+        panic!("expected one text content");
+    };
+    assert_eq!(text.as_str(), "the skill says: [REDACTED]");
+}
+
+#[test]
+fn redacts_turn_item_reasoning_text() {
+    let (runtime, _tmp) = loaded_runtime();
+    let item = TurnItem::Reasoning(codex_protocol::items::ReasoningItem {
+        id: "rsn-1".to_string(),
+        summary_text: vec!["summary: # Guarded content".to_string()],
+        raw_content: vec!["raw: # Guarded content".to_string()],
+    });
+
+    let redacted = redact_turn_item(&runtime, "t1", item);
+
+    let TurnItem::Reasoning(reasoning) = redacted else {
+        panic!("expected reasoning turn item");
+    };
+    assert_eq!(reasoning.summary_text, vec!["summary: [REDACTED]"]);
+    assert_eq!(reasoning.raw_content, vec!["raw: [REDACTED]"]);
+}
+
+#[test]
+fn redact_turn_item_leaves_user_messages_untouched() {
+    let (runtime, _tmp) = loaded_runtime();
+    let item = TurnItem::UserMessage(codex_protocol::items::UserMessageItem {
+        id: "user-1".to_string(),
+        client_id: None,
+        content: vec![],
+    });
+
+    let redacted = redact_turn_item(&runtime, "t1", item);
+
+    assert!(matches!(redacted, TurnItem::UserMessage(_)));
 }
 
 #[test]

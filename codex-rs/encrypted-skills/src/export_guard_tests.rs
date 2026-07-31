@@ -84,8 +84,30 @@ fn redact_full_line_and_prefix() {
 fn redact_short_fragments_are_not_redacted() {
     let plaintext = "line one\napi_key=abc\nline three";
     assert_eq!(
+        redact_known_plaintext("prefix api_key=abc suffix", &[plaintext]),
+        "prefix api_key=abc suffix"
+    );
+}
+
+#[test]
+fn redact_short_line_quoted_as_a_complete_line() {
+    let plaintext = "line one\napi_key=abc\nline three";
+    assert_eq!(
+        redact_known_plaintext("the key is:\napi_key=abc\n", &[plaintext]),
+        "the key is:\n[REDACTED]\n"
+    );
+    assert_eq!(
         redact_known_plaintext("api_key=abc", &[plaintext]),
-        "api_key=abc"
+        "[REDACTED]"
+    );
+}
+
+#[test]
+fn redact_short_line_embedded_in_a_sentence_is_kept() {
+    let plaintext = "line one\napi_key=abc\nline three";
+    assert_eq!(
+        redact_known_plaintext("value api_key=abc here", &[plaintext]),
+        "value api_key=abc here"
     );
 }
 
@@ -110,5 +132,12 @@ fn redact_is_idempotent() {
     let plaintext = "first line\nthis is a long sensitive line inside the skill\nlast line";
     let text = "quote: this is a long sensitive line inside the skill";
     let once = redact_known_plaintext(text, &[plaintext]);
+    assert_eq!(redact_known_plaintext(&once, &[plaintext]), once);
+}
+
+#[test]
+fn redact_short_line_is_idempotent() {
+    let plaintext = "line one\napi_key=abc\nline three";
+    let once = redact_known_plaintext("the key is:\napi_key=abc\n", &[plaintext]);
     assert_eq!(redact_known_plaintext(&once, &[plaintext]), once);
 }

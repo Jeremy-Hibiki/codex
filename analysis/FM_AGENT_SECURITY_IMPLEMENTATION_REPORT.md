@@ -189,6 +189,10 @@ opencode → codex 工具映射（guard 迁移依据）：
 | 文件查看工具拦截（view_image） | U `blocks_view_image_on_decrypted_directory` + I `view_image_on_mem_root_is_blocked` |
 | 搜索/探测命令拦截（含 ls） | U `blocks_search_commands...` + `blocks_listing_the_runtime_mem_root` |
 | 导出明文拦截（apply_patch） | I `export_tool_with_skill_plaintext_is_blocked` + U export guard |
+| 回复明文脱敏（长行/前缀） | U `redact_exact_plaintext`/`redact_full_line_and_prefix` + `redacts_assistant_reply_plaintext_before_persistence` |
+| 回复明文脱敏（短行完整行） | U `redact_short_line_quoted_as_a_complete_line` + `redact_short_line_is_idempotent` |
+| 回复明文脱敏（不误伤 user/句子内片段） | U `redacts_only_assistant_reply_items` + `redact_short_line_embedded_in_a_sentence_is_kept` |
+| inter-agent 明文脱敏 | U `redacts_plaintext_in_agent_messages` |
 
 ### encrypted-skill-fork-isolation
 
@@ -288,6 +292,39 @@ TTL sweep 原只在 **turn 边界**（`build_skills_and_plugins`）执行——�
 
 - **容器重启即 /dev/shm 清空**：Docker 销毁重建后 `/dev/shm` 是新挂载，解密明文自动消失（部署优势）；audit 日志依赖 `audit_path` 持久卷保留；
 - 同容器内 codex 进程重启（app-server 崩溃拉起）：per-process 命名空间 + pid 存活清理处理残留（pid 复用极端场景下残留由容量门控与 audit 轮转兜底，风险已记录）。
+
+## 19. 深度 Review 轮二：模型回复明文硬脱敏（2026-07-31 v22）
+
+### 发现的问题（P1）
+
+主 Agent 方案与 V1 executor 隔离的关键差异：`SKILL.md` 明文（带信任框架）直接注入 LLM 请求，`<output_policy>` 只是软约束。模型回复可能复述/引用明文，导致 **assistant 消息落盘到 rollout/内存历史，形成明文驻留**——违反「明文不允许长时间驻留」要求。V1 子代理边界天然避免，主 Agent 方案缺硬拦截。
+
+### 修正（TDD，两笔提交）
+
+1. **`82ffdcb649` Redact model-reply plaintext at the durable history boundary**：
+   - `export_guard::redact_known_plaintext(text, known)`：完整明文、≥20 字符整行、20 字符前缀统一替换为 `[REDACTED]`；幂等（二次替换 no-op）。
+   - `EncryptedSkillRuntime::redact_reply(session_id, text)`：按会话 `known_plaintexts` 做会话隔离脱敏。
+   - `encrypted_skills_guard::redact_assistant_reply_items`：只处理 `ResponseItem::Message{role:"assistant"}` 的 InputText/OutputText 与 `ResponseItem::AgentMessage` 的明文 InputText（EncryptedContent 不动）；user 消息不处理。
+   - 接线点在 `Session::prepare_conversation_items_for_history`（durable history 边界）：`record_conversation_items`（主回复/reasoning）与 `record_inter_agent_communication`（子代理通信）两条持久化路径统一覆盖；脱敏后的 items 同时写入 state、rollout 与客户端流。
+2. **`9bacbf7fcb` Redact quoted short skill lines that appear as complete reply lines**：
+   - 补盲：<20 字符的短行（如 `api_key=abc`）单独被引用时不命中长行规则；现按「完整行」语义脱敏（行首空白保留），嵌在句子中不误伤；幂等。
+
+### 设计取舍（已记录）
+
+- **客户端流同步脱敏**：`send_raw_response_items` 使用同一批 items，API 端用户看到的是脱敏后文本；理由：API 原文可能被前端二次落盘/透出，与「AI 侧零明文驻留」目标一致；代价是模型合法引用 Skill 内容的业务输出会被 `[REDACTED]`（Skill 输出策略本就禁止复述原文，属预期行为）。
+- **工具输出/函数调用参数中的明文不脱敏**：skill 脚本可能合法输出密钥/令牌供模型下一步使用（如 `scripts/get_token.sh`），脱敏会破坏多步技能流程；`apply_patch` 等文件写出口已 Blocked，shell 命令中的明文属合法运行时使用。该残余路径（FunctionCallOutput 参数/输出含明文）与 V1 无差异（工具输出同样回流主 agent），已记录。
+- **短行语义**：`contains_known_plaintext`（工具参数拦截）保持保守（<20 字符不匹配）；只有持久化脱敏使用「完整短行」激进语义。
+
+### 回归验证
+
+- encrypted-skills **95/95**、guard **16/16**、集成 **10/10**、`just fmt` + `just fix -p codex-encrypted-skills`/`-p codex-core` 全绿。
+- 集成测试二进制出现 `tokio-rt-worker stack overflow`：经 `git stash` 复现，**与本次改动无关**（测试基建/环境栈大小问题）；`RUST_MIN_STACK=16MiB`（`just test` 默认 8MiB 不够）可稳定通过，已记录。
+
+### 本轮复核的其他项（结论不变）
+
+- **工具拦截已迁移到 Codex 工具体系**：`hook_names.rs` 的 `HookToolName` 是 Codex 自身 hook 契约——`shell_command`/`unified_exec::exec_command` 两个 handler 的 `pre_tool_use_payload` 都发出 `HookToolName::bash()`（序列化名 `Bash`），`apply_patch`/`view_image` 同理；guard 在 `tools/registry.rs` 工具分发前置按该类型化名称匹配，非 opencode 字符串匹配。exec_command 的 `cmd` 参数改写经 `with_updated_hook_input` 正确回写。
+- **MCP/扩展工具放行**为文档化设计决策（外部信任边界）；部署清单补充建议：受限部署不启用带宿主文件访问能力的 MCP server，或容器层隔离 MCP 进程。
+- **部署清单配置键**已对照 `config/permissions.rs`/`config/mod.rs` 复核：`[sandbox_workspace_write] writable_roots` 与 `network_access` 均为真实键名，示例 config 可直接使用。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

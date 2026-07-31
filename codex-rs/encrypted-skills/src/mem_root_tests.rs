@@ -1,25 +1,6 @@
 use std::path::PathBuf;
 
 use super::*;
-use crate::sdk::EnvelopeSdk;
-
-struct MockSdk {
-    entries: Vec<PackageEntry>,
-    fail: bool,
-}
-
-impl EnvelopeSdk for MockSdk {
-    fn decrypt_package(
-        &self,
-        _package_path: &std::path::Path,
-    ) -> Result<Vec<PackageEntry>, EnvelopeError> {
-        if self.fail {
-            Err(EnvelopeError::Decrypt("mock failure".into()))
-        } else {
-            Ok(self.entries.clone())
-        }
-    }
-}
 
 fn entry(rel_path: &str, contents: &str) -> PackageEntry {
     PackageEntry {
@@ -51,40 +32,6 @@ fn writes_package_entries_preserving_layout() {
         fs::read_to_string(target.join("templates/viewer.html")).unwrap(),
         "<html></html>"
     );
-}
-
-#[test]
-fn decrypt_to_dir_uses_sdk_and_writes_layout() {
-    let tmp = tempfile::tempdir().unwrap();
-    let sdk = MockSdk {
-        entries: vec![
-            entry("SKILL.md", "# Real skill\n"),
-            entry("scripts/run.py", "print(1)"),
-        ],
-        fail: false,
-    };
-    let target = tmp.path().join("fm_skill_security_abc");
-    decrypt_to_dir(&sdk, tmp.path().join("skill.zip.enc").as_path(), &target).unwrap();
-    assert_eq!(
-        fs::read_to_string(target.join("SKILL.md")).unwrap(),
-        "# Real skill\n"
-    );
-    assert!(target.join("scripts/run.py").exists());
-}
-
-#[test]
-fn decrypt_to_dir_propagates_sdk_failure() {
-    let tmp = tempfile::tempdir().unwrap();
-    let sdk = MockSdk {
-        entries: Vec::new(),
-        fail: true,
-    };
-    let target = tmp.path().join("fm_skill_security_abc");
-    assert!(matches!(
-        decrypt_to_dir(&sdk, tmp.path().join("skill.zip.enc").as_path(), &target),
-        Err(EnvelopeError::Decrypt(_))
-    ));
-    assert!(!target.exists());
 }
 
 #[test]

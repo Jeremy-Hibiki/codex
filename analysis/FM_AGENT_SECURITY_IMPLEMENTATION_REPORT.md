@@ -118,6 +118,15 @@ opencode → codex 工具映射（guard 迁移依据）：
 | `webfetch` / `web_search` | 扩展 `web/run`（无 pre payload） | 沙箱网络隔离 |
 
 权限/审批（PermissionRequest）与沙箱工具分类与 guard 无冲突：guard 在工具分发前置先执行，审批不改变工具名匹配。
+
+## 6. 深度 Review 记录（2026-07-31 v9）
+
+对三个 spec 逐条核对、安全边界与代码标准复查，发现并修复：
+
+1. **P1 重水合命中不刷新 TTL（已修复）**：`rehydrate_framed` 此前只发射审计事件，未调用 `touch`，违反设计「提及注入 + 重水合命中均刷新 `last_used_at`」——活跃会话中持续被重水合的 skill 可能在 TTL 后被误卸载。修复：重水合替换成功后对命中的 skill 逐个 `touch`（更新 `last_used_at` 与会话活动）；新增对照测试（重水合刷新 vs 未触碰卸载）。
+2. **P2 `decrypt_to_dir` 死代码（已删除）**：仅被测试使用，生产路径未引用；连同其专属测试桩一并移除。
+3. **P2 spec 与实现偏差（已更新）**：access-control spec 原按 opencode 语义描述 `read` 工具（.md 允许/脚本拦截），codex 无独立 `read` 工具，实现为「文件查看工具（`view_image`）与 shell 读取/搜索命令对解密目录全拦截」。已把 spec 场景更新为 codex 实际工具语义。
+4. **P3 记录在案（未改）**：`RedactingToolOutput` 不脱敏 MCP/ToolSearch 输出（MCP server 属外部信任边界）；shell 命令字符串匹配可被混淆绕过（缓解：沙箱网络隔离 + 权限层）。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

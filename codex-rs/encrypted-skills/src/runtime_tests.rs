@@ -209,6 +209,22 @@ fn clear_thread_wipes_dirs_and_cache() {
 }
 
 #[test]
+fn redact_reply_uses_session_known_plaintexts() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let (runtime, _tmp) = test_runtime(sdk);
+    runtime
+        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+        .unwrap();
+
+    let reply = format!("the skill says: {SKILL_MD}");
+    assert_eq!(
+        runtime.redact_reply("t1", &reply),
+        "the skill says: [REDACTED]"
+    );
+    assert_eq!(runtime.redact_reply("other", &reply), reply);
+}
+
+#[test]
 fn sweep_evicts_skills_after_ttl_and_keeps_fresh_ones() {
     let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |path| {
         if path.to_string_lossy().contains("stale") {

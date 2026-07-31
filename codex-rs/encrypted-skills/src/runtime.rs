@@ -235,6 +235,17 @@ impl EncryptedSkillRuntime {
             .unwrap_or_default()
     }
 
+    /// Redacts known skill plaintext from a model reply before it is persisted
+    /// to rollout or in-memory history.
+    pub fn redact_reply(&self, session_id: &str, text: &str) -> String {
+        let known = self.known_plaintexts(session_id);
+        if known.is_empty() {
+            return text.to_string();
+        }
+        let known: Vec<&str> = known.iter().map(String::as_str).collect();
+        crate::export_guard::redact_known_plaintext(text, &known)
+    }
+
     /// Runs the two-tier TTL sweep and wipes evicted directories.
     pub fn sweep(&self) {
         let (skill_evictions, thread_evictions) = {

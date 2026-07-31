@@ -55,3 +55,60 @@ fn json_escaped_newline_does_not_bypass() {
         &[plaintext]
     ));
 }
+
+#[test]
+fn redact_exact_plaintext() {
+    assert_eq!(
+        redact_known_plaintext("prefix SECRET-CONTENT suffix", &["SECRET-CONTENT"]),
+        "prefix [REDACTED] suffix"
+    );
+}
+
+#[test]
+fn redact_full_line_and_prefix() {
+    let plaintext = "first line\nthis is a long sensitive line inside the skill\nlast line";
+    assert_eq!(
+        redact_known_plaintext(
+            "quote: this is a long sensitive line inside the skill",
+            &[plaintext]
+        ),
+        "quote: [REDACTED]"
+    );
+    assert_eq!(
+        redact_known_plaintext("prefix this is a long sensi", &[plaintext]),
+        "prefix [REDACTED]"
+    );
+}
+
+#[test]
+fn redact_short_fragments_are_not_redacted() {
+    let plaintext = "line one\napi_key=abc\nline three";
+    assert_eq!(
+        redact_known_plaintext("api_key=abc", &[plaintext]),
+        "api_key=abc"
+    );
+}
+
+#[test]
+fn redact_unknown_text_is_unchanged() {
+    assert_eq!(
+        redact_known_plaintext("hello world", &["totally different"]),
+        "hello world"
+    );
+}
+
+#[test]
+fn redact_multiple_known_plaintexts() {
+    assert_eq!(
+        redact_known_plaintext("alpha beta gamma", &["alpha", "gamma"]),
+        "[REDACTED] beta [REDACTED]"
+    );
+}
+
+#[test]
+fn redact_is_idempotent() {
+    let plaintext = "first line\nthis is a long sensitive line inside the skill\nlast line";
+    let text = "quote: this is a long sensitive line inside the skill";
+    let once = redact_known_plaintext(text, &[plaintext]);
+    assert_eq!(redact_known_plaintext(&once, &[plaintext]), once);
+}

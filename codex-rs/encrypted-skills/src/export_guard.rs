@@ -1,5 +1,7 @@
 //! Outbound plaintext detection (defense-in-depth).
 
+use crate::paths::REDACTED_MARKER;
+
 pub const MIN_FRAGMENT_LEN: usize = 20;
 
 /// True when `text` contains a known plaintext, a full trimmed line of it
@@ -28,6 +30,30 @@ fn known_fragment_matches(text: &str, plaintext: &str) -> bool {
         let prefix: String = trimmed.chars().take(MIN_FRAGMENT_LEN).collect();
         text.contains(trimmed) || text.contains(&prefix)
     })
+}
+
+/// Replaces known plaintext (or long fragments of it) with `[REDACTED]`.
+/// Longer matches are applied first so a full line is consumed before its
+/// 20-char prefix can be re-replaced, and applying the redaction twice is a
+/// no-op.
+pub fn redact_known_plaintext(text: &str, known: &[&str]) -> String {
+    let mut out = text.to_string();
+    for plaintext in known {
+        if plaintext.is_empty() {
+            continue;
+        }
+        out = out.replace(plaintext, REDACTED_MARKER);
+        for line in plaintext.lines() {
+            let trimmed = line.trim();
+            if trimmed.len() < MIN_FRAGMENT_LEN {
+                continue;
+            }
+            out = out.replace(trimmed, REDACTED_MARKER);
+            let prefix: String = trimmed.chars().take(MIN_FRAGMENT_LEN).collect();
+            out = out.replace(&prefix, REDACTED_MARKER);
+        }
+    }
+    out
 }
 
 #[cfg(test)]

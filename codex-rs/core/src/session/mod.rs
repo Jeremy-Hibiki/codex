@@ -2919,8 +2919,16 @@ impl Session {
             item.set_turn_id_if_missing(&turn_context.sub_id);
         }
         (
-            Self::assign_missing_response_item_ids(items),
+            let items = Self::assign_missing_response_item_ids(items),
             image_preparations,
+        );
+        // Hard enforcement for the `<output_policy>` soft constraint: any
+        // plaintext the model quotes back is redacted at the durable history
+        // boundary so it never persists in rollout or in-memory history.
+        crate::encrypted_skills_guard::redact_assistant_reply_items(
+            &self.services.encrypted_skills_runtime,
+            &self.thread_id.to_string(),
+            items,
         )
     }
 

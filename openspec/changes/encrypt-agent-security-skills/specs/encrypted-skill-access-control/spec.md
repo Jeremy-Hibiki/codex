@@ -80,6 +80,10 @@ Tool invocations capable of carrying plaintext out of the session (file writes, 
 - **WHEN** a network tool call (for example `webfetch`, `web_search`) contains known skill plaintext in its arguments
 - **THEN** the invocation is blocked with an explanatory message
 
+#### Scenario: MCP and extension tool arguments are checked
+- **WHEN** an MCP, extension, or any other non-shell tool call contains known skill plaintext in any string argument
+- **THEN** the invocation is blocked with an explanatory message
+
 #### Scenario: Normal file operations pass through
 - **WHEN** a file or network tool call does not contain known skill plaintext
 - **THEN** the invocation proceeds normally

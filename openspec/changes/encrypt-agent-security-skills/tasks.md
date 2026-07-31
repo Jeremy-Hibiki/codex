@@ -77,3 +77,4 @@
 - [x] 11.5 回归：encrypted-skills 95/95、guard 18/18、集成 10/10（`RUST_MIN_STACK=16MiB`，测试基建栈溢出与本次改动无关，stash 复现确认）、`just fmt` + clippy 全绿
 - [x] 11.6 流入口脱敏（红→绿）：`handle_output_item_done` 入口对模型输出项先脱敏——发现 `record_conversation_items` 之外还存在 `TurnItem`（ItemStarted/ItemCompleted）、`TaskCompleteEvent.last_agent_message`、`ResponseItem::Reasoning` 三条明文落盘副本；统一在流入口处理后全部干净，`emit_turn_item_*` 保留二次兜底
 - [x] 11.7 E2E 加固：`encrypted_skill_keeps_plaintext_out_of_context_and_rollout` 的 mock 回复改为引用 `REAL_SKILL_CONTENT_MARKER`，断言 rollout 只含 `[REDACTED]`；guard 22/22、集成 10/10
+- [x] 11.8 网络/扩展工具明文导出拦截（红→绿）：与部署汇报 V1 矩阵核对——`webfetch`/`web_search` 参数含明文必须拦截；guard_export 扩展为所有非 shell/view_image 工具默认分支（含 `webrun`/MCP/扩展工具），shell 保留为唯一运行时明文通道；guard 25/25、集成 10/10

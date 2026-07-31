@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>微软 AHP 协议 · 一页看懂 Agent Host Protocol</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.min.js"></script>
+<style>
+  :root{
+    --ink:#0b1c2c; --ink2:#3d5266; --ink3:#8595a6;
+    --blue:#2251ff; --blue-d:#0f2fb8; --blue-l:#7d9bff; --blue-bg:#eef2ff;
+    --red:#c22f4e; --amber:#b45309;
+    --paper:#fbfaf6; --plate:#ffffff; --line:#e6e2d6;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:"Songti SC","Noto Serif CJK SC","Source Han Serif SC",Georgia,serif;
+    background:var(--paper); color:var(--ink); line-height:1.8; font-size:15.5px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono, code{font-family:Menlo,Consolas,"Courier New",monospace}
+  code.il{font-size:.86em;background:var(--blue-bg);padding:1px 7px;border-radius:4px;color:var(--blue-d)}
+
+  /* ═══ 海报骨架 ═══ */
+  .poster{max-width:1180px;margin:0 auto;padding:0 30px 80px}
+
+  /* 顶栏 */
+  .topbar{display:flex;justify-content:space-between;align-items:center;padding:20px 4px;
+    border-bottom:2.5px solid var(--ink);font-family:Menlo,monospace;font-size:11px;
+    letter-spacing:.22em;color:var(--ink2);text-transform:uppercase}
+  .topbar b{color:var(--blue)}
+
+  /* ═══ 报头 ═══ */
+  .masthead{padding:64px 4px 46px;border-bottom:1px solid var(--line);position:relative;overflow:hidden}
+  .masthead::before{content:"AHP";position:absolute;right:-30px;top:-70px;font-size:330px;font-weight:700;
+    color:rgba(34,81,255,.045);font-family:Menlo,monospace;letter-spacing:-.05em;pointer-events:none}
+  .kick{font-family:Menlo,monospace;font-size:12px;letter-spacing:.34em;color:var(--blue);margin-bottom:20px}
+  h1{font-size:clamp(40px,6vw,74px);line-height:1.12;font-weight:800;letter-spacing:.01em}
+  h1 em{font-style:normal;color:var(--blue)}
+  .sub{font-family:Menlo,monospace;font-size:clamp(12px,1.6vw,15px);letter-spacing:.1em;color:var(--ink3);margin-top:16px;text-transform:uppercase}
+  .dek{font-style:italic;font-size:18px;color:var(--ink2);max-width:720px;margin-top:24px;line-height:1.95}
+  .badges{display:flex;flex-wrap:wrap;gap:10px;margin-top:30px}
+  .bdg{font-family:Menlo,monospace;font-size:11px;letter-spacing:.07em;padding:7px 15px;border-radius:999px;
+    border:1px solid var(--line);background:#fff;color:var(--ink2)}
+  .bdg.hot{border-color:var(--blue);color:var(--blue);background:var(--blue-bg)}
+  .bdg.warn{border-color:var(--red);color:var(--red);background:#fdf2f4}
+
+  /* ═══ 章节网格 ═══ */
+  .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:22px;margin-top:26px}
+  .card{background:var(--plate);border:1px solid var(--line);padding:30px 32px;position:relative}
+  .card .no{position:absolute;top:22px;right:26px;font-family:Menlo,monospace;font-size:34px;
+    color:rgba(34,81,255,.12);font-weight:700}
+  .card .k{font-family:Menlo,monospace;font-size:10.5px;letter-spacing:.26em;color:var(--blue);text-transform:uppercase;margin-bottom:12px}
+  .card h2{font-size:23px;line-height:1.35;margin-bottom:16px;font-weight:800}
+  .card p{margin-bottom:13px;color:#24384a;font-size:14.5px}
+  .card p:last-child{margin-bottom:0}
+  .card ul{margin:0 0 6px 20px;color:#24384a;font-size:14.5px}
+  .card li{margin-bottom:7px}
+  b, strong{color:var(--ink)}
+  .c4{grid-column:span 4}.c5{grid-column:span 5}.c6{grid-column:span 6}
+  .c7{grid-column:span 7}.c8{grid-column:span 8}.c12{grid-column:span 12}
+
+  .hl{background:linear-gradient(transparent 60%,rgba(34,81,255,.18) 60%);font-weight:700}
+
+  /* tldr 条 */
+  .tldr{background:var(--ink);color:#cfdaea;padding:36px 40px;margin-top:26px;display:grid;
+    grid-template-columns:repeat(4,1fr);gap:30px}
+  .tldr .cell .t{font-family:Menlo,monospace;font-size:10.5px;letter-spacing:.22em;color:var(--blue-l);margin-bottom:10px;text-transform:uppercase}
+  .tldr .cell .b{font-size:14px;line-height:1.85}
+  .tldr .cell .b b{color:#fff}
+
+  /* mermaid 画板 */
+  .board{background:#fff;border:1px solid var(--line);padding:26px 18px;margin-top:16px}
+  .board .cap{font-family:Menlo,monospace;font-size:10.5px;letter-spacing:.2em;color:var(--ink3);
+    text-transform:uppercase;text-align:center;margin-bottom:14px}
+  pre.mermaid{display:flex;justify-content:center;background:transparent;color:var(--ink);
+    padding:0;margin:0;overflow:visible;border-radius:0}
+  .mermaid svg{max-width:100%;height:auto}
+
+  /* 表格 */
+  .tbl{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:14px}
+  .tbl th{font-family:Menlo,monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--ink2);text-align:left;padding:10px 12px;border-top:2px solid var(--ink);border-bottom:1px solid var(--ink);white-space:nowrap}
+  .tbl td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.7}
+  .tbl tr:last-child td{border-bottom:2px solid var(--ink)}
+  .tbl td .mono{font-size:12px;color:var(--blue-d)}
+
+  /* 代码 */
+  pre{background:var(--ink);color:#d5e2f2;padding:20px 24px;overflow-x:auto;margin-top:14px;
+    font-size:12.5px;line-height:1.75;font-family:Menlo,Consolas,monospace;border-radius:3px}
+  pre .cm{color:#7c93a8} pre .st{color:#9ec5ff} pre .kw{color:#ff9db1}
+
+  /* 结论带 */
+  .verdict{background:linear-gradient(135deg,var(--blue-d),var(--blue) 60%,#4a6cff);color:#e4ebff;
+    padding:46px 44px;margin-top:26px;position:relative;overflow:hidden}
+  .verdict::after{content:"";position:absolute;right:-60px;bottom:-90px;width:300px;height:300px;
+    border:1.5px solid rgba(255,255,255,.18);border-radius:50%}
+  .verdict::before{content:"";position:absolute;right:-10px;bottom:-40px;width:200px;height:200px;
+    border:1.5px solid rgba(255,255,255,.14);border-radius:50%}
+  .verdict .k{font-family:Menlo,monospace;font-size:10.5px;letter-spacing:.26em;color:#bcd0ff;margin-bottom:14px;text-transform:uppercase}
+  .verdict h2{color:#fff;font-size:26px;margin-bottom:18px}
+  .verdict .cols{display:grid;grid-template-columns:repeat(3,1fr);gap:26px;margin-top:8px}
+  .verdict .cell .t{font-family:Menlo,monospace;font-size:10.5px;letter-spacing:.2em;color:#bcd0ff;margin-bottom:8px}
+  .verdict .cell .b{font-size:13.5px;line-height:1.85}
+  .verdict .cell .b b{color:#fff}
+
+  footer{margin-top:50px;padding-top:20px;border-top:2.5px solid var(--ink);
+    font-family:Menlo,monospace;font-size:10.5px;letter-spacing:.1em;color:var(--ink3);
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px 24px;line-height:2}
+
+  @media (max-width:900px){
+    .grid{grid-template-columns:1fr}
+    .c4,.c5,.c6,.c7,.c8{grid-column:span 12}
+    .tldr{grid-template-columns:1fr 1fr}
+    .verdict .cols{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="poster">
+
+  <!-- 顶栏 -->
+  <div class="topbar">
+    <span>Research Poster · <b>Deep Dive</b></span>
+    <span>2026-07-29 · 微软官方资料核验</span>
+  </div>
+
+  <!-- 报头 -->
+  <div class="masthead">
+    <div class="kick">MICROSOFT · OPEN PROTOCOL · MIT LICENSE</div>
+    <h1>一页看懂 <em>AHP</em> 协议</h1>
+    <div class="sub">Agent Host Protocol — 让 AI Agent 会话成为多客户端共享的基础设施</div>
+    <p class="dek">任意数量的客户端——VS Code 窗口、浏览器、CLI——同时挂载到同一个 AI agent 会话，看到完全一致的有序历史、终端状态与待批准变更。会话从"某个窗口的内部状态"，升级为 host 持有的权威共享资源。</p>
+    <div class="badges">
+      <span class="bdg warn">规范 v0.6.0 · 草案阶段 · 预期破坏性变更</span>
+      <span class="bdg hot">VS Code 1.129+ 灰度推送中</span>
+      <span class="bdg">SDK × 5：Rust / TS / Kotlin / Go / Swift</span>
+      <span class="bdg hot">与 ACP 分层互补</span>
+      <span class="bdg mono">code agent host --tunnel</span>
+    </div>
+  </div>
+
+  <!-- TLDR -->
+  <div class="tldr">
+    <div class="cell"><div class="t">What · 是什么</div><div class="b">开源的<b>多客户端会话状态同步协议</b>：不可变状态树 + 纯 Reducer + serverSeq 全序广播。</div></div>
+    <div class="cell"><div class="t">Stage · 什么阶段</div><div class="b">规范 <b>0.x 草案</b>（0.6.0 已发布）；但参考实现已随 VS Code 1.121→1.130 产品化灰度。</div></div>
+    <div class="cell"><div class="t">vs ACP · 什么关系</div><div class="b"><b>分层互补</b>：ACP 管 1:1 通信，AHP 管 N 客户端协调；host 上行 AHP、下行 ACP。</div></div>
+    <div class="cell"><div class="t">How · 怎么用</div><div class="b">客户端用五语言 SDK / AHPX；远程走 <b>SSH / Dev Tunnel</b>；部署一行 <b>code agent host</b>。</div></div>
+  </div>
+
+  <!-- 01 消歧 + 02 阶段 -->
+  <div class="grid">
+    <div class="card c5">
+      <div class="no">01</div>
+      <div class="k">Positioning · 先消歧</div>
+      <h2>这个 AHP，不是那三个 AHP</h2>
+      <p>"AHP" 缩写在 2026 年至少被四个项目占用。本页只讨论<b>微软的 Agent Host Protocol</b>（<code class="il">microsoft/agent-host-protocol</code>）——"AI agent 会话的同步多客户端状态协议"。</p>
+      <ul>
+        <li><b>≠ Agent Harness Protocol</b>（A3S-Lab）— agent 监督/策略执行</li>
+        <li><b>≠ Agent Handoff Protocol</b> — agent 向人类移交工作区</li>
+        <li><b>≠ Agent Handshake Protocol</b> — agent 发现网站的握手</li>
+      </ul>
+      <p>它延续 <b>LSP / DAP</b> 的编辑器基础设施协议血统：LSP 时代会话属于一个窗口；agent 时代，AHP 把会话变成 host 持有的权威资源，客户端只是可随时来去的观察者与控制器。协议保持 <span class="hl">agent 无关</span>——不定义 agent 如何实现推理、工具与模型路由。</p>
+    </div>
+
+    <div class="card c7">
+      <div class="no">02</div>
+      <div class="k">Maturity · 当前阶段</div>
+      <h2>规范 0.x 草案，实现已进产品灰度</h2>
+      <p>官方明示"积极开发中、尚未稳定、破坏性变更预期会发生"——不建议生产依赖后向兼容。但落地节奏很紧凑：</p>
+      <div class="board">
+        <div class="cap">Timeline · 发布节奏</div>
+        <pre class="mermaid">
+timeline
+  title AHP 协议演进时间线（2026）
+  05-20 · VS Code 1.121 : 远程 agent 会话首次预览 : AHP 首次公开，宣布独立规范
+  07-15 · VS Code 1.129 : Copilot / Claude / Codex 推送独立 host 进程 : 同一会话多窗口同时连接
+  07-20 · Spec 0.6.0 : changeset review 能力 : 工具调用异步风险评估 : MCP 工具中途 OAuth 暂停/恢复
+  07-23 · VS Code 1.130 : 会话架构持续重构 : 每会话独立进程 · 工作树隔离
+  在途 · Spec 0.7.0 : main 分支累积中 : 1.0 前破坏性变更可能落在 MINOR
+        </pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- 03 架构 -->
+  <div class="grid">
+    <div class="card c12">
+      <div class="no">03</div>
+      <div class="k">Architecture · 核心架构</div>
+      <h2>状态复制协议，不是消息转发器：协调层 × 通信层</h2>
+      <p>一切推送式交互发生在 <b>channel</b>（URI 标识的可订阅资源：<code class="il">ahp-root://</code>、<code class="il">ahp-session:/&lt;uuid&gt;</code>、<code class="il">ahp-chat:/&lt;uuid&gt;</code>、终端、变更集）上；状态变更的唯一机制是 <b>action</b>，经纯 reducer 在服务器与客户端执行同一逻辑；host 用 <code class="il">serverSeq</code> 全序广播——这条有序流就是所有窗口同步的依据。</p>
+      <div class="board">
+        <div class="cap">Flowchart · 分层架构</div>
+        <pre class="mermaid">
+flowchart TB
+  C1["VS Code 窗口<br/>编辑器 / Agents 窗口"]
+  C2["浏览器客户端<br/>insiders.vscode.dev/agents"]
+  C3["CLI / 第三方客户端<br/>AHPX · 五语言 SDK"]
+
+  H["Agent Host · 权威会话状态<br/>不可变状态树 · 纯 Reducer · serverSeq 全序广播<br/>写前协调 · 订阅管理 · 快照 + 断线回放<br/>agent event mapper：ACP 事件 → AHP action 翻译"]
+
+  A1["Copilot<br/>Copilot SDK"]
+  A2["Claude<br/>Claude Code"]
+  A3["Codex<br/>OpenAI Codex"]
+
+  C1 ==>|"AHP · JSON-RPC over WebSocket / MessagePort<br/>N 客户端协调层"| H
+  C2 ==> H
+  C3 ==> H
+  H ==>|"ACP / 适配器 · 1:1 通信层"| A1
+  H ==> A2
+  H ==> A3
+
+  classDef hot fill:#eef2ff,stroke:#2251ff,color:#0f2fb8,stroke-width:2px;
+  class H hot;
+        </pre>
+      </div>
+    </div>
+  </div>
+  <!-- 04 与 ACP 关系 -->
+  <div class="grid">
+    <div class="card c5">
+      <div class="no">04</div>
+      <div class="k">vs ACP · 与 ACP 的关系</div>
+      <h2>AHP 是协调层，ACP 是通信层</h2>
+      <p>先消歧：此 ACP 是 <b>Zed 发起的 Agent Client Protocol</b>（编辑器↔agent 的"LSP"，Apache 2.0，JetBrains 全系已内置，60+ agent 接入）——<b>不是</b> IBM 那个已归档并入 A2A 的 Agent Communication Protocol。</p>
+      <p>官方定位："<span class="hl">AHP 是协调层，ACP 是通信层，二者天然组合</span>"。心智模型：<b>AHP 是 ACP 之上的互斥锁（mutex）</b>——同一时刻每 chat 只有一个 turn；工具确认由 host 仲裁（第一个确认生效）；任何客户端可取消。AHP <b>不取代</b> ACP：客户端可以继续只说 ACP。</p>
+      <table class="tbl">
+        <thead><tr><th>关注点</th><th>AHP</th><th>ACP</th></tr></thead>
+        <tbody>
+          <tr><td>多客户端协调</td><td><b>核心目的</b>（N 客户端同步）</td><td>不处理（假设单客户端）</td></tr>
+          <tr><td>状态权威</td><td>Host 持有权威状态树</td><td>Agent 持有会话状态</td></tr>
+          <tr><td>变更定序</td><td><span class="mono">serverSeq</span> 全序广播</td><td>请求-响应 + 流式通知</td></tr>
+          <tr><td>重连/回放</td><td><b>内建</b>（lastSeenServerSeq）</td><td>协议层未规定</td></tr>
+          <tr><td>agent 抽象</td><td>agent 无关</td><td>agent 专属接口</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card c7">
+      <div class="no">04′</div>
+      <div class="k">Composition · 组合时序</div>
+      <h2>Host 上行说 AHP，下行说 ACP</h2>
+      <div class="board">
+        <div class="cap">Sequence · 一轮对话的双协议流转</div>
+        <pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant CA as 客户端 A
+  participant CB as 客户端 B
+  participant H as Agent Host
+  participant AG as Agent (ACP)
+
+  CA->>H: AHP · dispatchAction(chat/turnStarted)
+  H->>H: 定序 serverSeq · 应用权威状态
+  H-->>CA: 广播 action envelope
+  H-->>CB: 广播 action envelope（B 同步看到"chat 忙"）
+  H->>AG: ACP · session/prompt
+  AG-->>H: ACP · session/update（流式内容/工具调用）
+  H->>H: event mapper 映射为 chat/delta 等 AHP action
+  H-->>CA: chat/delta · chat/toolCallStart…
+  H-->>CB: chat/delta · chat/toolCallStart…
+  AG-->>H: 工具调用待确认（pending-confirmation）
+  CB->>H: AHP · chat/toolCallConfirmed（B 批准，先到先得）
+  H->>AG: ACP · 放行执行
+  AG-->>H: 结果回传
+  H-->>CA: chat/turnComplete
+  H-->>CB: chat/turnComplete
+        </pre>
+      </div>
+      <p style="margin-top:14px">协议全景分工：<b>MCP</b> 让能力可移植（Anthropic，工具/数据），<b>ACP</b> 让 agent 可移植（Zed，客户端↔agent），<b>AHP</b> 让<b>活会话</b>可移植（微软，N 客户端↔1 host），<b>A2A</b> 管 agent↔agent（Google / Linux Foundation）。四者不构成竞争。</p>
+    </div>
+  </div>
+
+  <!-- 05 接入 -->
+  <div class="grid">
+    <div class="card c7">
+      <div class="no">05</div>
+      <div class="k">Integration · 如何接入</div>
+      <h2>两条路径：做客户端，或做 Host</h2>
+      <p>绝大多数接入者走<b>客户端路径</b>——五语言官方 SDK 已在 crates.io / npm / Maven Central / Go proxy / SwiftPM 正式发版，另有 AHPX（CLI + Node）适合脚本自动化。Host 路径意味着参考 VS Code 实现自研服务器。</p>
+      <div class="board">
+        <div class="cap">Sequence · 客户端接入握手与一轮对话</div>
+        <pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant C as AHP 客户端
+  participant H as Agent Host
+
+  C->>H: initialize（protocolVersions[] · clientId · initialSubscriptions）
+  H-->>C: protocolVersion · serverSeq · 快照（含 agent/模型列表）
+  Note over C,H: 版本协商一次完成 · 不兼容返回 -32005 并关闭连接
+  C->>H: createSession（ahp-session:/uuid · provider: copilot）
+  C->>H: subscribe（ahp-session:/uuid）
+  H-->>C: lifecycle: creating → session/ready（含默认 chat URI）
+  C->>H: subscribe（ahp-chat:/cid）
+  C->>H: dispatchAction · chat/turnStarted（写前乐观应用）
+  H-->>C: chat/delta × N（流式，带 serverSeq）
+  H-->>C: chat/toolCallStart → Delta → Ready（pending-confirmation）
+  C->>H: chat/toolCallConfirmed（approved + reason）
+  H-->>C: chat/toolCallComplete → chat/turnComplete
+  Note over C,H: 断线？reconnect（clientId · lastSeenServerSeq）回放错过的 action
+        </pre>
+      </div>
+      <p style="margin-top:12px">认证复用 OAuth 标准：<b>RFC 9728</b> 做受保护资源发现（<code class="il">AgentInfo.protectedResources</code>），<b>RFC 6750</b> Bearer 令牌经 <code class="il">authenticate</code> 命令推送；过期时服务器发 <code class="il">auth/required</code>。工程三建议：<b>宽版本协商</b>（传 <code class="il">SUPPORTED_PROTOCOL_VERSIONS</code>）、<b>先查 capability 再用新特性</b>、重连直接用 <code class="il">MultiHostClient</code>（自带 250ms→30s 指数退避 + 自动重订阅）。</p>
+    </div>
+
+    <div class="card c5">
+      <div class="no">05′</div>
+      <div class="k">Quickstart · 最小示例</div>
+      <h2>TypeScript SDK 上手</h2>
+<pre><span class="kw">import</span> { AhpClient, AhpStateMirror }
+  <span class="kw">from</span> <span class="st">'@microsoft/agent-host-protocol/client'</span>;
+<span class="kw">import</span> { WebSocketTransport }
+  <span class="kw">from</span> <span class="st">'@microsoft/agent-host-protocol/ws'</span>;
+
+<span class="cm">// 1. 连接 + 握手（含初始订阅）</span>
+<span class="kw">const</span> transport = <span class="kw">await</span> WebSocketTransport
+  .connect(<span class="st">'ws://localhost:12345'</span>);
+<span class="kw">const</span> client = <span class="kw">new</span> AhpClient(transport);
+<span class="kw">const</span> mirror = <span class="kw">new</span> AhpStateMirror();
+client.connect();
+
+<span class="kw">const</span> init = <span class="kw">await</span> client.initialize({
+  clientId: <span class="st">'my-client'</span>,
+  protocolVersions: [...SUPPORTED_PROTOCOL_VERSIONS],
+  initialSubscriptions: [<span class="st">'ahp-root://'</span>],
+});
+<span class="kw">for</span> (<span class="kw">const</span> s <span class="kw">of</span> init.snapshots)
+  mirror.applySnapshot(s);
+
+<span class="cm">// 2. 持续消费 action 流，镜像状态</span>
+<span class="kw">const</span> root = client.attachSubscription(<span class="st">'ahp-root://'</span>);
+<span class="kw">for await</span> (<span class="kw">const</span> ev <span class="kw">of</span> root)
+  <span class="kw">if</span> (ev.type === <span class="st">'action'</span>) mirror.apply(ev.params);</pre>
+      <p style="margin-top:12px">SDK 按职责拆四个子路径：默认入口（线路类型/reducer，无 I/O）、<code class="il">/client</code>（AhpClient + 状态镜像）、<code class="il">/hosts</code>（多 host 编排与重连监管）、<code class="il">/ws</code>（WebSocket 传输）。浏览器与 Node 21+ 零依赖运行。</p>
+    </div>
+  </div>
+  <!-- 06 远程 -->
+  <div class="grid">
+    <div class="card c12">
+      <div class="no">06</div>
+      <div class="k">Remote · 如何支持远程 Agent</div>
+      <h2>Host 贴着代码跑，客户端随处接入；合上笔记本，Agent 继续干活</h2>
+      <p>与 VS Code Remote Development 同构：<b>UI 留在客户端，工作区操作贴着源码运行</b>。Agent host 是远端长驻进程——客户端全部断开后，运行中的会话仍继续执行；换台设备重连，看到的仍是同一份有序历史、终端状态、变更与待办。</p>
+      <div class="board">
+        <div class="cap">Flowchart · 两种远程接入路径</div>
+        <pre class="mermaid">
+flowchart LR
+  subgraph LOCAL["你的设备（UI 层）"]
+    UI1["VS Code · Agents 窗口"]
+    UI2["浏览器 · insiders.vscode.dev/agents"]
+    UI3["第三方客户端 / AHPX"]
+  end
+
+  subgraph PATH["连接路径"]
+    SSH["SSH 直连<br/>自动装 VS Code CLI<br/>自动起 host · 端口转发"]
+    TUN["Dev Tunnel<br/>Azure 中继 · 出站 WebSocket<br/>穿透 NAT / 防火墙 · 免入站端口"]
+  end
+
+  subgraph REMOTE["远端机器（执行层）"]
+    HOSTP["长驻 Agent Host 进程<br/>AHP over WebSocket"]
+    WS["工作区 · 文件编辑<br/>命令执行 · 终端状态"]
+    HOSTP --- WS
+  end
+
+  UI1 --> SSH
+  UI2 --> TUN
+  UI3 --> TUN
+  UI1 --> TUN
+  SSH --> HOSTP
+  TUN --> HOSTP
+
+  classDef hot fill:#eef2ff,stroke:#2251ff,color:#0f2fb8;
+  class HOSTP,SSH,TUN hot;
+        </pre>
+      </div>
+      <table class="tbl">
+        <thead><tr><th>方式</th><th>前置条件</th><th>机制</th><th>适用场景</th></tr></thead>
+        <tbody>
+          <tr><td><b>SSH</b></td><td>远端可 SSH 直达（复用 ~/.ssh/config）</td><td>Agents 窗口自动下载 CLI、启动 host、转发端口</td><td>自有服务器 / 云主机</td></tr>
+          <tr><td><b>Dev Tunnel</b></td><td>远端已运行 <span class="mono">code tunnel</span>（GitHub/微软账号认证）</td><td>出站 WebSocket 隧道，无需入站端口</td><td>无公网 IP、严格防火墙、浏览器/移动端</td></tr>
+          <tr><td><b>浏览器客户端</b></td><td>host 已经 Dev Tunnel 暴露</td><td>零安装轻客户端：看进度、批工具、管会话</td><td>手机等任意设备</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:12px;color:#7d2a3d"><b>安全红线</b>：AHP 端点访问控制是<b>传输层责任、不在线路协议内</b>。Dev Tunnel 必须要求账号认证（匿名隧道 = 任何人拿到 URL 就能触达你的机器并启动会话）；高影响命令与工具调用保持显式可审计的审批策略；协议不定义持久化、留存、静态加密与多租户——那是 host 实现者的责任。</p>
+    </div>
+  </div>
+
+  <!-- 07 部署 -->
+  <div class="grid">
+    <div class="card c6">
+      <div class="no">07</div>
+      <div class="k">Deployment · 怎么部署 Agent Host</div>
+      <h2>一行命令起一个独立 Host</h2>
+<pre><span class="cm"># 默认：监听 localhost，连接令牌保护</span>
+<span class="cm"># （适合本机或配合 SSH 端口转发）</span>
+code agent host
+
+<span class="cm"># 通过 Dev Tunnel 对外暴露</span>
+<span class="cm"># （供其他机器 / 浏览器客户端接入）</span>
+code agent host --tunnel</pre>
+      <p style="margin-top:12px">远端没有 CLI 的引导流程（Agents 窗口的 SSH 连接已全自动化）：</p>
+<pre><span class="cm"># SSH 到目标机 → 装 VS Code CLI → 起 host</span>
+curl -Lk <span class="st">'https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-x64'</span> \
+  -o vscode_cli.tar.gz
+tar -xf vscode_cli.tar.gz
+./code agent host</pre>
+      <p style="margin-top:12px">Dev Tunnel 路线：目标机 <code class="il">code tunnel</code>（首次 GitHub/微软账号认证，<code class="il">code tunnel service install</code> 可注册为系统服务保活），客户端从隧道列表接入即可。</p>
+    </div>
+
+    <div class="card c6">
+      <div class="no">07′</div>
+      <div class="k">Three Forms · 三种运行形态</div>
+      <h2>本地免部署，远程一条命令，自建可参考实现</h2>
+      <table class="tbl">
+        <thead><tr><th>形态</th><th>启动方式</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><b>Agents app + 本地 host</b></td><td><span class="mono">chat.agentHost.enabled: true</span> 后重启</td><td>agent 选择器出现 <span class="mono">Copilot CLI [Local]</span> 即生效</td></tr>
+          <tr><td><b>VS Code + 本地 host</b></td><td>同上，选 <span class="mono">Agent Host - Copilot</span></td><td>host 为本地 utility 进程，MessagePort IPC</td></tr>
+          <tr><td><b>+ 远程 host</b></td><td>SSH 或 Dev Tunnel 连接</td><td>远端独立进程，AHP over WebSocket</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:12px">本地形态<b>零手工部署</b>：VS Code 自动拉起 host 进程，Copilot / Claude / Codex 第一方适配器运行在 host 内做翻译。协议开放，官方欢迎"任何人构建 VS Code 能连接的 AHP host"——但需自行承担：channel 路由、状态树与 reducer 一致性、serverSeq 广播、快照+回放、版本协商（-32005）、RFC 9728/6750 认证、<b>agent event mapper</b> 事件翻译，以及持久化/多租户/审计。服务器端目前仅 VS Code 一个实现，自建属早期互操作工作。</p>
+    </div>
+  </div>
+
+  <!-- 结论 -->
+  <div class="verdict">
+    <div class="k">Verdict · 结论与建议</div>
+    <h2>纳入"观察 + 试点"象限：用它做原型低风险，当生产硬依赖为时尚早</h2>
+    <div class="cols">
+      <div class="cell"><div class="t">客户端开发者</div><div class="b">现在就可基于<b>五语言 SDK / AHPX</b> 构建连接 VS Code agent host 的自定义 UI 与自动化；用宽版本协商 + capability 检查防御 0.x 的破坏性变更节奏。</div></div>
+      <div class="cell"><div class="t">平台 / 企业团队</div><div class="b">把"远程长驻 agent + 浏览器轻客户端"纳入远程开发规划；先定好<b>隧道策略、审批默认值、工具归属</b>（扩展工具 vs MCP server）再灰度。</div></div>
+      <div class="cell"><div class="t">Agent / 工具厂商</div><div class="b">短期更现实的路径仍是<b>先接 ACP</b>（Registry 一次注册、多编辑器分发）；AHP host 侧适配留给微软与社区成熟——host 生态目前还是单一参考实现。</div></div>
+    </div>
+    <p style="margin-top:22px;font-size:13px;opacity:.85">主要风险：规范未稳定（官方明示破坏性变更预期）· 服务器端单一实现的事实锁定 · 远程模型把传输层认证、审批、持久化与审计责任转移给部署者。</p>
+  </div>
+
+  <footer>
+    <span>AHP · AGENT HOST PROTOCOL — RESEARCH POSTER</span>
+    <span>资料：microsoft/agent-host-protocol · code.visualstudio.com/docs · agentclientprotocol.com · zed.dev</span>
+    <span>2026-07-29</span>
+  </footer>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      primaryColor: '#eef2ff',
+      primaryBorderColor: '#2251ff',
+      primaryTextColor: '#0b1c2c',
+      lineColor: '#42566a',
+      secondaryColor: '#fbfaf6',
+      tertiaryColor: '#ffffff',
+      fontFamily: 'Menlo, Consolas, "Noto Serif CJK SC", serif',
+      fontSize: '14px',
+      sequenceNumberColor: '#ffffff',
+      actorBorder: '#2251ff',
+      actorBkg: '#eef2ff',
+      actorTextColor: '#0b1c2c',
+      actorLineColor: '#42566a',
+      signalColor: '#3d5266',
+      signalTextColor: '#0b1c2c',
+      noteBkgColor: '#fdf6e3',
+      noteBorderColor: '#b45309',
+      noteTextColor: '#7c4a03',
+      labelBoxBkgColor: '#eef2ff',
+      labelBoxBorderColor: '#2251ff',
+      labelTextColor: '#0f2fb8',
+      loopTextColor: '#0f2fb8',
+      activationBkgColor: '#7d9bff',
+      activationBorderColor: '#2251ff',
+      cScale0: '#eef2ff',
+      cScale1: '#dbe4ff',
+      cScale2: '#c6d3ff',
+      cScaleLabel0: '#0f2fb8',
+      cScaleLabel1: '#0f2fb8',
+      cScaleLabel2: '#0f2fb8'
+    },
+    flowchart: { curve: 'basis', htmlLabels: true, padding: 8 },
+    sequence: { actorMargin: 60, boxMargin: 10, messageMargin: 38, mirrorActors: false },
+    timeline: { disableMulticolor: true }
+  });
+</script>
+</body>
+</html>

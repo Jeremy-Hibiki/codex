@@ -2721,7 +2721,6 @@ dependencies = [
  "codex-context-fragments",
  "codex-core-plugins",
  "codex-core-skills",
- "codex-encrypted-skills",
  "codex-exec-server",
  "codex-exec-server-test-support",
  "codex-execpolicy",
@@ -2823,7 +2822,6 @@ dependencies = [
  "which 8.0.0",
  "whoami 1.6.1",
  "wiremock",
- "zip",
  "zstd",
 ]
 
@@ -2911,7 +2909,6 @@ dependencies = [
  "codex-analytics",
  "codex-config",
  "codex-context-fragments",
- "codex-encrypted-skills",
  "codex-exec-server",
  "codex-login",
  "codex-model-provider",

@@ -1,0 +1,1514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SQLite 数据库加密方案全景调研</title>
+<style>
+:root{--ink:#2b2b2b;--muted:#6b655c;--accent:#8b7355;--line:#e5ded4;--bg:#faf8f5;--card:#ffffff;--code:#f4f1ec}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;line-height:1.85;font-size:16px}
+.wrap{max-width:880px;margin:0 auto;padding:56px 28px 96px}
+h1{font-size:1.9rem;line-height:1.4;margin:0 0 .4em;color:#232323}
+h1:not(:first-child){margin-top:2.2em;padding-top:1em;border-top:2px solid var(--line)}
+h2{font-size:1.45rem;margin:2.2em 0 .7em;padding-left:12px;border-left:4px solid var(--accent);color:#2e2a25}
+h3{font-size:1.15rem;margin:1.8em 0 .5em;color:#3a352e}
+h4{font-size:1rem;margin:1.4em 0 .4em;color:var(--muted)}
+p{margin:.75em 0}
+em.meta{color:var(--muted);font-style:normal;font-size:.9rem}
+table{border-collapse:collapse;width:100%;margin:1.2em 0;font-size:.92rem;background:var(--card)}
+th,td{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+thead th{border-top:2px solid #9c948a;border-bottom:1.5px solid #9c948a;color:#3a352e;font-weight:600}
+tbody tr:last-child td{border-bottom:2px solid #9c948a}
+code{font-family:"JetBrains Mono","SFMono-Regular",Consolas,monospace;font-size:.86em;background:var(--code);padding:2px 5px;border-radius:4px;color:#5b4a36}
+pre{background:#2e2a25;border-radius:8px;padding:16px 18px;overflow-x:auto;margin:1.1em 0}
+pre code{background:none;color:#e8e2d8;padding:0;font-size:.85rem;line-height:1.6}
+sup.cite{color:var(--accent);font-size:.72em;margin:0 1px}
+.mermaid{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:20px;margin:1.3em 0;text-align:center;overflow-x:auto}
+ul,ol{padding-left:1.5em}
+a{color:#7a6a4f;text-decoration:none;border-bottom:1px dotted #b8a98f;word-break:break-all}
+a:hover{color:#5b4a36}
+strong{color:#232323}
+blockquote{border-left:3px solid var(--line);margin:1em 0;padding:.3em 1em;color:var(--muted)}
+hr{border:none;border-top:1px solid var(--line);margin:2em 0}
+@media(max-width:640px){.wrap{padding:32px 16px 64px}h1{font-size:1.5rem}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1 id="sqlite-drizzle-orm">SQLite 数据库加密方案全景调研：免费开源方案对比、原理、兼容性与 Drizzle ORM 接入</h1>
+<p><em>调研数据快照：2026-07-26 ｜ 引用编号对应文末参考文献</em></p>
+<h2 id="1">1. 背景与候选方案全景</h2>
+<h3 id="11-sqlite">1.1 SQLite 为何没有官方免费加密</h3>
+<h4 id="111-see">1.1.1 商业 SEE 留下的生态空位</h4>
+<p>SQLite 本体以公有领域（Public Domain）形式发布，核心库不含任何加密能力。其开发方 Hwaci 将静态数据加密做成了独立的商业产品 <strong>SEE（SQLite Encryption Extension）</strong>：一次性 US$2000 的源码许可，自 2007 年起销售，随 SQLite 官方版本持续维护<sup class="cite">[51]</sup><sup class="cite">[135]</sup>。SEE 以替换 <code>sqlite3.c</code> 合并源文件（amalgamation）的方式交付，同系列的 CEROD（只读加密）与 ZIPVFS（压缩加密 VFS）分别标价 US$2000 与 US$4000<sup class="cite">[51]</sup>。"官方加密只此一家且收费"这一格局，直接催生了一个持续十余年的第三方免费/开源加密生态——从早期的 wxSQLite3 codec、System.Data.SQLite 的 RC4 方案，到 2008 年出现的 SQLCipher，再到 2024 年后自带加密的 libSQL/Turso fork。</p>
+<h4 id="112">1.1.2 三条技术挂接路线</h4>
+<p>SQLite 加密扩展本质上只有三种挂接点，所有候选方案都可归入其一：</p>
+<ul>
+<li><strong>codec 内部钩子</strong>：官方源码预留 <code>SQLITE_HAS_CODEC</code> 编译开关，打开后暴露 <code>sqlite3_key()</code> / <code>sqlite3_rekey()</code> API，通过内部函数 <code>sqlite3pager_set_codec()</code> 把加解密回调挂到 Pager 上，读页解密、写页加密<sup class="cite">[143]</sup><sup class="cite">[144]</sup>。SQLCipher 官方明确指出这条路无法用可加载扩展实现——"将 codec 回调挂到 pager 的第一步就依赖内部 API"，因此此类方案必须以替换 amalgamation 的方式整体构建<sup class="cite">[2]</sup>。</li>
+<li><strong>VFS 层拦截</strong>：在虚拟文件系统（Virtual File System）层包装底层 I/O，对落盘字节流透明加解密，不触碰 pager 内部结构。</li>
+<li><strong>fork / 重写原生集成</strong>：直接把加密做进数据库引擎内部（libSQL fork 与 Rust 重写的 Turso Database），加密成为引擎一等特性而非外挂。</li>
+</ul>
+<div class="mermaid">
+flowchart TD
+    A[&quot;SQLite 加密三条技术路线&quot;] --&gt; B[&quot;codec 内部钩子&lt;br/&gt;SQLCipher / sqleet / wxSQLite3 codec&quot;]
+    A --&gt; C[&quot;VFS 层拦截&lt;br/&gt;SQLite3MultipleCiphers&quot;]
+    A --&gt; D[&quot;fork / 重写原生集成&lt;br/&gt;libSQL / Turso Database&quot;]
+</div>
+
+<p>图：按挂接点对候选方案的技术路线分类；挂接点决定了方案对上游 SQLite 版本的耦合深度。</p>
+<h3 id="12">1.2 候选方案总表与许可分类</h3>
+<h4 id="121">1.2.1 开源免费方案总表</h4>
+<p>Star 数与维护数据均为 2026-07-25/26 通过 GitHub API 实时查询，许可信息以各仓库声明为准：</p>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>仓库</th>
+<th>GitHub Star</th>
+<th>License</th>
+<th>最近维护</th>
+<th>加密算法 / 格式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQLCipher 社区版</td>
+<td>sqlcipher/sqlcipher</td>
+<td>7,213</td>
+<td>BSD-3-Clause</td>
+<td>v4.17.0（2026-07-08）<sup class="cite">[52]</sup></td>
+<td>AES-256-CBC + HMAC-SHA512，PBKDF2<sup class="cite">[52]</sup></td>
+</tr>
+<tr>
+<td>SQLite3MultipleCiphers（sqlite3mc）</td>
+<td>utelle/SQLite3MultipleCiphers</td>
+<td>661</td>
+<td>MIT</td>
+<td>2026-07-25 提交，v2.4.0（基于 SQLite 3.53.4）<sup class="cite">[122]</sup><sup class="cite">[28]</sup></td>
+<td>ChaCha20-Poly1305（默认）、AES-128/256-CBC、SQLCipher v1–v4、RC4、Ascon、AEGIS<sup class="cite">[30]</sup></td>
+</tr>
+<tr>
+<td>wxSQLite3（加密扩展）</td>
+<td>utelle/wxsqlite3</td>
+<td>652</td>
+<td>LGPLv3 + wxWindows 例外</td>
+<td>v4.12.5（2026-06）<sup class="cite">[48]</sup><sup class="cite">[49]</sup></td>
+<td>4.6.0 起内嵌 sqlite3mc，同上<sup class="cite">[48]</sup></td>
+</tr>
+<tr>
+<td>Turso Database（Rust 重写）</td>
+<td>tursodatabase/turso</td>
+<td>23,431</td>
+<td>MIT</td>
+<td>高度活跃；原生加密 2025-10 发布<sup class="cite">[53]</sup><sup class="cite">[55]</sup></td>
+<td>AEGIS-256 / AES-GCM，页级 AEAD<sup class="cite">[55]</sup></td>
+</tr>
+<tr>
+<td>libSQL（SQLite fork）</td>
+<td>tursodatabase/libsql</td>
+<td>16,991</td>
+<td>MIT</td>
+<td>活跃；加密 2024-02 开源<sup class="cite">[53]</sup><sup class="cite">[56]</sup></td>
+<td>AES-256-CBC 等（集成 sqlite3mc）<sup class="cite">[56]</sup></td>
+</tr>
+<tr>
+<td>腾讯 WCDB</td>
+<td>Tencent/wcdb</td>
+<td>11,618</td>
+<td>BSD-3-Clause</td>
+<td>v2.1.16（2026-03-27）<sup class="cite">[54]</sup></td>
+<td>内嵌 SQLCipher<sup class="cite">[54]</sup></td>
+</tr>
+<tr>
+<td>better-sqlite3-multiple-ciphers</td>
+<td>m4heshd/better-sqlite3-multiple-ciphers</td>
+<td>235</td>
+<td>MIT</td>
+<td>v12.11.1（2026-06-18）<sup class="cite">[41]</sup><sup class="cite">[82]</sup></td>
+<td>sqlite3mc 全套 scheme（Node.js 绑定）<sup class="cite">[41]</sup></td>
+</tr>
+<tr>
+<td>sqleet</td>
+<td>resilar/sqleet</td>
+<td>394</td>
+<td>Unlicense（公有领域）</td>
+<td><strong>已停更</strong>：最后提交 2023-05，卡在 SQLite 3.31.1<sup class="cite">[57]</sup></td>
+<td>ChaCha20-Poly1305<sup class="cite">[57]</sup></td>
+</tr>
+<tr>
+<td>mattn/go-sqlite3（Go 入口，无内置加密）</td>
+<td>mattn/go-sqlite3</td>
+<td>9,185</td>
+<td>MIT</td>
+<td>活跃<sup class="cite">[103]</sup></td>
+<td>需链接 SQLCipher / sqlite3mc 构建<sup class="cite">[103]</sup></td>
+</tr>
+</tbody>
+</table>
+<p><strong>总表解读</strong>：这张表最值得注意的不是 Star 排名，而是 Star 数与"实际生态权重"的错位。Turso 以 23,431 星居首，但其加密能力 2025-10 才发布且官方标注为 experimental，数据库文件只能被 Turso 引擎自身打开<sup class="cite">[55]</sup>；sqlite3mc 仅 661 星，却被 SQLiteStudio、better-sqlite3-multiple-ciphers、SQLitePCLRaw、Dart 的 sqlite3 包等下游工具链广泛集成，LumoSQL 知识库称其为"截至 2026 年最活跃维护的开源 SQLite 加密方案"<sup class="cite">[42]</sup><sup class="cite">[41]</sup><sup class="cite">[61]</sup><sup class="cite">[46]</sup><sup class="cite">[182]</sup>。wxSQLite3 与 sqlite3mc 实为同一加密核心的两个封装（前者是 C++/wxWidgets 包装，后者是独立加密扩展），不应视为两个独立选项<sup class="cite">[48]</sup>。WCDB 与 better-sqlite3-multiple-ciphers 分别是 SQLCipher 系与 sqlite3mc 系的"平台化封装"——前者面向移动端（微信团队），后者面向 Node.js，这说明 2026 年的选型竞争已收敛到两条加密核心路线，其余项目多为其绑定或再包装。sqleet 虽已停更，但其 ChaCha20-Poly1305 格式被 sqlite3mc 完整继承并设为默认 scheme，仍出现在表中是因为存量项目迁移需要它作为参照<sup class="cite">[57]</sup><sup class="cite">[30]</sup>。</p>
+<h4 id="122">1.2.2 商业闭源方案甄别</h4>
+<p>以下方案不满足"免费/开源"要求，仅作基准参照：<strong>SQLiteCrypt</strong>（二进制 US$128/平台、完整源码 US$380，专有闭源，被 wxSQLite3 官方 README 明确列为 closed-source commercial，且官网 CLI 示例停留在 SQLite 3.23.0，维护活跃度存疑）<sup class="cite">[50]</sup><sup class="cite">[48]</sup>；官方 <strong>SEE</strong>（US$2000 一次性源码许可）<sup class="cite">[51]</sup>；<strong>SQLCipher 商业版</strong>（US$999 起/应用/年，性能优化与 FIPS 验证模块为其独占）<sup class="cite">[14]</sup><sup class="cite">[5]</sup>。其中 SEE 与 SQLCipher 商业版将作为后续章节的性能与特性基准。</p>
+<h3 id="13">1.3 生态格局演进</h3>
+<h4 id="131-sqlite-332">1.3.1 SQLite 3.32 断代事件</h4>
+<p>2020 年 5 月发布的 SQLite 3.32.0 移除了长期存在但从未文档化的 <code>SQLITE_HAS_CODEC</code> 编译选项（官方 changelog 原话："Simplify the code by removing the unsupported and undocumented SQLITE_HAS_CODEC compile-time option"），所有依赖 codec 内部钩子的补丁式方案瞬间失去升级路径<sup class="cite">[48]</sup>。最典型受害者是 sqleet：代码永久停留在 SQLite 3.31.1，作者于 2023 年正式宣布停更，并在 README 中推荐用户转向 wxSQLite3（其提供 sqleet 兼容加密格式）<sup class="cite">[57]</sup>。同一事件也终结了 System.Data.SQLite 的官方 RC4 加密支持<sup class="cite">[48]</sup>。幸存者的分化清晰勾勒出格局迁移方向：utelle 于 2020 年 8 月推出独立项目 SQLite3MultipleCiphers，改走 VFS 层实现以摆脱对内部 API 的依赖<sup class="cite">[48]</sup><sup class="cite">[45]</sup>；libSQL/Turso 则干脆以 fork/重写的方式把加密做成引擎原生能力<sup class="cite">[56]</sup><sup class="cite">[55]</sup>。生态由此完成从"codec 补丁"向"VFS hook 与 fork 原生集成"的重心转移。</p>
+<h4 id="132-2026">1.3.2 2026 年：一超、一强、一新</h4>
+<p>综合 Star 数、下游覆盖与维护活跃度，2026 年的开源格局已收敛为三层结构。<strong>一超</strong>：SQLCipher（7,213 星，BSD-3），移动端事实标准，靠商业版（$999 起）与 Enterprise/FIPS 计划变现，社区版功能被刻意限定在核心加密<sup class="cite">[52]</sup><sup class="cite">[14]</sup>；<strong>一强</strong>：sqlite3mc（661 星，MIT），Star 数不高但下游工具链覆盖最广、更新频率最高（2026-07-25 仍有提交，v2.4.0 跟踪至 SQLite 3.53.4），且其 legacy 模式可读写 sqleet 与 SQLCipher v1–v4 文件，是唯一具备"格式逃生舱"的方案<sup class="cite">[122]</sup><sup class="cite">[28]</sup><sup class="cite">[32]</sup>；<strong>一新</strong>：Turso Database（23,431 星，MIT），Star 数断层领先，原生 AEAD 加密读开销官方宣称约 6%，但加密仍为 experimental、无第三方工具链可打开其加密文件，且未经第三方安全审计<sup class="cite">[53]</sup><sup class="cite">[55]</sup><sup class="cite">[79]</sup>。对生产选型而言，成熟路径只有 SQLCipher 系与 sqlite3mc 系两条；Turso 适合新项目试水，但须接受"只能用 Turso 引擎打开"的文件格式锁定。后续章节将逐层剖析这三条路线的原理、性能与接入方式。</p>
+<h2 id="2">2. 主流开源方案逐一剖析</h2>
+<p>本章逐一剖析第 1 章筛出的主力候选：SQLCipher、sqleet、SQLite3MultipleCiphers（下称 sqlite3mc）、wxSQLite3、libSQL、Turso Database，以及绑定层与下游生态。所有 GitHub Star、许可证与最近提交时间均为 2026-07-26 经 GitHub REST API 实测的快照值；每个方案讲清三件事——它是什么、谁在维护、用什么算法，加解密运行机制的细节留待第 3 章展开。先给出一张总览对比表，再分节细述。</p>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>Stars（2026-07-26）</th>
+<th>License</th>
+<th>维护状态</th>
+<th>加密算法（默认）</th>
+<th>商业层</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQLCipher</td>
+<td>7,213<sup class="cite">[23]</sup></td>
+<td>BSD-3-Clause<sup class="cite">[23]</sup></td>
+<td>高度活跃，v4.17.0（2026-07-08），年内 5 次发版<sup class="cite">[4]</sup></td>
+<td>AES-256-CBC + HMAC-SHA512，PBKDF2-HMAC-SHA512 256k 迭代<sup class="cite">[1]</sup></td>
+<td>Commercial $999/应用/年起，另有 Enterprise/FIPS<sup class="cite">[14]</sup></td>
+</tr>
+<tr>
+<td>sqleet</td>
+<td>394<sup class="cite">[57]</sup></td>
+<td>Unlicense（公有领域）<sup class="cite">[57]</sup></td>
+<td>未归档但实质停更，卡死 SQLite 3.31.1，最后 push 2023-05<sup class="cite">[57]</sup></td>
+<td>ChaCha20 + Poly1305，PBKDF2-HMAC-SHA256 12,345 迭代<sup class="cite">[25]</sup></td>
+<td>无</td>
+</tr>
+<tr>
+<td>SQLite3MultipleCiphers</td>
+<td>661<sup class="cite">[27]</sup></td>
+<td>MIT<sup class="cite">[27]</sup></td>
+<td>高度活跃，v2.4.0（2026-07-25），调研前一日仍有提交<sup class="cite">[27]</sup><sup class="cite">[28]</sup></td>
+<td>7 种 cipher scheme，默认 ChaCha20-Poly1305<sup class="cite">[29]</sup><sup class="cite">[30]</sup></td>
+<td>无</td>
+</tr>
+<tr>
+<td>wxSQLite3</td>
+<td>652<sup class="cite">[49]</sup></td>
+<td>LGPLv3 + wxWindows 例外<sup class="cite">[48]</sup></td>
+<td>活跃，v4.12.5（2026-06），pushed 2026-07-16<sup class="cite">[49]</sup></td>
+<td>加密核心已剥离至 sqlite3mc；原生 legacy 方案为 AES-128/256-CBC（无 HMAC）<sup class="cite">[48]</sup></td>
+<td>无（本体免费开源）</td>
+</tr>
+<tr>
+<td>libSQL</td>
+<td>16,991<sup class="cite">[53]</sup></td>
+<td>MIT<sup class="cite">[53]</sup></td>
+<td>维护中但战略降级：最新 release 停在 2025-02-14，新功能转向 Turso<sup class="cite">[62]</sup></td>
+<td>page-based，底层捆绑 sqlite3mc；当前默认 aes256cbc<sup class="cite">[70]</sup><sup class="cite">[74]</sup></td>
+<td>Turso Cloud</td>
+</tr>
+<tr>
+<td>Turso Database</td>
+<td>23,431<sup class="cite">[53]</sup></td>
+<td>MIT<sup class="cite">[53]</sup></td>
+<td>高度活跃，v0.7.1（2026-07-22），整体 Beta<sup class="cite">[63]</sup><sup class="cite">[79]</sup></td>
+<td>原生 AEAD：AEGIS 家族 / AES-GCM，共 8 种 cipher<sup class="cite">[55]</sup><sup class="cite">[65]</sup></td>
+<td>Turso Cloud BYOK<sup class="cite">[67]</sup></td>
+</tr>
+<tr>
+<td>腾讯 WCDB</td>
+<td>11,618<sup class="cite">[54]</sup></td>
+<td>BSD-3-Clause<sup class="cite">[54]</sup></td>
+<td>活跃，v2.1.16（2026-03-27）<sup class="cite">[54]</sup></td>
+<td>内嵌 SQLCipher<sup class="cite">[54]</sup></td>
+<td>无</td>
+</tr>
+</tbody>
+</table>
+<p>这张表最刺眼的不是 Star 数本身，而是 Star 数与技术现实之间的错位：sqleet 仅 394★ 却在加密算法设计史上占据关键位置（ChaCha20-Poly1305 路线由它开创并被 sqlite3mc 全盘继承）；Turso 以 23.4k★ 高居榜首，但其加密功能仍是需显式 flag 开启的 experimental 特性，而 Star 只有其零头的 sqlite3mc（661★）反而是当前可生产使用方案中维护频率最高、cipher 覆盖面最广的一个。许可证维度上七个方案全部满足免费/开源要求，真正的分层出现在"是否有商业层"一栏——只有 SQLCipher 与 Turso 两家存在官方付费产品线，这直接影响其开源版本的功能裁剪策略（详见下文各节）。维护状态同样需要打折解读：libSQL 代码推送活跃但 release 停滞 17 个月，sqleet 未被 GitHub 归档却已六年没有实质演进，"活跃"二字在不同项目间含义截然不同。</p>
+<h3 id="21-sqlcipher">2.1 SQLCipher：事实标准</h3>
+<p><strong>项目现状。</strong> SQLCipher 由 Zetetic LLC 于 2008 年发布并持续维护至今，官方自述部署量达数亿设备、覆盖数千家组织<sup class="cite">[6]</sup>。截至快照日，仓库 7,213 Stars、1,394 Forks、open issues 仅 8 个，许可证 BSD-3-Clause<sup class="cite">[23]</sup>。最新版本 v4.17.0 发布于 2026-07-08，年内已发 4.13.0→4.17.0 共 5 个版本，最近提交为对齐上游 SQLite 3.53.3 的源码快照<sup class="cite">[52]</sup><sup class="cite">[4]</sup>——官方自称每年 3–6 次发版，实测节奏完全吻合<sup class="cite">[6]</sup>。它不是 SQLite 的可加载插件，而是直接修改 SQLite 源码、独立维护的源码树，每个 release 基线对齐特定上游 SQLite 版本<sup class="cite">[1]</sup>。</p>
+<p><strong>加密体系。</strong> SQLCipher 采用逐页（page-level）加密：算法为 256 位 AES 的 CBC 模式，默认页大小 4,096 字节；每页拥有由密码学安全随机数生成器产生的独立随机初始化向量（IV），存于页尾并在每次写入时重新生成；每页写入附带覆盖密文与 IV 的 HMAC-SHA512 认证码，读取时校验<sup class="cite">[1]</sup>。密钥派生（KDF）为 PBKDF2-HMAC-SHA512，默认 256,000 次迭代，每个数据库在文件头前 16 字节存入唯一随机盐<sup class="cite">[1]</sup>。SQLCipher 不自研密码学原语，而是外挂 OpenSSL libcrypto 或 CommonCrypto；曾支持的 LibTomCrypt 与 NSS 两个 provider 已在 v4.12.0（2025-12）正式移除<sup class="cite">[1]</sup><sup class="cite">[3]</sup><sup class="cite">[7]</sup>。</p>
+<p><strong>社区版与商业版差异。</strong> 社区版以 BSD-style 许可发布，可免费用于开源及闭源商业软件，但要求在产品用户可见处保留归属声明<sup class="cite">[18]</sup>。官方功能矩阵显示：社区版仅含整库加密；Commercial（$999/应用/年起，且限定公司年收入低于 $50M）增加优化密码学实现（官方宣称比社区版快至 4 倍）、Value Level Encryption（VLE，字段级加密 SQL 函数）、加密虚拟表、性能计数器与 benchmark 工具<sup class="cite">[14]</sup><sup class="cite">[19]</sup><sup class="cite">[20]</sup>；Enterprise 独占 Cordova/JDBC/React Native/Apple WatchKit 等平台包、SLA 保障响应与定制构建，FIPS 140-3 验证模块仅随 Enterprise FIPS 包提供——标准与社区版无论操作系统设置如何均非 FIPS 验证<sup class="cite">[21]</sup><sup class="cite">[5]</sup>。知名采用者包括 Signal（维护自有 fork）与 Salesforce SmartStore<sup class="cite">[22]</sup>。</p>
+<h3 id="22-sqleet-sqlite3multipleciphers">2.2 sqleet 与 SQLite3MultipleCiphers</h3>
+<p><strong>sqleet：开创 ChaCha20 路线，但未归档却实质停更。</strong> sqleet 仓库 394 Stars、57 Forks，许可证为公有领域 Unlicense<sup class="cite">[57]</sup>。此处需要精确表述其状态（交叉验证 Conflict Zone 3）：GitHub API 显示 <code>archived=false</code>，即<strong>未归档</strong>；但 README 自认 unmaintained——因上游 SQLite 废弃 codec API，sqleet 卡死在 SQLite 3.31.1，等待重大重写，作者明确推荐改用 utelle 的 wxSQLite3（提供 sqleet 兼容加密）<sup class="cite">[25]</sup>。最后一次代码推送为 2023-05-03，最后一个 release 为 v0.31.1（2020-01-28）<sup class="cite">[57]</sup><sup class="cite">[26]</sup>。其密码学设计三要素为：PBKDF2-HMAC-SHA256 密钥派生（16 字节盐、12,345 次迭代）、ChaCha20 流密码（每页一次性密钥）、Poly1305 认证标签；整个加密文件（含 header）与随机数据不可区分<sup class="cite">[25]</sup>。工程上它零外部依赖、release 包中的 sqleet.c/h 是官方 sqlite3.c/h amalgamation 的 drop-in 替换，这是它当年被广泛内嵌的原因<sup class="cite">[25]</sup>。需如实指出数据缺口：sqleet 官方 README 无任何量化 benchmark，仅有"现代高性能密码学"的定性声明，网传"README 有 benchmark"未获证实<sup class="cite">[25]</sup>。</p>
+<p><strong>SQLite3MultipleCiphers：sqleet 官方推荐的事实继任者。</strong> sqlite3mc 仓库 661 Stars、103 Forks，MIT 许可，open issues 仅 2 个；最近 push 为 2026-07-25（调研前一日），同日发布 v2.4.0（基于 SQLite 3.53.4），2026 年内已发 2.2.6→2.4.0 共 8 个版本，节奏紧随 SQLite 官方<sup class="cite">[27]</sup><sup class="cite">[28]</sup>。其继任者地位有双重佐证：sqleet 作者在 README 亲自指向 utelle 项目，且 sqleet cipher 被 sqlite3mc 设为默认 cipher scheme<sup class="cite">[25]</sup><sup class="cite">[29]</sup>。sqlite3mc 共支持 7 种 cipher scheme：wxSQLite3 AES-128/256-CBC（无 HMAC，不推荐新用）、sqleet ChaCha20-Poly1305（默认）、SQLCipher v1–v4 全系列（AES-256-CBC + SHA1/256/512 HMAC）、System.Data.SQLite RC4（仅兼容旧库）、Ascon-128 v1.2、AEGIS 家族（Argon2id KDF）<sup class="cite">[29]</sup><sup class="cite">[30]</sup>。实现上它不再使用已被 SQLite 3.32.0 移除的 codec API，而是作为 VFS 层扩展工作，兼容 SQLite ≥ 3.32.0<sup class="cite">[30]</sup><sup class="cite">[45]</sup>。默认 ChaCha20 cipher 的 KDF 迭代数已从 sqleet 的 12,345 提升至 64,007（legacy 模式仍保留旧值以兼容原 sqleet 文件）<sup class="cite">[31]</sup>。相比 SQLCipher 需 ATTACH + sqlcipher_export 整库复制，sqlite3mc 的 rekey 通过修改版 VACUUM 原地完成加密/换 cipher/解密<sup class="cite">[38]</sup>。项目无任何商业层，完全由作者 utelle 个人维护。</p>
+<h3 id="23-wxsqlite3">2.3 wxSQLite3</h3>
+<p>wxSQLite3 与 sqlite3mc 同出 utelle 之手，仓库 652 Stars，许可证 LGPLv3 附带 wxWindows 3.1 例外（允许静态链接于闭源应用）；最新版本 4.12.5（2026-06，升级 sqlite3mc 2.3.5 / SQLite 3.53.2），最近 push 2026-07-16，维护活跃<sup class="cite">[49]</sup><sup class="cite">[48]</sup>。它的历史角色大于当下角色：自 1.7.0 起内置基于密钥的 AES 加密扩展，早期 AES-128 还是 AES-256 为编译期决定，4.0.0 起才支持运行时选择<sup class="cite">[48]</sup>。其原生 legacy 加密为 AES-128/256-CBC 且<strong>无 HMAC</strong>——即只提供机密性、不提供防篡改完整性校验，这是它与 SQLCipher 的关键历史差距，官方文档也已不推荐新应用使用该 scheme<sup class="cite">[48]</sup><sup class="cite">[30]</sup>。转折点是 SQLite 3.32.0（2020-05）移除了非文档化的 SQLITE_HAS_CODEC 编译选项，旧 codec 机制整体失效；utelle 遂于 2020-08 将加密核心剥离为独立项目 sqlite3mc，wxSQLite3 自 4.6.0 起改为直接使用该实现<sup class="cite">[48]</sup>。换言之，wxSQLite3 当前的加密能力清单与 sqlite3mc 完全一致（AES-128/256-CBC、ChaCha20-Poly1305 默认、SQLCipher v1–v4、RC4、Ascon、AEGIS）<sup class="cite">[48]</sup>。选型时还需甄别一个同名陷阱：SQLiteCrypt（sqlite-crypt.com）是商业闭源软件，二进制许可 $128/平台、完整源码 $380，被 wxSQLite3 官方 README 明确标注为 "closed-source commercial solution"，不满足免费/开源要求<sup class="cite">[50]</sup><sup class="cite">[48]</sup>；官方 SQLite SEE 一次性 $2,000，同样仅作商业基准<sup class="cite">[51]</sup>。</p>
+<h3 id="24-libsql-turso">2.4 libSQL 与 Turso</h3>
+<p><strong>libSQL：开源 at-rest 加密的引入者，如今战略降级。</strong> libSQL 是 Turso 团队对 SQLite 的 fork，仓库 16,991 Stars、MIT 许可，代码层面仍在推送（2026-07-24），但最新 release 停留在 libsql-server-v0.24.32（2025-02-14），server 端已 17 个月未发版；README 顶部明示"libSQL 仍在维护，但新功能正在 Turso 开发，新项目建议看 Turso"<sup class="cite">[53]</sup><sup class="cite">[62]</sup>。其加密功能于 2024-02-20 以博客《Fully Open Source Encryption for SQLite》宣布开源：page-based 加密，实现方式是直接捆绑 utelle 的 SQLite3MultipleCiphers 到 libsql-ffi<sup class="cite">[56]</sup><sup class="cite">[70]</sup>。此处存在口径冲突（交叉验证 Conflict Zone 2），须并列呈现：官方文档口径称"SQLCipher 为默认 cipher"，但 @libsql/client 的 CHANGELOG 显示 0.5.3（2024-03-06）已将默认切至 aes256cbc（wxSQLite3 AES-256-CBC 方案）——本报告按"当前默认 aes256cbc"表述并注明文档口径为历史遗留<sup class="cite">[70]</sup><sup class="cite">[74]</sup>。这一差异有实际后果：aes256cbc 无 HMAC 完整性校验，且生成的文件无法被 SQLCipher 工具链打开。已知缺陷方面，embedded replica 加密的 bug 长期未闭环：上游 issue #1122 报告 SQLCipher cipher 下副本加密不生效，2026-02 社区复现 V2 sync 路径会静默丢弃 encryption_config，导致本地副本实为明文<sup class="cite">[75]</sup><sup class="cite">[76]</sup>。</p>
+<p><strong>Turso Database（Rust 重写）：新势力的原生 AEAD 加密。</strong> tursodatabase/turso 仓库 23,431 Stars、MIT 许可，最新 release v0.7.1（2026-07-22），调研前一日仍有提交，开发高度活跃；但项目整体处于 Beta，官方 FAQ 自述"not ready for production use"<sup class="cite">[53]</sup><sup class="cite">[63]</sup><sup class="cite">[79]</sup>。2025-10-07 官方博客发布原生加密，设计原则是<strong>只支持 AEAD 算法</strong>（认证加密，同时提供机密性与完整性）：AEGIS 家族（官方定位"极快"）与 NIST 标准的 AES-GCM，共 8 种 cipher（aegis256 推荐、aegis256x2/x4、aegis128l/x2/x4、aes256gcm、aes128gcm），256 位方案需 32 字节密钥<sup class="cite">[55]</sup><sup class="cite">[65]</sup><sup class="cite">[64]</sup>。实现为 per-page 加密：每次加密页面重新生成密码学安全 nonce，nonce 与认证 tag 存于页内 reserved space，主库与 WAL 文件均加密，数据库头前 100 字节不加密<sup class="cite">[55]</sup>。官方基准（batch 100、读写比 75%、AEGIS-256、15M 行）宣称读开销约 6%（5.5%）、写开销约 14%（13.5%），混合负载总时长开销仅 0.5%–2.8%；<strong>该数据无第三方复现验证</strong>，第三方索引站明确指出其 benchmark 依赖厂商自测<sup class="cite">[55]</sup><sup class="cite">[79]</sup>。成熟度方面须如实标注：加密是 experimental 特性，CLI 需 <code>--experimental-encryption</code> flag，官方文档将实验特性定义为"可能变更或移除、仅用于测试开发"，且无独立安全审计背书<sup class="cite">[66]</sup><sup class="cite">[79]</sup>。路线图缺口同样明确：passphrase KDF（当前必须自管原始 hex 密钥）、对既有未加密库加密、密钥轮转（rekey）均为官方 "Coming Soon"，当前不可用<sup class="cite">[64]</sup>。商业层对应 Turso Cloud 的 BYOK（Bring Your Own Key）加密，2026-02-18 起向 Pro Plan 开放，云端比本地多支持 ChaCha20-Poly1305 一族，但不支持 rekey<sup class="cite">[67]</sup><sup class="cite">[68]</sup>。</p>
+<h3 id="25">2.5 其他方案与下游生态</h3>
+<p>开源方案的落地高度依赖语言绑定与工具链，下游生态本身是选型的一部分。<strong>GUI 工具</strong>侧，SQLiteStudio 自 3.3.0 起将 DbSqliteWx 插件迁移至 sqlite3mc 1.1.4，可打开 wxSQLite3/SQLCipher/System.Data.SQLite 加密库；4.0.0 起插件正式更名 SQLite3MC，原独立 SQLCipher/System.Data 插件废弃，由 sqlite3mc 统一承接<sup class="cite">[42]</sup>。<strong>.NET</strong> 侧的路径在收窄：SQLitePCLRaw 3.0 起作者 ericsink 不再免费分发加密构建，bundle_e_sqlcipher 与 bundle_e_sqlite3mc 均已弃用，当前推荐路径为 Microsoft.Data.Sqlite.Core + utelle 官方的 SQLite3MC.PCLRaw.bundle（2.3.6，2026-07 发布），Zetetic 官方 .NET 包则仅商业授权<sup class="cite">[61]</sup><sup class="cite">[40]</sup><sup class="cite">[121]</sup><sup class="cite">[125]</sup>。<strong>Node.js</strong> 侧，better-sqlite3-multiple-ciphers（235 Stars，活跃）捆绑 sqlite3mc，PRAGMA rekey 即可加密，并可设 legacy=4 读写 SQLCipher v4 库<sup class="cite">[41]</sup>；<strong>Dart/Flutter</strong> 侧，package:sqlite3 3.4.0 起捆绑 sqlite3mc 2.3.6，并在 Web/WASM 上实验性支持加密<sup class="cite">[46]</sup>。<strong>移动端</strong>仍是 SQLCipher 的主场：Android 事实标准为官方 android-database-sqlcipher（2,800 Stars）<sup class="cite">[126]</sup>；React Native 侧 op-sqlite（1,023 Stars，活跃）内置 SQLCipher 编译开关，老的 react-native-sqlite-storage（2,823 Stars）已停更<sup class="cite">[130]</sup><sup class="cite">[132]</sup>。生产级采用案例中，Forward Email 邮件服务经 better-sqlite3-multiple-ciphers 使用 sqleet/ChaCha20-Poly1305 + WAL 逐邮箱加密 IMAP 存储<sup class="cite">[43]</sup>。</p>
+<p>国产开源代表是腾讯 WCDB（微信团队的数据库框架）：11,618 Stars、BSD-3-Clause 许可，最新 v2.1.16（2026-03-27），维护活跃；其加密能力通过内嵌 SQLCipher 实现，可视为 SQLCipher 生态在移动端大规模落地的旁证<sup class="cite">[54]</sup>。综合来看，下游生态的流向印证了本章开篇的分层：SQLCipher 凭借十五年积累占据绑定层默认选项，sqlite3mc 以"一份实现兼容七种格式"渗透 .NET/Node/Dart/GUI 等工具链，而 Turso 的生态（@libsql/client 周下载约 104 万次<sup class="cite">[92]</sup>）则围绕其云端服务自成体系。</p>
+<h2 id="3">3. 加密与解密的运行过程</h2>
+<p>SQLite 的加密扩展不是对数据库文件的事后包装，而是钩进存储引擎内部的透明拦截：所有方案都依托 SQLite 预留的 codec（编解码器）机制，在 Pager（页式存储管理器，负责磁盘页读写与 page cache 缓存）与磁盘之间插入逐页加解密回调。本章以 SQLCipher 为参照系（SEE、sqleet、SQLite3MultipleCiphers（sqlite3mc）流程同构），沿"打开连接→密钥派生→页读写→换钥"拆解完整链路。</p>
+<h3 id="31-codec">3.1 codec 挂载与密钥派生时序</h3>
+<h4 id="311-pragma-key">3.1.1 打开时序：从 <code>PRAGMA key</code> 到首页验钥</h4>
+<p>SQLite 源码以 <code>SQLITE_HAS_CODEC</code> 编译开关预留加密扩展点：打开后暴露 <code>sqlite3_key()</code>/<code>sqlite3_rekey()</code> 公共 API，内部经 <code>sqlite3CodecAttach()</code> 挂接密钥上下文，再由内部函数 <code>sqlite3pager_set_codec()</code> 把回调 <code>sqlite3Codec(data, nPageNum, nMode)</code> 注册到 Pager 上，此后 Pager 每次读页（nMode=decrypt）或写页（nMode=encrypt）都会调用它<sup class="cite">[144]</sup><sup class="cite">[143]</sup>。由于挂接用的是内部 API，codec 无法做成运行时加载插件，加密方案只能以替换 sqlite3.c 整体构建的方式交付<sup class="cite">[1]</sup>——这也是补丁式方案随上游 API 变动而死亡的机制根源。</p>
+<p>密钥派生采用 <strong>just-in-time（JIT）</strong> 设计：<code>PRAGMA key</code> 只缓存口令、不做派生计算，也永远不报错；真正的 KDF（Key Derivation Function，密钥派生函数）推迟到首次读写页面时才执行<sup class="cite">[2]</sup>。其打开时序如下：</p>
+<div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant App as 应用
+    participant Drv as SQLite 驱动
+    participant Cdc as Codec 层
+    participant Pgr as Pager
+    participant Dsk as 磁盘文件
+    App-&gt;&gt;Drv: sqlite3_open(&quot;app.db&quot;)
+    App-&gt;&gt;Drv: PRAGMA key = &#x27;口令&#x27;
+    Drv-&gt;&gt;Cdc: sqlite3CodecAttach 注册密钥上下文
+    Drv-&gt;&gt;Pgr: sqlite3pager_set_codec 挂载 xCodec 回调
+    Note over Cdc: 口令仅缓存，KDF 延后（JIT）
+    App-&gt;&gt;Drv: SELECT count(*) FROM sqlite_master
+    Drv-&gt;&gt;Pgr: 请求第 1 页
+    Pgr-&gt;&gt;Cdc: 触发解码回调
+    Cdc-&gt;&gt;Dsk: 读文件头 16 字节随机 salt
+    Cdc-&gt;&gt;Cdc: PBKDF2 派生加密密钥 + HMAC 密钥
+    Pgr-&gt;&gt;Dsk: 读第 1 页密文（页尾含 IV + tag）
+    Cdc-&gt;&gt;Cdc: 验 HMAC/AEAD tag → 解密
+    alt tag 校验通过
+        Cdc--&gt;&gt;Pgr: 明文页入 page cache
+    else 密钥错误 / 参数不匹配
+        Cdc--&gt;&gt;App: SQLITE_NOTADB (code 26)
+    end
+</div>
+
+<p>图注：打开时序的关键在于 KDF 延迟触发——<code>PRAGMA key</code> 后的第一条真实读取才同时完成"派生密钥"与"验证密钥"两件事。</p>
+<p>派生环节的细节（以 SQLCipher v4 为例）：codec 从文件前 16 字节读出建库时随机写入的 salt，以 PBKDF2-HMAC-SHA512 默认 256,000 次迭代把口令派生成 32 字节加密密钥；HMAC 密钥独立于加密密钥，用 PBKDF2 仅 2 次迭代加盐掩码（盐逐字节 XOR 0x3A）派生<sup class="cite">[1]</sup><sup class="cite">[9]</sup>。每库独立随机盐保证同口令在不同库中密钥不同，可防彩虹表预计算<sup class="cite">[1]</sup>。JIT 设计还有安全收益：内存中可以只驻留口令而非派生后的 raw key——微信 4.1+（SQLCipher 4）的第三方逆向分析证实其运行时仅存 passphrase，使内存扫描直接提钥失效<sup class="cite">[145]</sup>。</p>
+<h4 id="312-kdf">3.1.2 KDF 参数对比：打开成本的分化</h4>
+<p>各主流方案在 KDF 上的取舍差异极大，直接决定"打开一个加密库需要多久"：</p>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>KDF 算法</th>
+<th>默认迭代次数</th>
+<th>盐位置</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQLCipher v4</td>
+<td>PBKDF2-HMAC-SHA512</td>
+<td>256,000</td>
+<td>文件前 16 字节</td>
+<td>可经 <code>PRAGMA kdf_iter</code> 调整；等效 512,000 次 SHA512<sup class="cite">[1]</sup><sup class="cite">[9]</sup></td>
+</tr>
+<tr>
+<td>sqleet</td>
+<td>PBKDF2-HMAC-SHA256</td>
+<td>12,345</td>
+<td>文件前 16 字节</td>
+<td><code>kdf=none</code> 允许直接给 32 字节 raw key 跳过 KDF<sup class="cite">[57]</sup><sup class="cite">[25]</sup></td>
+</tr>
+<tr>
+<td>sqlite3mc（ChaCha20 默认）</td>
+<td>PBKDF2-HMAC-SHA256</td>
+<td>64,007</td>
+<td>文件前 16 字节</td>
+<td>sqleet legacy 模式回退为 12,345，与原版 sqleet 对齐<sup class="cite">[31]</sup></td>
+</tr>
+<tr>
+<td>Turso Database</td>
+<td>无 KDF</td>
+<td>—</td>
+<td>无盐</td>
+<td>必须传入 32 字节十六进制 raw key（<code>hexkey</code>）；passphrase KDF 在路线图<sup class="cite">[55]</sup><sup class="cite">[65]</sup></td>
+</tr>
+</tbody>
+</table>
+<p>这张表揭示了一个常被混淆的事实：<strong>KDF 是每次建立连接的一次性"打开成本"，与稳态读写开销无关</strong>。SQLCipher 的 256,000 次迭代在移动端约产生百毫秒级延迟（v4.0.0 发布时官方即以 iOS 硬件加速对冲）<sup class="cite">[156]</sup>，高频短连接场景（serverless、CLI 工具）每次都须支付；而 sqleet 的 12,345 次迭代按当代标准明显偏低——sqlite3mc 非遗留默认提高到 64,007 次正是修正，代价是其默认文件与原版 sqleet 互不兼容（迭代数不同派生不出相同密钥）<sup class="cite">[31]</sup>。Turso 走到另一个极端：完全取消 KDF、要求用户自带高熵 raw key，打开零成本，但密钥熵与存储安全的管理责任整体转移给应用层<sup class="cite">[55]</sup>。</p>
+<h3 id="32">3.2 页级加解密数据流</h3>
+<h4 id="321-reserved-bytes">3.2.1 读路径与写路径：页尾 reserved bytes 的进出</h4>
+<p>密钥派生完成后，加解密发生在每一页的进出边界。SQLite 在每页末尾预留 reserved space（头部 offset 20 记录其字节数），官方文件格式文档明确这段空间"就是为加密扩展存放每页 nonce 和/或密码学校验和而设"<sup class="cite">[139]</sup>。SQLCipher v4 每页保留 80 字节：16 字节随机 IV + 64 字节 HMAC-SHA512 tag；tag 长度随版本演进（v1 无 tag、v2/v3 为 HMAC-SHA1 的 20 字节），对应 reserved 16/48/80 字节三档，均按 AES 块对齐<sup class="cite">[9]</sup>。</p>
+<div class="mermaid">
+flowchart TD
+    R1[&quot;Pager 缺页，从磁盘读密文页&quot;] --&gt; R2[&quot;Codec 读页尾 IV 与 HMAC tag&quot;]
+    R2 --&gt; R3{&quot;HMAC 校验 密文+IV 是否通过&quot;}
+    R3 -- &quot;通过&quot; --&gt; R4[&quot;AES-256-CBC 解密&quot;]
+    R3 -- &quot;失败&quot; --&gt; R5[&quot;上报 SQLITE_NOTADB code 26&quot;]
+    R4 --&gt; R6[&quot;明文页入 page cache&quot;]
+    R6 --&gt; R7[&quot;B-tree 按 page_size - reserved 解析&quot;]
+    W1[&quot;事务提交，Pager 刷脏页&quot;] --&gt; W2[&quot;Codec 生成新随机 IV&quot;]
+    W2 --&gt; W3[&quot;AES-256-CBC 加密明文页&quot;]
+    W3 --&gt; W4[&quot;计算 HMAC-SHA512&quot;]
+    W4 --&gt; W5[&quot;IV 与 tag 写入页尾 80 字节 reserved&quot;]
+    W5 --&gt; W6[&quot;整页落盘 主库 / journal / WAL 同密钥&quot;]
+</div>
+
+<p>图注：读路径先验 tag 后解密（encrypt-then-MAC），写路径每次换新随机 IV 以避免同页重写复用 IV 的 CBC 弱点。</p>
+<p>读路径上，命中 page cache 的页完全绕过 codec，加解密开销只与实际触盘页数成正比——这是"索引查询开销仅 2–5%、全表扫描可放大数倍"这一性能分层的结构原因<sup class="cite">[1]</sup>。写路径上，journal/WAL 页数据与主库同密钥加密，WAL checkpoint 只是密文页搬运；但排序等瞬态临时文件不加密，需 <code>PRAGMA temp_store = MEMORY</code> 防明文溅落<sup class="cite">[1]</sup><sup class="cite">[146]</sup>。AEAD 系方案流程同构：sqleet 以 ChaCha20 一次性密钥（加密密钥+页号+16 字节 nonce 派生）加 Poly1305 16 字节 tag，每页共占 32 保留字节<sup class="cite">[31]</sup>；Turso 每次写页生成新 nonce，nonce+tag 同样存入 reserved space<sup class="cite">[55]</sup>。</p>
+<h4 id="322">3.2.2 文件头处理差异：互不兼容的技术根源</h4>
+<p>各方案对文件前 100 字节 header 的处理是格式互不相认的第一道分水岭。SQLite 打开文件时在加密层介入之前先读字节 16–23 以确定 page size 与 reserved bytes，故 SEE 与 sqlite3mc 非遗留模式都保留这 8 字节明文<sup class="cite">[135]</sup><sup class="cite">[32]</sup>。对照之下：SQLCipher 默认用 16 字节 KDF 盐直接覆盖 offset 0–15 的 magic 字符串，整文件呈白噪声，普通工具连"这是 SQLite 文件"都无法识别（v4 起可用 <code>cipher_plaintext_header_size</code> 保留明文头，但盐需另行管理）<sup class="cite">[1]</sup><sup class="cite">[34]</sup>；Turso 最激进，前 100 字节 header 整体明文<sup class="cite">[55]</sup>。"盐放不放头部、头留多少明文"的格式决策叠加 KDF 参数与页布局差异，构成第 4 章将展开的方案间互不兼容的技术根源。</p>
+<h3 id="33-rekey">3.3 密钥错误行为与 rekey 机制</h3>
+<p>由于 JIT 派生，<strong>错误密钥不会在开库时暴露</strong>：<code>PRAGMA key</code> 永远"成功"，直到首次读页 HMAC 校验失败才报错——且报的不是认证错误，而是笼统的 "file is encrypted or is not a database"（SQLITE_NOTADB, code 26）<sup class="cite">[2]</sup><sup class="cite">[140]</sup>。密钥错误、cipher 版本不匹配（v2 打 v4）、方案不匹配（sqleet 打 SQLCipher）全都收敛为同一个错误码，应用层必须主动用 <code>SELECT count(*) FROM sqlite_master</code> 之类的探针验钥<sup class="cite">[2]</sup><sup class="cite">[143]</sup>；<code>cipher_compatibility</code>、<code>kdf_iter</code> 等非默认参数也必须在 <code>PRAGMA key</code> 之后、首个实际操作之前设置，且非默认值建库后每次打开都要重设<sup class="cite">[2]</sup>。</p>
+<p>换钥（rekey）的本质是<strong>全库逐页重加密</strong>：先用旧钥解密全部页面，用新口令重新派生密钥，逐页加密回写并更新头部 salt<sup class="cite">[143]</sup><sup class="cite">[57]</sup>。实现路径各有不同：sqleet 的 <code>sqlite3_rekey()</code> 内部直接跑 VACUUM 完成全页重写<sup class="cite">[57]</sup>；SEE 以 <code>.rekey OLD NEW NEW</code> 配合 VACUUM 保证每页 nonce 安全<sup class="cite">[135]</sup>；sqlite3mc 借助修改版 VACUUM 过程实现<strong>原地（in-place）换 cipher</strong>——先以 <code>PRAGMA cipher</code>/<code>legacy</code> 选定目标方案再 <code>PRAGMA rekey</code>，无需像 SQLCipher 的 <code>sqlcipher_export()</code> 那样 ATTACH 后整库复制，这是其作为"多格式逃生舱"的运行时基础<sup class="cite">[38]</sup>，v2.4.0 起还支持 WAL 模式下 rekey，代价是保留旧 key salt 的轻微安全折损<sup class="cite">[28]</sup>。Turso 目前完全没有 rekey 能力，换钥只能导出后重建<sup class="cite">[64]</sup>。关闭连接时 codec 上下文销毁并清零密钥与明文缓冲区（SQLCipher v4 起默认全量内存擦除），但所有方案都明示：页进入内存后即为明文，加密只保护静态数据<sup class="cite">[4]</sup><sup class="cite">[135]</sup>。</p>
+<h2 id="4-sqlite">4. 与官方 SQLite 的兼容性</h2>
+<p>加密方案在 SQL 层保持 SQLite 语义不变——同一套 SQL、同一批 PRAGMA 照常可用；真正的不兼容发生在三个层面：磁盘文件格式、运行时特性的边界行为、以及围绕数据库文件的工具链。第 3 章已指出，文件头处理（magic 是否被盐覆盖、字节 16–23 是否明文）与页尾 reserved bytes 布局的差异是格式互不兼容的技术根源，本章据此展开三个层面的兼容性清单。</p>
+<h3 id="41">4.1 文件格式兼容性</h3>
+<h4 id="411-sqlite3">4.1.1 加密库对普通 sqlite3 一律拒绝打开，方案之间互不相通</h4>
+<p>任何一个加密库文件交给官方 <code>sqlite3</code> CLI 或不了解对应 cipher 的工具，结果都是同一个错误：<strong>"file is encrypted or is not a database"（SQLITE_NOTADB，code 26）</strong>。SQLCipher 官方设计文档给出了完整实演：加密库 hexdump 呈白噪声，普通 <code>sqlite3</code> 对其执行任何查询立即报此错；Android 生态中同一问题表现为 <code>SQLiteException: file is not a database (code 26)</code><sup class="cite">[1]</sup><sup class="cite">[140]</sup>。更棘手的是，这个错误把多种完全不同的成因折叠在一起——密钥错误、SQLCipher 版本不匹配（如 v2 客户端打 v4 库）、方案不匹配（sqleet 打 SQLCipher 库）全都报 SQLITE_NOTADB，排查时只能逐项对齐 cipher 方案、KDF 迭代数、page size 与 legacy 参数<sup class="cite">[2]</sup>。</p>
+<p>方案之间的格式隔离是双向的。sqleet 与 SQLCipher 在算法（ChaCha20-Poly1305 对 AES-256-CBC）、KDF（PBKDF2-HMAC-SHA256/12,345 迭代对 SHA512/256,000 迭代）与 header 布局上均不同，文件互不可读<sup class="cite">[57]</sup><sup class="cite">[1]</sup>；即便在 SQLCipher 内部，v4（2018-11）将默认 page size 由 1024 改为 4096、KDF 迭代由 64,000 提至 256,000、KDF/HMAC 算法由 SHA1 换为 SHA512，默认配置打不开 v1–v3 的库，须借助 <code>PRAGMA cipher_compatibility = N</code> 读旧库或 <code>PRAGMA cipher_migrate</code> 原地升级<sup class="cite">[4]</sup><sup class="cite">[101]</sup>。需要区分"可识别"与"可打开"：SEE 保留文件头字节 16–23 明文、Turso 保留前 100 字节 header 整体明文，因此这两类文件能被工具识别为 SQLite 格式（magic 可见），但没有密钥与对应引擎照样读不出任何数据<sup class="cite">[135]</sup><sup class="cite">[55]</sup>。</p>
+<h4 id="412-sqlite3multipleciphers-legacy">4.1.2 SQLite3MultipleCiphers legacy 模式：唯一的"格式逃生舱"</h4>
+<p>SQLite3MultipleCiphers（下称 sqlite3mc）在单一库中实现了 6 套以上 cipher scheme——wxSQLite3 AES-128/256-CBC、sqleet ChaCha20、SQLCipher v1–v4、System.Data.SQLite RC4、Ascon、AEGIS<sup class="cite">[30]</sup>。通过 URI 或 PRAGMA 显式指定 <code>cipher</code> 与 <code>legacy</code> 参数（如 <code>cipher=sqlcipher&amp;legacy=4</code> 读 SQLCipher v4 文件、<code>cipher=chacha20&amp;legacy=1</code> 读原版 sqleet 文件），它可以读写其他方案的原生文件，并借助修改版 VACUUM 过程<strong>原地</strong>完成加密、换 cipher 或解密，无需像 SQLCipher 的 <code>sqlcipher_export()</code> 那样整库复制<sup class="cite">[32]</sup><sup class="cite">[38]</sup>。这使其成为目前已知唯一具备跨格式读取能力的实现，即"格式逃生舱"。但有一个易踩的反向陷阱：sqlite3mc <strong>默认的非 legacy 模式</strong>保留字节 16–23 明文，写出的文件与原版 sqleet/SQLCipher 并不兼容，必须显式设置 <code>legacy=1</code> 才能产出互通文件<sup class="cite">[32]</sup>。libSQL 的 <code>cipher=sqlcipher</code> 方案底层复用同一 SQLCipher cipher scheme，理论上其加密文件可被 SQLCipher v4 工具链打开，但官方文档未作承诺，也未找到第三方验证，此处标记为数据缺口<sup class="cite">[9]</sup><sup class="cite">[71]</sup>。</p>
+<h3 id="42">4.2 运行时特性兼容</h3>
+<p>加密对 SQLite 运行时特性的支持并不均一，逐项核对结果如下。<strong>WAL 与 journal</strong>：SQLCipher、SEE、sqlite3mc、Turso 一致地对 WAL 与 rollback journal 中的页数据用数据库同一密钥加密，VACUUM 产生的 journal 同样加密；WAL 模式下备份须同时保留主库与 <code>-wal</code> 文件，两者均为敏感密文<sup class="cite">[1]</sup><sup class="cite">[146]</sup>。sqlite3mc 提供 <code>PRAGMA mc_legacy_wal</code> 兼容 1.2.5 及之前版本的旧 WAL 加密模式，且 v2.4.0（2026-07-25）起支持在 WAL 模式下执行 rekey——代价是保留旧 key salt，属于轻微安全折损<sup class="cite">[36]</sup><sup class="cite">[28]</sup>。<strong>临时文件</strong>：排序、索引等瞬态 temp 文件不加密，必须编译期 <code>--enable-tempstore=yes</code>（<code>SQLITE_TEMP_STORE=2</code>）加运行期每连接 <code>PRAGMA temp_store = MEMORY</code> 双保险，否则明文会溅落磁盘<sup class="cite">[1]</sup><sup class="cite">[146]</sup>。<strong>ATTACH 混合库</strong>：SQLCipher 自初版即支持同一连接挂载加密库与明文库，ATTACH 时以 <code>KEY ''</code> 表示目标库不加密；<code>sqlcipher_export()</code> 负责明文与加密双向互转，复制 schema、触发器、虚拟表与全部数据，但<strong>不复制 <code>user_version</code> 与 <code>auto_vacuum</code> 设置</strong><sup class="cite">[136]</sup>。<strong>Backup API</strong>：SQLCipher 4.1.0 起对加密库显式禁用 online backup API（初始化即报错），4.3.0 放宽为仅允许加密→加密的备份<sup class="cite">[4]</sup>。<strong>page size 匹配</strong>：sqleet 因 header 全加密无法从文件读出 page size，非默认 page size 的库即使密钥正确也打不开；SQLCipher 非默认 <code>cipher_page_size</code> 的库每次打开都须重设该参数<sup class="cite">[57]</sup><sup class="cite">[2]</sup>。<strong>Turso 的缺口</strong>：其原生加密暂不支持口令 KDF、既有明文库加密、rekey 与 ATTACH，均在路线图上<sup class="cite">[55]</sup>。</p>
+<h3 id="43">4.3 工具链兼容</h3>
+<p>GUI 工具必须内置对应 cipher 支持才能打开加密库。SQLiteStudio 自 3.3.0（2021）起将加密插件迁移至 sqlite3mc，4.0.0 起以 SQLite3MC 插件统一承接 wxSQLite3/SQLCipher/System.Data.SQLite 三类格式，原独立 SQLCipher 插件废弃<sup class="cite">[42]</sup>；DB Browser for SQLite 内置 SQLCipher 支持，与 sqlite3mc legacy 模式产出的 SQLCipher 格式文件可直接互通<sup class="cite">[41]</sup>。Turso 加密为自有 AEAD 格式，官方各 SDK 文档统一声明加密库"必须用 Turso Database 引擎打开"，目前无任何第三方工具生态<sup class="cite">[64]</sup><sup class="cite">[72]</sup>。明文库与加密库之间的离线互转，标准路径是 ATTACH 加 <code>sqlcipher_export()</code>，或 sqlite3mc 的原地 rekey（见 4.2 节），不存在跨方案的格式直转工具<sup class="cite">[136]</sup><sup class="cite">[38]</sup>。</p>
+<p>下表将六个（类）方案在五个兼容维度上的表现汇总为矩阵：</p>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>普通 sqlite3 直开</th>
+<th>可读其他方案文件</th>
+<th>WAL/ATTACH</th>
+<th>Online backup API</th>
+<th>GUI 工具支持</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQLCipher v4</td>
+<td>✗（NOTADB 26）<sup class="cite">[1]</sup></td>
+<td>仅本系 v1–v3（须 <code>cipher_compatibility</code>）<sup class="cite">[4]</sup></td>
+<td>✓ WAL 同密钥；ATTACH 混合库 ✓<sup class="cite">[136]</sup></td>
+<td>4.1+ 禁用，4.3+ 仅加密→加密<sup class="cite">[4]</sup></td>
+<td>DB Browser for SQLite、SQLiteStudio<sup class="cite">[41]</sup><sup class="cite">[42]</sup></td>
+</tr>
+<tr>
+<td>sqleet</td>
+<td>✗<sup class="cite">[57]</sup></td>
+<td>✗（仅 sqlite3mc legacy 可读）<sup class="cite">[32]</sup></td>
+<td>✓ WAL 支持（iOS 需 <code>skip=32</code>）<sup class="cite">[57]</sup></td>
+<td>数据缺口</td>
+<td>无活跃 GUI（项目已停维护）<sup class="cite">[57]</sup></td>
+</tr>
+<tr>
+<td>sqlite3mc（默认非遗留）</td>
+<td>✗</td>
+<td>✗（自有格式，字节 16–23 明文）<sup class="cite">[32]</sup></td>
+<td>✓ WAL 加密；v2.4.0 起 WAL 内 rekey<sup class="cite">[28]</sup></td>
+<td>数据缺口</td>
+<td>SQLiteStudio 3.3.0+<sup class="cite">[42]</sup></td>
+</tr>
+<tr>
+<td>sqlite3mc（legacy 模式）</td>
+<td>✗</td>
+<td>✓ sqleet / SQLCipher v1–v4 / RC4 等 6+ 格式<sup class="cite">[30]</sup><sup class="cite">[32]</sup></td>
+<td>✓；ATTACH 各库可用不同 cipher<sup class="cite">[32]</sup></td>
+<td>数据缺口</td>
+<td>SQLiteStudio；legacy 文件与 DB Browser 互通<sup class="cite">[41]</sup><sup class="cite">[42]</sup></td>
+</tr>
+<tr>
+<td>SEE（官方商业）</td>
+<td>✗（magic 可见，仅可识别）<sup class="cite">[135]</sup></td>
+<td>✗</td>
+<td>✓ journal/WAL 加密；TEMP 不加密<sup class="cite">[135]</sup></td>
+<td>数据缺口</td>
+<td>仅官方 CLI，无免费 GUI</td>
+</tr>
+<tr>
+<td>libSQL（cipher=sqlcipher）</td>
+<td>✗</td>
+<td>理论兼容 SQLCipher v4 工具链（未经第三方验证）<sup class="cite">[9]</sup><sup class="cite">[71]</sup></td>
+<td>✓</td>
+<td>数据缺口</td>
+<td>理论可用 SQLCipher 工具（未验证）</td>
+</tr>
+<tr>
+<td>Turso Database</td>
+<td>✗（前 100 B header 明文，仅可识别）<sup class="cite">[55]</sup></td>
+<td>✗ 自有 AEAD 格式<sup class="cite">[64]</sup></td>
+<td>WAL 加密 ✓；rekey/ATTACH 暂不支持<sup class="cite">[55]</sup></td>
+<td>数据缺口</td>
+<td>无第三方工具，仅 Turso 引擎<sup class="cite">[72]</sup></td>
+</tr>
+</tbody>
+</table>
+<p>矩阵呈现出三个结构性结论。其一，"普通 sqlite3 直开"一列全为 ✗，说明加密与官方二进制的隔离是设计目标而非缺陷——所有方案都刻意让密文对无密钥者不可读，区别只在文件头是否保留可识别的明文（SEE 的 16–23 字节、sqlite3mc 非遗留模式、Turso 的前 100 字节），这影响的是 iOS 文件识别与运维可观察性，而非安全性。其二，跨格式可读性高度集中于 sqlite3mc legacy 模式一处，其余方案两两隔离；libSQL 的"理论兼容 SQLCipher v4"因底层同源而有较高可信度，但在缺乏官方承诺与第三方复现前应按未验证对待。其三，backup API 一列出现大面积"数据缺口"——除 SQLCipher 有明确的 CHANGELOG 记录外，其余方案均未找到官方对加密库 online backup 行为的说明，需要备份能力的团队应在选型阶段自行实测。整体而言，若"数据库文件可被通用工具离线审计"是硬需求，可行集收敛为 SQLCipher 系与 sqlite3mc legacy 格式；Turso 私有格式与 sqleet 原生格式则应排除。</p>
+<h2 id="5">5. 性能对比</h2>
+<p>加密对 SQLite 性能的影响无法用单一百分比概括。调研发现，所有量化数据都可以归入两条相互独立的性能轴：<strong>打开成本</strong>（连接建立时的一次性 KDF 计算）与<strong>稳态成本</strong>（运行期每页加解密）。混淆这两条轴是性能评估中最常见的错误来源——"加密慢 X%"这类脱离连接模型与查询形态的数字几乎没有意义。本章先建立分析框架，再逐方案呈现实测数据，包括存在矛盾口径的数据点。</p>
+<h3 id="51">5.1 两个独立的性能轴</h3>
+<h4 id="511-kdf">5.1.1 KDF 打开成本：一次性、与连接频率成正比</h4>
+<p>SQLCipher 4.x 默认执行 256,000 次 PBKDF2-HMAC-SHA512 迭代（等效约 512,000 次 SHA512 运算），该计算在每次打开数据库连接时完整执行一次，属于刻意设计的高成本（抗暴力破解）<sup class="cite">[156]</sup>。第三方中文博客在普通手机 CPU 上的实测给出了近似线性的验证时间：6,000 迭代约 5ms、64,000 约 30ms、100,000 约 50ms、500,000 约 220ms；按线性外推，默认 256,000 迭代对应约 <strong>100–120ms 的打开延迟</strong><sup class="cite">[149]</sup>。腾讯 WCDB 的 Android benchmark 提供了端到端佐证：Nexus 5X（arm64）上明文库建库耗时 49ms，而 SQLCipher 加密库（含 KDF 与加密建库）为 303ms<sup class="cite">[153]</sup>。该来源未注明具体机型与 SQLCipher 版本，且文中将默认迭代数误写为 64,000，故置信度标为中低，但其量级与 PBKDF2 线性特性一致<sup class="cite">[149]</sup>。</p>
+<p>对照之下，Turso Database 原生加密完全不执行 KDF：用户直接提供 32 字节 hex key，连接打开即就绪，不存在 PBKDF2 打开延迟<sup class="cite">[55]</sup><sup class="cite">[152]</sup>。sqleet 则走另一条路线——PBKDF2-HMAC-SHA256 仅 12,345 迭代，打开成本远低于 SQLCipher 默认值，但抗暴力破解能力相应削弱<sup class="cite">[148]</sup>。由此得出的操作结论是：<strong>高频短连接场景（serverless、CLI 工具）中 KDF 主导延迟</strong>，SQLCipher 官方性能文档因此明确要求"不要反复打开关闭连接"<sup class="cite">[8]</sup>；而长连接服务端的稳态吞吐才取决于下述页开销。</p>
+<h4 id="512">5.1.2 稳态页开销：与访问页数成正比</h4>
+<p>运行期开销的机制是每页独立加解密（SQLCipher 对每 4KiB 页计算 AES-256-CBC + HMAC-SHA512；Turso 对每页用唯一 nonce 做 AEGIS-256），因此开销与一次查询触及的页数成正比<sup class="cite">[55]</sup>。索引点查只解密少量页，实测开销可低至 2–5%；而非索引全表扫描需解密全部页，第三方实测极端值达到 +496%<sup class="cite">[147]</sup>。这正是官方宣称"5–15%"与实测极端值相差两个数量级的根源：两者描述的是不同的查询形态。</p>
+<p>算法选型由硬件指令集决定。OpenSSL speed 实测数据（Intel i7 七代）显示：有 AES-NI 硬件加速时 AES-256-GCM 吞吐约 3.8GB/s，无硬件加速的软件 AES 仅约 134MB/s（约 28 倍差距）；ChaCha20-Poly1305 软件实现约 2GB/s，在无 AES 指令集的低端 ARM 与嵌入式平台上显著优于软件 AES<sup class="cite">[155]</sup>。这是 sqleet 与 SQLite3MultipleCiphers 默认选择 ChaCha20 的核心理由<sup class="cite">[148]</sup><sup class="cite">[29]</sup>；反之 SQLCipher 4 在 iOS 上凭借 4K 页与硬件加速获得 2 倍以上提升<sup class="cite">[156]</sup>。</p>
+<h3 id="52">5.2 各方案实测数据</h3>
+<p>下表汇总所有可获得量化数字的方案，来源性质一列区分官方宣称与第三方实测；无法量化的方案如实标注数据缺口。</p>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>读开销</th>
+<th>写开销</th>
+<th>打开延迟</th>
+<th>测试条件</th>
+<th>来源性质</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQLCipher 4.x 社区版</td>
+<td>官方 5–15%（宣称）；实测：索引查询 +3.4%，非索引全表扫描 +496%</td>
+<td>官方 5–15%（宣称）；实测：批量事务内 insert +2.3%</td>
+<td>256k PBKDF2 迭代，手机 CPU 外推约 100–120ms</td>
+<td>官方为定性宣称；实测 Nokia 6.1（骁龙 636，电池模式），1 万条事务</td>
+<td>官方宣称 + 第三方实测<sup class="cite">[101]</sup> <sup class="cite">[8]</sup> <sup class="cite">[147]</sup> <sup class="cite">[149]</sup></td>
+</tr>
+<tr>
+<td>SQLCipher（Android，WCDB benchmark）</td>
+<td>Query Fill 151→441ms（约 2.9 倍）</td>
+<td>事务内批量 insert 1081 vs 857ms（持平，I/O 主导）；逐条 insert 7121→15208ms（+113%）</td>
+<td>建库 49→303ms（含 KDF）</td>
+<td>Nexus 5X，Android 7.1.2，SQLCipher 3.x 时代</td>
+<td>第三方实测<sup class="cite">[153]</sup> <sup class="cite">[154]</sup></td>
+</tr>
+<tr>
+<td>better-sqlite3-multiple-ciphers（ChaCha20，口径 A）</td>
+<td>Select 慢 45–50%</td>
+<td>Insert/Update 慢 70–75%</td>
+<td>未单独测量</td>
+<td>Forward Email 生产负载模拟，Node.js v20，WAL，约 4MB 库，与 better-sqlite3 整包对比（含绑定层差异）</td>
+<td>第三方实测<sup class="cite">[150]</sup></td>
+</tr>
+<tr>
+<td>better-sqlite3-multiple-ciphers（ChaCha20，口径 B）</td>
+<td>—</td>
+<td>约 10,500 inserts/s vs AES-256-CBC 11,200 vs 不加密 12,800（加密约慢 18%）</td>
+<td>未单独测量</td>
+<td>同一团队博客另一组测试</td>
+<td>第三方实测<sup class="cite">[151]</sup></td>
+</tr>
+<tr>
+<td>Turso Database（AEGIS-256）</td>
+<td>100K 行 +0.2% → 15M 行 +5.5%（官方概括"约 6%"）</td>
+<td>100K 行 +12.7% → 10M 行 +13.9%（官方概括"约 14%"）</td>
+<td>无 KDF（直接 32 字节 hex key），零打开成本</td>
+<td>batch=100，读写比 75:25，写延迟在 commit 前测量（不含 fsync）；<strong>无第三方复现</strong></td>
+<td>官方宣称<sup class="cite">[55]</sup> <sup class="cite">[152]</sup></td>
+</tr>
+<tr>
+<td>sqleet / SQLite3MultipleCiphers</td>
+<td>无量化 benchmark；官方定性"AES 通常慢于 ChaCha20-Poly1305"</td>
+<td>同左</td>
+<td>sqleet 仅 12,345 迭代，打开更快</td>
+<td>仅特性对比，无跑分表</td>
+<td>数据缺口（仅定性）<sup class="cite">[148]</sup> <sup class="cite">[29]</sup></td>
+</tr>
+</tbody>
+</table>
+<p>对这张表需要三点解读。<strong>第一，同一方案的读开销可从 +3.4% 跨到 +496%，说明"读开销"不是方案属性而是查询形态属性</strong>：索引命中只解密少数页，全表扫描解密全库，差距自然是两个数量级；WCDB 的 Query Fill（约 2.9 倍）正落在两者之间，因为它填充的是较大结果集。<strong>第二，写路径出现反直觉结果</strong>——WCDB 事务内批量 insert 加密反而略快于明文（857 vs 1081ms），说明该负载由 I/O 与日志主导，页加密 CPU 成本被掩盖；一旦退化为逐条写入（每条独立事务），加密开销立即显现为 +113%。<strong>第三，来源可信度分层明显</strong>：SQLCipher 的 5–15% 与商业版"快至 3–4 倍"均为无原始数据支撑的官方口径<sup class="cite">[8]</sup>，Turso 的 6%/14% 方法透明（给出完整数据表）但写延迟在 commit 前测量、规避了 fsync 成本且无第三方复核<sup class="cite">[55]</sup><sup class="cite">[79]</sup>；反而置信度最高的是 Nokia 6.1 与 WCDB 两组代码开源、条件明确的第三方实测<sup class="cite">[147]</sup><sup class="cite">[153]</sup>。</p>
+<p>关于表中的口径冲突必须并列说明：Forward Email 同一项目给出两组互相矛盾的数字——README 汇总值称加密使 Insert/Update 慢 70–75%、Select 慢 45–50%<sup class="cite">[150]</sup>；而博客实测为 ChaCha20 约 10,500 inserts/s、AES-256-CBC 约 11,200、不加密约 12,800，即 ChaCha20 加密仅比明文慢约 18%、比 AES 慢约 6%<sup class="cite">[151]</sup>。前一口径对比的是两个 npm 包的整体差异（包含 better-sqlite3-multiple-ciphers 绑定层本身的开销），后者在同库内仅切换加密开关；测试条件不同，本章不做取舍，引用时须标注口径。另如实说明数据缺口：sqleet 与 SQLite3MultipleCiphers 均无公开的量化 benchmark，唯一可得的是作者的定性结论<sup class="cite">[148]</sup><sup class="cite">[29]</sup>；Turso 的 6%/14% 截至本次调研未找到任何独立第三方复现<sup class="cite">[55]</sup><sup class="cite">[79]</sup>。</p>
+<h3 id="53">5.3 调优手段</h3>
+<p>针对两条性能轴，调优手段也分两类。<strong>压缩打开成本</strong>：使用 RAW key（预先派生好的 256 位密钥）可完全跳过 PBKDF2<sup class="cite">[8]</sup>；或将 <code>PRAGMA kdf_iter</code> 从 256,000 降至 64,000，官方称可将密钥派生耗时减少为四分之一<sup class="cite">[8]</sup><sup class="cite">[2]</sup>——但须明确这是以抗暴力破解能力换延迟，降低迭代数的定制部署已有成熟破解工具链的先例。工程上更稳妥的做法是连接复用，避免为每次操作重开连接<sup class="cite">[8]</sup>。<strong>压缩稳态成本</strong>：用事务包裹批量写入（WCDB 实测可消除几乎全部加密差距）<sup class="cite">[153]</sup>；启用 WAL 模式使加解密与 I/O 并行<sup class="cite">[153]</sup>；SQLCipher 4 默认 page_size 已从 1024 提至 4096，更大的页摊薄每页 IV/HMAC 的固定开销，服务器场景可进一步调大<sup class="cite">[156]</sup><sup class="cite">[2]</sup>。其余可选杠杆包括关闭 <code>cipher_use_hmac</code>（放弃完整性校验）与 <code>secure_delete</code><sup class="cite">[8]</sup>，以及保持 <code>cipher_memory_security</code> 默认关闭——实测开启后 insert 开销从 +2.3% 升至 +27%<sup class="cite">[147]</sup>。上述每一项调优都同时是安全降级决策，应纳入威胁模型评估而非纯性能取舍。</p>
+<h2 id="6-drizzle-orm">6. Drizzle ORM 接入实战</h2>
+<p>前面章节的调研指向一个反直觉的结论：加密 SQLite 接入 Drizzle 的真实成本不在 ORM 层，而在 drizzle-kit 工具链。三条可行路径（libsql 原生 <code>encryptionKey</code>、better-sqlite3-multiple-ciphers 顶替、sqlite-proxy）在运行时对 Drizzle 完全透明——查询构造、关系加载、类型推导与常规 SQLite 用法零差别；断裂的是所有需要真实连库的 CLI 命令（push/migrate/studio/pull），因为 <code>drizzle.config.ts</code> 的 <code>dbCredentials</code> 没有 <code>encryptionKey</code> 注入点<sup class="cite">[166]</sup>。因此本章的结构是：先给出三条路径的完整接入配置（6.1–6.3），再集中讨论与常规用法的差异点与工具链绕行方案（6.4）。</p>
+<table>
+<thead>
+<tr>
+<th>路径</th>
+<th>底层驱动</th>
+<th>加密配置方式</th>
+<th>Drizzle 运行时</th>
+<th>drizzle-kit 连库命令</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A. libsql 原生</td>
+<td><code>@libsql/client</code> + <code>drizzle-orm/libsql</code></td>
+<td><code>createClient({ url, encryptionKey })</code></td>
+<td>✅ 零差别</td>
+<td>❌ 全部不可用（SQLITE_NOTADB）<sup class="cite">[166]</sup></td>
+<td>Node/Bun/Deno 服务端、本地文件库</td>
+</tr>
+<tr>
+<td>B. 多 cipher 顶替</td>
+<td><code>better-sqlite3-multiple-ciphers</code>（npm alias 顶替 better-sqlite3）</td>
+<td><code>PRAGMA cipher → legacy → key</code></td>
+<td>✅ 零差别（API 1:1 兼容 fork）<sup class="cite">[157]</sup></td>
+<td>❌ 不可用，走运行时 migrator<sup class="cite">[178]</sup></td>
+<td>Node/Electron，要求 SQLCipher 格式兼容</td>
+</tr>
+<tr>
+<td>C. sqlite-proxy</td>
+<td>任意加密驱动（Tauri/Rust、expo-sqlite、HTTP 服务等）</td>
+<td>由 proxy 背后的驱动负责，前端不感知</td>
+<td>✅ 零差别</td>
+<td>❌ CLI 无法走 proxy，迁移由 proxy 侧执行<sup class="cite">[100]</sup></td>
+<td>Tauri/移动端/WebView 等无 Node 运行时的环境</td>
+</tr>
+</tbody>
+</table>
+<p>三条路径的共同点是"Drizzle 层的代码不需要为加密改任何一个字"，差异全部发生在连接建立与 schema 迁移两个环节。选择逻辑很直接：有 Node 运行时且不介意 libsql 私有加密格式选 A；需要与 SQLCipher 生态（DB Browser、移动端 SDK）互通选 B；进程里没有原生 SQLite 可用（WebView、移动端 JS 层）只能选 C。路径 A 与 B 的分界还涉及格式锁定问题——libSQL 加密的文件无法用标准 SQLite 读取，反之亦然<sup class="cite">[71]</sup>，这一锁定成本在第 7 章选型决策中展开。</p>
+<h3 id="61-alibsql">6.1 路径 A：libsql 驱动原生加密</h3>
+<p>Drizzle 官方文档明确将 "encryption at rest" 列为 libsql 驱动相对 better-sqlite3 与 node:sqlite 的原生优势，且 connection 对象允许传入任意 libsql 连接选项<sup class="cite">[90]</sup>。<code>@libsql/client</code> 本身维护活跃：最新版 0.17.3（2026-04 发布），npm 周下载约 104 万次<sup class="cite">[92]</sup>。运行时接入仅需在 <code>createClient</code> 时多传一个参数：</p>
+<pre><code class="language-ts">// src/db/index.ts —— 路径 A 运行时接入，与常规用法的唯一区别是 encryptionKey
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import * as schema from './schema';
+
+export const client = createClient({
+  url: `file:${process.env.DB_FILE_NAME}`,   // 本地文件库；远程 libsql:// 亦可
+  encryptionKey: process.env.ENCRYPTION_KEY, // ← 加密配置的全部增量
+});
+
+// 之后的所有 Drizzle 用法（select/insert/事务/关系查询）与常规 SQLite 完全一致
+export const db = drizzle(client, { schema });
+</code></pre>
+<p>也可以把 key 直接放进连接串：<code>file:x.db?encryptionKey=...</code>（Astro DB 文档确认了这一形式）<sup class="cite">[171]</sup>。加密是页级（page-level）而非整文件解密<sup class="cite">[70]</sup>，加密后的文件呈现为随机字节，任何标准 SQLite 工具都无法读取<sup class="cite">[71]</sup>。</p>
+<p>两个必须知道的上游事实。其一，<strong>默认 cipher 的口径存在时间性冲突</strong>：libSQL 官方文档称默认 cipher 为 SQLCipher，但 <code>@libsql/client</code> 自 2024-03 起已将默认切换为 aes256cbc<sup class="cite">[74]</sup>；按当前行为表述即"现默认 aes256cbc，可选 SQLCipher 兼容模式"，打开旧库时务必显式指定 cipher。其二，<strong>嵌入式副本（embedded replica，配置 <code>syncUrl</code>）模式下加密会被静默丢弃</strong>——V2 sync 协议路径丢失 <code>encryption_config</code>，本地副本文件实际是明文，上游 issue（libsql#1122、tauri-plugin-libsql#1）有完整根因分析，截至调研时未修复<sup class="cite">[76]</sup><sup class="cite">[158]</sup>。凡涉及 sync 的部署必须先实测副本文件是否加密。</p>
+<h3 id="62-bbetter-sqlite3-multiple-ciphers">6.2 路径 B：better-sqlite3-multiple-ciphers 顶替</h3>
+<p><code>better-sqlite3-multiple-ciphers</code> 是 better-sqlite3 的活跃 fork，内置 SQLite3MultipleCiphers，版本号与上游一一对应（12.11.1 对应 better-sqlite3 12.11.1 + SQLite 3.53.2），API 完全一致并自带类型声明<sup class="cite">[157]</sup><sup class="cite">[82]</sup>。其生态体量可观：npm 周下载约 65,709 次，Snyk 维护健康度评级为 "Healthy"<sup class="cite">[83]</sup>。接入的关键技巧是 <strong>npm alias</strong>——包名仍叫 <code>better-sqlite3</code>，使得 <code>drizzle-orm/better-sqlite3</code> 内部的 <code>import Database from 'better-sqlite3'</code> 和全部类型声明无缝命中 fork，无需任何类型 cast。这一模式有生产级实证：开源 POS 项目 puntovivo（Electron 42 + Fastify + tRPC 11）正是用 alias 完成替换<sup class="cite">[177]</sup>。该 fork 中文社区也确认它是 better-sqlite3-sqlcipher（停留在 v5.4.3、已无法在现代 Node 编译）的事实继任者<sup class="cite">[163]</sup>。部署侧的主要成本是原生模块分发：官方为 Windows/Linux/macOS（含 Alpine、arm64）提供 Node v22/v24/v26 与 Electron v29–v42 的预编译二进制，Node v20 自 v12.10.0 起不再提供预编译，需回退到源码编译<sup class="cite">[82]</sup>：</p>
+<pre><code class="language-json">{
+  &quot;dependencies&quot;: {
+    &quot;better-sqlite3&quot;: &quot;npm:better-sqlite3-multiple-ciphers@^12.11.1&quot;,
+    &quot;drizzle-orm&quot;: &quot;^0.45.2&quot;
+  }
+}
+</code></pre>
+<p>连接建立时的 PRAGMA 顺序是这条路径最容易踩的坑。fork 的默认 cipher 是 sqleet 而非 SQLCipher，要打开/创建 SQLCipher 4 兼容格式的库，必须先发 <code>cipher</code> 与 <code>legacy=4</code>，再发 <code>key</code>，且<strong>全部 PRAGMA 必须在第一条 SQL 语句之前完成</strong><sup class="cite">[34]</sup>：</p>
+<pre><code class="language-ts">// src/db/connection.ts —— 路径 B：alias 后的连接与 key 注入（puntovivo 生产同款）[^178^]
+import Database from 'better-sqlite3'; // 实际解析到 better-sqlite3-multiple-ciphers
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import * as schema from './schema';
+
+const sqlite = new Database('./data/app.db');
+
+// ★ 顺序不可乱：cipher → legacy → key → 其他 PRAGMA；必须在任何 SELECT/DDL 之前
+sqlite.pragma(&quot;cipher = 'sqlcipher'&quot;);
+sqlite.pragma('legacy = 4');
+sqlite.pragma(`key = &quot;x'${process.env.DB_KEY_HEX}'&quot;`); // 32 字节 raw key 的 64 位 hex
+
+sqlite.pragma('journal_mode = WAL');
+
+export const db = drizzle(sqlite, { schema }); // 常规 drizzle 用法零差别
+
+// 迁移在运行时执行（drizzle-kit migrate 对加密库不可用，见 6.4）
+// 注意：迁移前在连接级关闭 FK，绕开 drizzle 事务包裹致 PRAGMA 失效的坑（issue #5782）[^170^]
+sqlite.pragma('foreign_keys = OFF');
+try {
+  migrate(db, { migrationsFolder: './drizzle' });
+} finally {
+  sqlite.pragma('foreign_keys = ON');
+}
+</code></pre>
+<p>"只传 key 不传 cipher"的典型后果是首次读写时报 <code>file is not a database</code>——TypeORM 同名 issue（#8475）从反面验证了这一顺序约束<sup class="cite">[169]</sup>。另有两个行为细节：<code>PRAGMA key</code> 即使密码错误也返回 <code>ok</code>，错误要到首次读写才暴露，验证方式是立刻执行一次 <code>SELECT * FROM sqlite_master</code><sup class="cite">[34]</sup>；<code>:memory:</code> 内存库不支持 key，fork 会直接抛 <code>Setting key not supported for in-memory or temporary databases</code>，意味着依赖内存库的单元测试需要改造<sup class="cite">[178]</sup>。</p>
+<h3 id="63-csqlite-proxytauri">6.3 路径 C：sqlite-proxy（Tauri / 移动端）</h3>
+<p>Drizzle Proxy 是官方支持的"自带驱动通信层"模式：<code>drizzle(async (sql, params, method) =&gt; {...})</code>，callback 把 Drizzle 生成的 SQL 发到任意后端（Tauri command、HTTP 服务），按 <code>{rows: string[][]}</code> 约定返回；v0.29.5 起 sqlite-proxy 支持 batch 回调与关系查询<sup class="cite">[173]</sup><sup class="cite">[174]</sup>。加密对 Drizzle 完全透明——key 与解密发生在 proxy 背后的驱动里，这使它成为 WebView/移动端（无 Node 运行时）的唯一解。现成方案是 tauri-plugin-libsql，提供加密版 proxy 工厂与浏览器安全的迁移器<sup class="cite">[99]</sup><sup class="cite">[158]</sup>：</p>
+<pre><code class="language-ts">// src/db/index.ts —— 路径 C：Tauri 环境下的 sqlite-proxy + 加密 + 构建期内联迁移
+import { drizzle } from 'drizzle-orm/sqlite-proxy';
+import { createDrizzleProxyWithEncryption, migrate } from 'tauri-plugin-libsql-api';
+import * as schema from './schema';
+
+// WebView 里没有 fs，标准 sqlite-proxy/migrator 读不了 .sql 文件；
+// 用 Vite import.meta.glob 在构建期把迁移 SQL 内联进 bundle，由插件的 migrate() 按序应用
+const migrations = import.meta.glob&lt;string&gt;('./drizzle/*.sql', {
+  eager: true, query: '?raw', import: 'default',
+});
+await migrate('sqlite:encrypted.db', migrations);
+
+export const db = drizzle(
+  createDrizzleProxyWithEncryption({
+    path: 'sqlite:encrypted.db',
+    encryption: { cipher: 'aes256cbc', key: myKey32Bytes }, // Uint8Array，必须 32 字节
+  }),
+  { schema },
+);
+
+const users = await db.select().from(schema.users); // 常规 drizzle 用法零差别
+</code></pre>
+<p>该插件 README 醒目警告：embedded replica 模式同样踩 6.1 所述的上游加密静默失效 bug<sup class="cite">[158]</sup><sup class="cite">[76]</sup>。若自写 proxy callback（例如 Rust 侧 sqlx + SQLCipher，连接建立时注入 <code>pragma("key", ...)</code>），需注意一个重大限制：<strong><code>db.transaction(async tx =&gt; {...})</code> 不可用</strong>——proxy 把事务内每条语句作为独立查询发送，后端无法感知事务上下文；解法是用 <code>db.batch()</code>（在单事务上下文中执行）或为复杂事务写专用 Tauri command<sup class="cite">[100]</sup>。kunkun.sh 给出了基于 <code>@tauri-apps/plugin-sql</code> 的自写 callback 完整实现（按 <code>isSelectQuery</code> 分流、按 method 组装返回值），可原样套到任何加密后端<sup class="cite">[165]</sup>。移动端变体同理：expo-sqlite 开库后立即 <code>PRAGMA key</code>（Drizzle 是其官方点名集成）<sup class="cite">[161]</sup>；op-sqlite 用 <code>sqlcipher: true</code> 编译开关，<code>drizzle-orm/op-sqlite</code> 驱动照常使用<sup class="cite">[176]</sup>。Capacitor 生态的 <code>@capacitor-community/sqlite</code> 则在原生端内置 SQLCipher、Electron 端直接复用路径 B 的 better-sqlite3-multiple-ciphers，官方文档同样列出 Drizzle 集成方式<sup class="cite">[164]</sup>——可见路径 C 的"proxy 背后接什么驱动"问题，在各平台上都已有现成答案。</p>
+<p>还需要提示一个跨路径的迁移细节：drizzle 官方 sqlite-proxy migrator 在运行时通过 Node <code>fs</code> 读取 <code>.sql</code> 文件，这一假设在 WebView/移动端全部失效，因此凡走路径 C 的项目都必须采用构建期内联 SQL 的方案（如上文 <code>import.meta.glob</code>），这是与常规 SQLite 迁移流程的隐性差异之一<sup class="cite">[158]</sup>。</p>
+<h3 id="64-sqlite">6.4 与常规 SQLite 的使用差异</h3>
+<h4 id="641-drizzle-kit">6.4.1 drizzle-kit 工具链断裂与迁移工作流改造</h4>
+<p>这是加密接入与常规用法最大、也最容易被低估的差异。<strong><code>drizzle-kit generate</code> 是纯静态分析 schema.ts 生成 SQL，不连库，因此永远可用；但 <code>push</code> / <code>migrate</code> / <code>pull</code>（introspect）/ <code>studio</code> 对加密库全部报 <code>SQLITE_NOTADB</code></strong>，因为 <code>dbCredentials</code> 没有 <code>encryptionKey</code> 参数，drizzle-kit 内部以普通驱动打开文件，读到的是密文<sup class="cite">[166]</sup>。对应 feature request drizzle-team/drizzle-orm#3198 于 2024-10 提出，截至 2026-05-16 仍为 open（16 个 👍，最近一条评论仍在催更）；团队成员 2025-08 的批量回复表明工作重心在 drizzle-kit 重写与 v1，该需求未被单独认领<sup class="cite">[166]</sup>。实战中的一个典型陷阱是：文档没有 <code>encryptionKey</code>，有人误以为参数名错误改成 <code>authToken</code>，结果"不报错"了——实际是加密被静默禁用，库文件以明文落盘<sup class="cite">[102]</sup>。</p>
+<p>社区共识的绕行方案是"生成与执行分离"：<code>generate</code> 离线生成 SQL，应用启动时用运行时 migrator（复用已带 key 的连接）执行迁移：</p>
+<pre><code class="language-ts">// scripts/migrate.ts —— 用带 encryptionKey 的运行时 client 替代 drizzle-kit migrate
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { migrate } from 'drizzle-orm/libsql/migrator';
+import 'dotenv/config';
+
+const client = createClient({
+  url: `file:${process.env.DB_FILE_NAME}`,
+  encryptionKey: process.env.ENCRYPTION_KEY,
+});
+const db = drizzle(client);
+
+await migrate(db, { migrationsFolder: './drizzle' }); // 由 drizzle-kit generate 离线生成
+console.log('migrations applied');
+</code></pre>
+<div class="mermaid">
+flowchart TD
+    A[&quot;修改 schema.ts&quot;] --&gt; B[&quot;drizzle-kit generate（纯静态分析，不连库）&quot;]
+    B --&gt; C[&quot;drizzle/ 目录生成 SQL 迁移文件&quot;]
+    C --&gt; D{&quot;如何应用迁移？&quot;}
+    D --&gt;|&quot;drizzle-kit push / migrate&quot;| E[&quot;失败：SQLITE_NOTADB，dbCredentials 无 encryptionKey 注入点（issue #3198 open）&quot;]
+    D --&gt;|&quot;运行时 migrator（推荐）&quot;| F[&quot;tsx scripts/migrate.ts 或应用启动时 migrate()&quot;]
+    F --&gt; G[&quot;复用带 key 的连接，迁移正常落盘&quot;]
+    E --&gt; H[&quot;pull / studio 同样不可用；临时解法是先解密出明文副本再操作&quot;]
+</div>
+
+<p>这一工作流改造是"Drizzle + 加密 SQLite"真正的接入成本：CI 里跑 <code>generate</code>，应用启动序列里跑 <code>migrate</code>（puntovivo 即把迁移作为启动时的唯一 schema 路径）<sup class="cite">[177]</sup><sup class="cite">[178]</sup>。它同时兼容另一个非加密特有的坑——drizzle-kit 在 Electron 环境下会因 ABI 不匹配报 <code>NODE_MODULE_VERSION</code> 错误（drizzle-kit 用宿主 Node 的 better-sqlite3 构建），生成与执行分离恰好一并绕开<sup class="cite">[175]</sup>。两个附带注意事项：drizzle-kit 使用 libsql dialect 时要求本地安装 <code>@libsql/client</code> 包，否则报 "please install required packages: '@libsql/client'"<sup class="cite">[167]</sup>；<code>dialect: 'turso'</code> 时 <code>url</code>/<code>authToken</code> 为必填校验，本地 <code>file:</code> URL 可不带 authToken<sup class="cite">[168]</sup>。</p>
+<h4 id="642">6.4.2 运行时与工具链的其余差异点</h4>
+<table>
+<thead>
+<tr>
+<th>差异维度</th>
+<th>常规 SQLite</th>
+<th>加密 SQLite</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>连接参数</td>
+<td><code>new Database('x.db')</code> / <code>createClient({url})</code></td>
+<td>libsql 多一个 <code>encryptionKey</code>；mc 系须在首条语句前发 <code>cipher → legacy → key</code><sup class="cite">[34]</sup><sup class="cite">[178]</sup></td>
+</tr>
+<tr>
+<td>key 错误的表现</td>
+<td>——</td>
+<td><code>PRAGMA key</code> 返回 ok 不代表正确，首次读写才报 <code>file is not a database</code>（errno 26）<sup class="cite">[34]</sup></td>
+</tr>
+<tr>
+<td>内存库</td>
+<td><code>:memory:</code> 正常</td>
+<td><code>:memory:</code> 不支持 key，fork 直接抛错<sup class="cite">[178]</sup></td>
+</tr>
+<tr>
+<td>bun:sqlite / node:sqlite</td>
+<td>Drizzle 官方支持</td>
+<td>❌ 均无加密接口；bun issue #11397 截至 2026-07-26 仍 open<sup class="cite">[93]</sup><sup class="cite">[90]</sup></td>
+</tr>
+<tr>
+<td>drizzle-kit 连库命令</td>
+<td>push/migrate/pull/studio 可用</td>
+<td>全部 SQLITE_NOTADB，须 generate + 运行时 migrator<sup class="cite">[166]</sup></td>
+</tr>
+<tr>
+<td>GUI 浏览/introspection</td>
+<td>任意 SQLite GUI 可用</td>
+<td>需带 cipher 支持的工具：DB Browser（内置 SQLCipher，可调 KDF/HMAC）、SQLiteStudio（选 SQLCipher 类型）；libSQL 格式则只能用 libSQL 客户端打开<sup class="cite">[160]</sup><sup class="cite">[172]</sup><sup class="cite">[71]</sup></td>
+</tr>
+<tr>
+<td>在线备份</td>
+<td><code>sqlite3_backup_init</code> 可用</td>
+<td>SQLCipher 加密库不支持在线备份 API，明文⇄密文转换用 <code>ATTACH ... KEY</code> + <code>sqlcipher_export()</code>；直接 <code>cp</code> 文件仍有效<sup class="cite">[2]</sup><sup class="cite">[159]</sup></td>
+</tr>
+<tr>
+<td>迁移事务</td>
+<td>常规即可</td>
+<td>drizzle 把迁移包在 BEGIN/COMMIT 中，<code>PRAGMA foreign_keys=OFF</code> 在事务内无效，CASCADE 子表会被静默清空；须连接级先关 FK（issue #5782）<sup class="cite">[170]</sup></td>
+</tr>
+</tbody>
+</table>
+<p>这张表揭示了两个结构性事实。第一，差异高度集中在"连接建立的一瞬"与"schema 变更的一刻"，日常 CRUD 完全不受影响——这解释了为什么三条路径都能宣称"运行时零差别"。第二，Bun 用户处于最不利位置：<code>bun:sqlite</code> 无 codec 接口且功能请求两年未排期，在 Bun 中想要加密只能改用 <code>@libsql/client</code>（官方支持 Bun）或 <code>libsql-js</code>（better-sqlite3 兼容 API，明确支持 Bun/Deno），在 Bun 里加载 better-sqlite3-multiple-ciphers 原生模块虽可行但有 ABI 匹配与 <code>bun build --compile</code> 的已知问题<sup class="cite">[93]</sup><sup class="cite">[94]</sup><sup class="cite">[95]</sup><sup class="cite">[96]</sup>。GUI 一栏则与第 4 章的运维结论呼应：libSQL 与 SQLCipher 两套加密格式互不兼容，跨格式迁移数据只能解密导出再导入<sup class="cite">[102]</sup>，这也意味着路径 A/B 之间的切换不是改配置而是做数据搬迁。</p>
+<h2 id="7">7. 选型决策框架与建议</h2>
+<p>前文六章给出了方案全景、原理、格式兼容性、性能开销与 Drizzle 接入路径，本章不再重复这些数据，只做决策综合：先用三条否决线排除"不该做文件级加密"的情形，再按数据位置→合规级别→格式互通需求收敛到具体方案。</p>
+<h3 id="71">7.1 三条否决线先行</h3>
+<p><strong>否决线一：密钥只能硬编码。</strong> 文件级加密的全部安全强度系于密钥，而硬编码在客户端二进制中的密钥可从 APK/可执行文件直接提取，用 Frida hook 关闭加密也只是"有趣的逆向挑战"级别的工作量<sup class="cite">[184]</sup><sup class="cite">[189]</sup>。Signal 模式之所以成立，是因为密钥存放在 Android Keystore/iOS Keychain 中、由操作系统信任链保护；即便如此，root 设备上仍可通过内存 dump 取到明文密钥<sup class="cite">[185]</sup>。若目标平台没有任何可用的 Keystore/KMS，文件级加密退化为混淆，应停止选型、先解决密钥管理。</p>
+<p><strong>否决线二：服务端已有 FDE 且威胁模型是在线攻击。</strong> 全盘加密（FDE）与数据库文件加密都只保护"介质离线"场景；对已拿到系统访问权的在线攻击者，运行态的加密文件"might as well be plaintext"，再叠一层数据库加密属于 security theater<sup class="cite">[196]</sup><sup class="cite">[197]</sup>。机房/云盘已有 FDE 或云 KMS 时，"enable Full Disk Encryption and call it a day"是合理终点<sup class="cite">[196]</sup>。</p>
+<p><strong>否决线三：仅个别字段敏感。</strong> 整库加密做不到颗粒度，也让其余本可查询的数据一并不可检索。真正匹配"只有 PII/支付列敏感"的方案是应用层字段级加密、密钥外置 KMS/HSM，连 DBA 也无法解密；WorkOS 引述的 Forrester 数据称采用应用层加密的企业内部人泄露事件减少 78%（厂商立场数据，仅供参考）<sup class="cite">[198]</sup><sup class="cite">[199]</sup>。折中选项是 SQLCipher 商业版独占的 Value Level Encryption（库内部分加密），但其 $999/应用/年起的订阅门槛需计入成本<sup class="cite">[20]</sup><sup class="cite">[179]</sup>。</p>
+<h3 id="72">7.2 决策树与分场景建议</h3>
+<p>通过三条否决线后，按下图收敛。决策次序刻意设计为：先定数据位置（决定密钥可依托什么），再问合规级别（决定算法与认证要求），最后问格式互通（决定文件格式层面的锁定程度）。</p>
+<div class="mermaid">
+flowchart TD
+    S[&quot;需要加密的 SQLite 数据&quot;] --&gt; V0{&quot;密钥能否依托 OS Keystore 或 KMS，避免硬编码？&quot;}
+    V0 --&gt;|&quot;不能&quot;| X1[&quot;否决线 1：先解决密钥管理，否则加密只是混淆&quot;]
+    V0 --&gt;|&quot;能&quot;| V1{&quot;仅个别字段敏感？&quot;}
+    V1 --&gt;|&quot;是&quot;| X2[&quot;否决线 3：字段级加密＋外置 KMS，不用整库加密&quot;]
+    V1 --&gt;|&quot;否，整库敏感&quot;| L{&quot;数据位置&quot;}
+    L --&gt;|&quot;服务端，已有 FDE 且威胁为在线攻击&quot;| X3[&quot;否决线 2：FDE 已足够，勿叠加文件级加密&quot;]
+    L --&gt;|&quot;移动端&quot;| C{&quot;合规级别&quot;}
+    C --&gt;|&quot;GDPR／HIPAA 级&quot;| R1[&quot;SQLCipher Community＋Android Keystore 或 iOS Keychain&quot;]
+    C --&gt;|&quot;FedRAMP／金融强合规&quot;| R2[&quot;SQLCipher Enterprise FIPS，唯一 FIPS 140-3 验证选项&quot;]
+    C --&gt;|&quot;等保／密评国密强制&quot;| R3[&quot;SQLCipher＋GmSSL SM4 自改造，或国产库原生 TDE&quot;]
+    L --&gt;|&quot;桌面&quot;| R4[&quot;Electron：better-sqlite3-multiple-ciphers；Tauri：Rust 后端自管 SQLCipher&quot;]
+    L --&gt;|&quot;服务端多租户 SaaS&quot;| Y{&quot;需云同步或边缘复制？&quot;}
+    Y --&gt;|&quot;是&quot;| R5[&quot;libSQL／Turso，encryptionKey 自管；先实测副本加密链路&quot;]
+    Y --&gt;|&quot;否&quot;| R6[&quot;SQLCipher 或 sqlite3mc＋平台侧密钥服务&quot;]
+    R1 --&gt; F{&quot;数据库文件需第三方工具离线互读？&quot;}
+    R4 --&gt; F
+    R6 --&gt; F
+    F --&gt;|&quot;是&quot;| F1[&quot;限定 SQLCipher 或 sqlite3mc legacy 格式，排除 Turso 私有格式&quot;]
+    F --&gt;|&quot;否且可接受锁定&quot;| F2[&quot;Turso 加密可进入候选&quot;]
+</div>
+
+<p>图注：决策树按"否决线→数据位置→合规级别→格式互通"四层收敛；任何否决线命中都应终止文件级加密选型。</p>
+<p>分场景的具体推荐栈如下表：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>推荐栈</th>
+<th>密钥管理</th>
+<th>关键约束</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>移动端 Android/iOS</td>
+<td>SQLCipher Community（android-database-sqlcipher 2,800★ / 官方 SQLCipher.swift SPM） <sup class="cite">[126]</sup><sup class="cite">[127]</sup></td>
+<td>随机 256-bit 密钥存 Android Keystore / iOS Keychain<sup class="cite">[184]</sup></td>
+<td>APK 每架构 +2–3MB，性能开销 5–15%；上架需 EAR 出口管制声明<sup class="cite">[200]</sup><sup class="cite">[101]</sup></td>
+</tr>
+<tr>
+<td>桌面 Electron</td>
+<td>better-sqlite3-multiple-ciphers（默认 sqleet/ChaCha20-Poly1305）<sup class="cite">[157]</sup></td>
+<td>OS keychain，勿进渲染进程</td>
+<td>DB Browser 只能开 SQLCipher legacy 格式，选格式时先定 GUI 工具链<sup class="cite">[157]</sup></td>
+</tr>
+<tr>
+<td>桌面 Tauri</td>
+<td>绕过官方 SQL 插件（加密 issue 挂起 3 年），Rust 后端自管 sqlx+SQLCipher；或 tauri-plugin-libsql<sup class="cite">[100]</sup><sup class="cite">[158]</sup></td>
+<td>密钥存 OS keychain，"lost key = lost data"<sup class="cite">[158]</sup></td>
+<td>官方插件不支持加密是结构性限制</td>
+</tr>
+<tr>
+<td>服务端本地（自托管/NAS）</td>
+<td>默认不加密：FDE＋云 KMS；确需"运维不可见"时走字段级加密<sup class="cite">[196]</sup><sup class="cite">[198]</sup></td>
+<td>KMS/HSM</td>
+<td>文件级加密在此多为 security theater</td>
+</tr>
+<tr>
+<td>多租户 SaaS</td>
+<td>边缘同步：libSQL/Turso encryptionKey 自管；自托管：SQLCipher/sqlite3mc＋平台密钥服务<sup class="cite">[70]</sup><sup class="cite">[187]</sup></td>
+<td>每租户独立密钥</td>
+<td>embedded replica 走 V2 sync 时加密配置被静默丢弃（libsql#1122/#2165），上线前必须实测<sup class="cite">[76]</sup></td>
+</tr>
+<tr>
+<td>Go 后端</td>
+<td>mattn/go-sqlite3（9,185★）＋系统 libsqlcipher ＞ go-libsql WithEncryption ＞ ncruces adiantum VFS<sup class="cite">[103]</sup><sup class="cite">[108]</sup><sup class="cite">[109]</sup></td>
+<td>依赖部署环境密钥服务</td>
+<td>mattn 主仓无 sqlcipher build tag，需 <code>-tags libsqlite3</code> 链接系统库再发 <code>PRAGMA key</code><sup class="cite">[104]</sup><sup class="cite">[105]</sup></td>
+</tr>
+</tbody>
+</table>
+<p>表中有三点值得展开。<strong>移动端</strong>推荐强度最高，因为信任链最完整：密钥有 OS 级硬件/TEE 背书，SQLCipher 有 Signal、Salesforce SmartStore 等大规模生产先例<sup class="cite">[185]</sup><sup class="cite">[22]</sup>，体积与性能成本均已量化。<strong>桌面端</strong>的短板在密钥——没有统一的 Keystore 抽象，密钥若随安装包分发即触发否决线一。<strong>Go 后端</strong>的排序反映生态现实而非方案优劣：mattn 路径成熟但要管 cgo 与系统库；go-libsql 一行接入（243★，绑定 Turso 生态）<sup class="cite">[108]</sup>；ncruces adiantum VFS 是唯一的 cgo-free 选项，但其 README 明确声明"不防篡改"、确定性加密下多快照可区分块变化，只适合低威胁场景<sup class="cite">[110]</sup>。多租户一行中的副本加密 bug 是本表唯一的实测红线：它是上游已确认、社区复现的问题，不是理论风险<sup class="cite">[76]</sup>。</p>
+<h3 id="73-2026">7.3 2026 年生产选型结论</h3>
+<p>开源格局已收敛为"一超一强一新"三层：SQLCipher（7,213★，移动端事实标准，BSD 社区版＋三档商业版）<sup class="cite">[52]</sup><sup class="cite">[179]</sup>、SQLite3MultipleCiphers（661★，但下游覆盖最广，被 LumoSQL 知识库称为"截至 2026 年最活跃维护的开源 SQLite 加密方案"）<sup class="cite">[122]</sup><sup class="cite">[182]</sup>、Turso（23,431★，但加密仍为 experimental、无第三方工具链）<sup class="cite">[53]</sup><sup class="cite">[66]</sup>。据此，<strong>2026 年的成熟生产路径只有两条：SQLCipher 系与 sqlite3mc 系</strong>。两者的选择不是优劣题而是生态题：要 FIPS 140-3 验证（注意 140-2 证书 2026-09-21 全部转 Historical，新采购须按 140-3 评估）、商业支持或移动端先例，选 SQLCipher<sup class="cite">[5]</sup><sup class="cite">[206]</sup>；要格式逃生舱——sqlite3mc 的 legacy 模式可读写 SQLCipher v1–v4 与 sqleet 文件，是唯一不被单一格式锁死的方案——或免费多 cipher 组合，选 sqlite3mc<sup class="cite">[32]</sup>。Turso 加密适合新项目试水：性能与工程体验领先，但必须接受"文件只能被 Turso 引擎打开"的锁定与 experimental 状态，核心生产数据建议等其加密标记转正、第三方工具链出现后再迁入<sup class="cite">[66]</sup>。预算充足且要求官方背书的嵌入式场景，SEE（约 $2,000 一次性永久授权，HN 有 13 年无故障使用反馈）仍是合规捷径<sup class="cite">[191]</sup>。</p>
+<h2 id="8">8. 攻击向量与明文生命周期</h2>
+<p>第 3 章已确立页级加密模型的基本事实：内存恒明文、落盘恒密文；第 7 章的推荐架构（bun compile 单文件分发 + better-sqlite3-multiple-ciphers + UKey 启动时注入 raw 32 字节 key）把密钥移出了二进制，但只堵住"拷文件 + 逆向提 key"一条路径。本章回答两个问题：除离线拷贝外还有哪些现实攻击面；明文与密钥在磁盘、内存各处停留多久、能被什么机制清除。基线判断：SQLCipher v4/sqlite3mc 的磁盘侧设计（AES-256-CBC、每页独立随机 IV、每页 HMAC-SHA512、文件含 WAL 呈白噪声）无已知弱点，raw key 模式跳过 PBKDF2<sup class="cite">[1]</sup><sup class="cite">[34]</sup>，"离线拷文件且无密钥"不可破，攻击面全部转移到<strong>运行时、旁路副本、主机与交付链路</strong>三类。</p>
+<h3 id="81">8.1 攻击向量分析</h3>
+<table>
+<thead>
+<tr>
+<th>攻击向量</th>
+<th>攻击前提</th>
+<th>暴露内容</th>
+<th>现实威胁</th>
+<th>主要缓解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>运行时内存读取（ptrace、<code>/proc/&lt;pid&gt;/mem</code>）</td>
+<td>同 uid 非特权进程，或 root</td>
+<td>page cache 明文页、codec 工作缓冲、密钥副本，等价于未加密</td>
+<td>最高 <sup class="cite">[217]</sup><sup class="cite">[218]</sup></td>
+<td><code>PR_SET_DUMPABLE=0</code>、<code>ptrace_scope≥2</code></td>
+</tr>
+<tr>
+<td>core dump / crash report</td>
+<td>进程崩溃或被诱导崩溃</td>
+<td>全量内存快照（内存读取的离线版）</td>
+<td>高 <sup class="cite">[222]</sup></td>
+<td>进程/rlimit/sysctl/systemd/容器多层封堵</td>
+</tr>
+<tr>
+<td>swap 与休眠镜像</td>
+<td>系统启用 swap 或 S4 休眠</td>
+<td>内存明文的落盘投影，进程退出后残留</td>
+<td>中高 <sup class="cite">[226]</sup><sup class="cite">[227]</sup></td>
+<td>禁 swap 或加密 swap、禁休眠</td>
+</tr>
+<tr>
+<td>LD_PRELOAD / Frida hook</td>
+<td>同主机执行权限</td>
+<td><code>sqlite3_key</code> 参数、解密后明文</td>
+<td>中（防逆向目标下为高） <sup class="cite">[229]</sup><sup class="cite">[231]</sup></td>
+<td>原生代码静态链接、环境审计</td>
+</tr>
+<tr>
+<td>合法导出通道（<code>sqlcipher_export</code>、ATTACH 明文库、<code>VACUUM INTO</code>）</td>
+<td>任意可执行 SQL 的路径</td>
+<td>全量明文副本文件</td>
+<td>应用逻辑级最高危 <sup class="cite">[136]</sup><sup class="cite">[216]</sup></td>
+<td>authorizer 或 DBCONFIG 禁用</td>
+</tr>
+<tr>
+<td>temp 排序/瞬时索引文件</td>
+<td>大 ORDER BY/GROUP BY 触发磁盘溢出</td>
+<td>明文临时数据（codec 不覆盖）</td>
+<td>中 <sup class="cite">[235]</sup><sup class="cite">[146]</sup></td>
+<td><code>PRAGMA temp_store = MEMORY</code></td>
+</tr>
+<tr>
+<td>日志 / APM 泄漏</td>
+<td>日志记录 SQL 文本、绑定参数、异常堆栈</td>
+<td>明文片段随日志长期留存</td>
+<td>中 <sup class="cite">[237]</sup></td>
+<td>字段过滤脱敏、生产关闭 cipher_log</td>
+</tr>
+<tr>
+<td>供应链 / 分发篡改</td>
+<td>npm 依赖链、预编译 <code>.node</code>、vendored 源码被替换</td>
+<td>codec 内植马，运行时窃 key</td>
+<td>中 <sup class="cite">[239]</sup><sup class="cite">[240]</sup></td>
+<td>lockfile + 私有 registry + 代码签名</td>
+</tr>
+<tr>
+<td>UKey 交互层</td>
+<td>PIN 爆破、主机↔UKey 通信嗅探、PKCS#11 被 hook</td>
+<td>PIN、raw key 导出瞬间的主机明文</td>
+<td>低概率高影响 <sup class="cite">[241]</sup><sup class="cite">[243]</sup></td>
+<td>重试锁定策略确认、缩短暴露窗口</td>
+</tr>
+</tbody>
+</table>
+<p>表中三条规律值得注意。其一，<strong>威胁排序与加密强度无关</strong>：排名最高的两类（内存读取、core dump）完全绕开密码学、直接读取解密后的产物，是"内存恒明文"架构属性的必然推论。其二，<strong>旁路类向量（导出通道、temp、日志）攻击前提最低</strong>——不需要 root 和调试器，任何能执行 SQL 或读日志的路径即可触发，反而最可能首先被利用。其三，UKey 交互层概率最低但不可消除：raw key 必须离开硬件进入主机内存，是架构的固有暴露窗口而非配置缺陷。</p>
+<h4 id="811">8.1.1 运行时攻击面</h4>
+<p>运行时内存读取门槛极低：<code>gdb -p &lt;pid&gt;</code> 附加后 dump，或遍历 <code>/proc/&lt;pid&gt;/maps</code> 逐段转储再 <code>strings</code> 检索。权限由 yama <code>ptrace_scope</code> 决定：<code>=0</code> 同 uid 即可附加，多数发行版默认 <code>=1</code>（仅限父进程），<code>=2</code> 需 <code>CAP_SYS_PTRACE</code>，<code>=3</code> 完全禁止<sup class="cite">[217]</sup>；Linux 3.3 起读 <code>/proc/&lt;pid&gt;/mem</code> 与 ptrace 权限等价<sup class="cite">[218]</sup>。由此产生一个高价值联动：<strong><code>prctl(PR_SET_DUMPABLE, 0)</code> 不仅禁 core dump，还让同 uid 非特权进程无法读 <code>/proc/&lt;pid&gt;/mem</code></strong>，一次调用封堵两条路径，应在启动早期执行<sup class="cite">[219]</sup><sup class="cite">[220]</sup>。root 或持 <code>CAP_SYS_PTRACE</code> 者可绕过一切用户态防护，<strong>不可防</strong>，只能纳入"主机沦陷即失败"假设<sup class="cite">[217]</sup><sup class="cite">[218]</sup>。容器环境有两处反直觉差异：默认不授 <code>CAP_SYS_PTRACE</code>，内存读取面反而收窄<sup class="cite">[221]</sup>；但 coredump 内核接口<strong>不做 namespace 隔离</strong>，容器内进程的 dump 落到宿主机，且容器可自设 <code>ulimit -c</code>——宿主禁了 coredump ≠ 容器内不产生<sup class="cite">[223]</sup><sup class="cite">[224]</sup>。core dump 封堵需多层叠加：进程 <code>PR_SET_DUMPABLE=0</code>、rlimit（systemd 服务需另配 <code>DefaultLimitCORE=0</code>）、sysctl、systemd-coredump <code>Storage=none</code>、容器 <code>--ulimit core=0</code><sup class="cite">[222]</sup><sup class="cite">[225]</sup>；apport、ABRT 及 Node 的 <code>--report-on-fatalerror</code>/heapsnapshot 可能绕开部分层<sup class="cite">[224]</sup>。</p>
+<h4 id="812">8.1.2 数据旁路</h4>
+<p>最危险的旁路是<strong>合法导出通道</strong>：官方文档明确演示 <code>ATTACH DATABASE 'plaintext.db' AS plaintext KEY ''; SELECT sqlcipher_export('plaintext');</code> 即生成全量明文副本<sup class="cite">[136]</sup>，<code>VACUUM INTO</code> 同样能把整库写到任意路径<sup class="cite">[216]</sup>——任何能执行 SQL 的路径（注入、调试接口、被 hook 的连接）都等价于"整库明文带走"。缓解在连接层：<code>SQLITE_DBCONFIG_ENABLE_ATTACH</code> 置 0 或 authorizer 拒绝 ATTACH/DETACH 并审计 VACUUM INTO；备份侧 SQLCipher 4.1.0 起禁止对加密库用在线备份 API<sup class="cite">[233]</sup><sup class="cite">[234]</sup>。第二处是 <strong>temp 文件</strong>：排序、瞬时索引、物化子查询的临时文件<strong>不经 codec、内容为明文</strong><sup class="cite">[235]</sup><sup class="cite">[146]</sup>，官方建议是编译期 <code>SQLITE_TEMP_STORE=2/3</code>、每连接 <code>PRAGMA temp_store = MEMORY</code>，代价是大排序内存无界、可能 OOM<sup class="cite">[29]</sup><sup class="cite">[236]</sup>。第三处是<strong>日志</strong>：SQL 文本、绑定参数、异常堆栈进入日志或 APM 即成长期留存的明文副本，OWASP ASVS V3.1.1 类规范要求敏感数据不进日志<sup class="cite">[237]</sup>；SQLCipher CLI 编译 readline 时把 <code>PRAGMA key</code> 从历史剔除，属同一思路<sup class="cite">[238]</sup>。</p>
+<h4 id="813">8.1.3 环境与分发层</h4>
+<p><strong>swap 与休眠</strong>是内存明文的被动落盘通道：密钥与明文页可被换出且进程退出后残留；休眠（S4）把<strong>全部 RAM（含 mlock 页）</strong>写入休眠镜像——mlock 只防常规换出且按页对齐，这正是 sqlite3mc 官方拒绝"锁定所有分配"的理由<sup class="cite">[226]</sup><sup class="cite">[227]</sup><sup class="cite">[34]</sup>。可靠解法在 OS 层：禁/加密 swap、<code>vm.swappiness=1</code>、禁休眠<sup class="cite">[225]</sup><sup class="cite">[228]</sup>。<strong>分发链路</strong>上，<code>bun build --compile</code> 内嵌 JS 源码可被现成工具提取，混淆只提高成本，藏在代码里的密钥派生逻辑应视为公开——本场景密钥在 UKey 中，方向正确<sup class="cite">[232]</sup>；但 JS 层打包不等于原生代码全静态链接，LD_PRELOAD 可同名覆盖 <code>sqlite3_key</code>、OpenSSL EVP 等符号截取密钥（<code>/etc/ld.so.preload</code> 是 MITRE ATT&amp;CK T1574.006 持久化手段），静态链接可免疫，需核实 OpenSSL/sqlite3mc 是否静态进二进制<sup class="cite">[229]</sup><sup class="cite">[230]</sup>。Frida 可按导出符号或静态分析偏移 hook 任意原生函数 dump 出 raw key，反检测是"通常攻击者能赢"的猫鼠游戏<sup class="cite">[231]</sup>。预编译 <code>.node</code> 与 npm 依赖链被替换可在 codec 内植马，Node policy 完整性校验曾存在绕过漏洞（CVE-2023-38552），现实组合是锁定依赖 + 私有 registry + 代码签名<sup class="cite">[239]</sup><sup class="cite">[240]</sup>。<strong>UKey 交互层</strong>：PIN 爆破依赖片上重试计数器，TPM 同类机制示例为"立即 32 次、之后每 2 小时 1 次"，4 位 PIN 全枚举需两年以上，需确认所用 UKey 的锁定策略<sup class="cite">[241]</sup>；raw key 导出瞬间必然以明文经过主机内存与总线，是全架构最脆弱一刻，支持卡内运算或包裹导出的 UKey 应优先；PKCS#11 的 <code>C_Login</code> PIN 以参数进入进程地址空间、可被 hook<sup class="cite">[243]</sup>。</p>
+<h3 id="82">8.2 明文停留位置与停留时间</h3>
+<p>下图汇总推荐架构下明文（含密钥）的全部暴露面：密文只在主库、WAL 与备份中成立，一旦进入进程或在 codec 之外产生副本即转为明文，各有独立的停留时间与清除难度。</p>
+<div class="mermaid">
+flowchart TD
+    UK[&quot;硬件 UKey&quot;] --&gt;|&quot;启动时导出 raw 32 字节 key，明文&quot;| KB[&quot;进程内存：密钥 Buffer 副本&quot;]
+    DB[&quot;主库文件／WAL／备份（密文）&quot;] --&gt; CDC[&quot;codec 逐页解密&quot;]
+    KB --&gt; CDC
+    CDC --&gt; PC[&quot;page cache：明文页，连接生命周期&quot;]
+    PC --&gt; V8[&quot;V8／JSC 堆：查询结果字符串，GC 不零化&quot;]
+    PC -.-&gt;|&quot;崩溃时全量快照&quot;| CD[&quot;core dump（明文）&quot;]
+    PC -.-&gt;|&quot;换出／休眠 S4&quot;| SW[&quot;swap／休眠镜像（明文投影，退出后残留）&quot;]
+    SORT[&quot;大排序／瞬时索引&quot;] --&gt; TMP[&quot;temp 文件（明文，不经 codec）&quot;]
+    EXP[&quot;sqlcipher_export／ATTACH 明文库／VACUUM INTO&quot;] --&gt; PF[&quot;明文副本文件（直到管理员删除）&quot;]
+    APP[&quot;应用日志／APM&quot;] --&gt; LG[&quot;明文 SQL 与绑定参数（随日志留存）&quot;]
+</div>
+
+<p>图注：实心箭头为数据流向，虚线为事件触发的内存投影；图中仅"主库／WAL／备份"为密文，其余均为明文暴露面，对应 8.3 节的清除机制评级。</p>
+<h4 id="821">8.2.1 磁盘侧</h4>
+<p>主库是密文，但<strong>已删除数据残留</strong>是第一处陷阱：<code>secure_delete=off</code> 时 freelist 页与空闲块中的已删记录可用取证工具恢复<sup class="cite">[244]</sup><sup class="cite">[245]</sup>。secure_delete 默认口径在三处来源间存在差异，须并列呈现：标准 SQLite 默认 OFF（除非编译 <code>SQLITE_SECURE_DELETE</code>）<sup class="cite">[213]</sup><sup class="cite">[214]</sup>；SQLCipher 官方构建按惯例默认 ON<sup class="cite">[251]</sup>；<strong>sqlite3mc 取决于发行构建，属数据缺口，必须以 <code>PRAGMA secure_delete;</code> 实测确认</strong>。即便开启，WAL 模式下也要等 checkpoint 才零化主库，旧内容在截断前仍可恢复——DFRWS 2019 实验证明 secure_delete + WAL 下全部已删记录仍可从 WAL 帧历史完整恢复<sup class="cite">[248]</sup><sup class="cite">[215]</sup>；<code>FAST</code> 档只清 B-tree 页不清 freelist，官方自承"并不真正安全"，且均不覆盖 FTS 影子表<sup class="cite">[213]</sup><sup class="cite">[215]</sup>。<code>VACUUM</code> 重建库文件、仅拷存活页，官方明确"清除所有已删内容痕迹"，代价约 2 倍磁盘空间与全程写锁<sup class="cite">[216]</sup>。WAL 帧与主库同 key 加密（首帧前 16 字节盐为明文头），rollback journal 同为密文且事务结束即删，更利于安全删除<sup class="cite">[246]</sup><sup class="cite">[247]</sup><sup class="cite">[215]</sup>。介质物理层是第二处陷阱：SSD 磨损均衡使"已覆盖"数据以残影长期存在，覆写不可靠、TRIM 回收时间不确定；NIST SP 800-88 认定对 SSD 可靠的只有 Secure Erase、<strong>加密擦除（销毁密钥）</strong>与物理销毁——全库加密本身就是最强的介质级擦除手段<sup class="cite">[249]</sup><sup class="cite">[250]</sup>。</p>
+<h4 id="822">8.2.2 内存侧</h4>
+<p>内存侧停留时间由架构决定而非配置决定。<strong>page cache 明文页与连接同生命周期</strong>：codec 读出即解密入缓存，52pojie 对微信 PC 版数据库的逆向也证实 codec 内部存在明文 buffer——常驻进程的密钥必然以可用形态存在于内存<sup class="cite">[1]</sup><sup class="cite">[252]</sup>。SQLCipher 始终对密码学内部分配做锁定与 free 前清零，关连接时密钥材料随 codec 上下文被擦除；<code>cipher_memory_security=ON</code> 扩展到全部分配，但 4.5.0 起因性能代价默认关闭、开启后不可逆<sup class="cite">[2]</sup><sup class="cite">[212]</sup><sup class="cite">[8]</sup>；sqlite3mc 的 <code>PRAGMA memory_security = 1</code> 只做 free 前清零、不做 mlock，需编译期选项否则为 no-op<sup class="cite">[34]</sup>。<strong>密钥副本驻留最易误判</strong>：raw key 经 better-sqlite3 传入时至少存在一份 JS Buffer 加一份原生副本，<strong>UKey 拔出后仍在进程内，直到连接关闭或进程退出</strong>——"拔 UKey 即锁库"不成立，须主动 <code>close()</code> + <code>fill(0)</code><sup class="cite">[34]</sup><sup class="cite">[253]</sup>。<strong>V8/JSC 堆</strong>中结果字符串、绑定参数不可变无法清零，GC 只回收不擦除，堆快照可完整捕获<sup class="cite">[253]</sup><sup class="cite">[254]</sup>。swap/休眠镜像则是以上一切的落盘投影，换出后直到被覆写，休眠镜像关机后仍在磁盘<sup class="cite">[226]</sup><sup class="cite">[227]</sup>。</p>
+<h3 id="83">8.3 清除机制与残余风险</h3>
+<h4 id="831">8.3.1 清除机制清单与工程落地性评级</h4>
+<p>下表汇总全部明文/残留位置，评级三档：<strong>A</strong> 为文档级标准配置（应默认做到）、<strong>B</strong> 为需自定义开发（值得做）、<strong>C</strong> 为基本防不住（只能接受或转移）。</p>
+<table>
+<thead>
+<tr>
+<th>位置</th>
+<th>明文/密文</th>
+<th>停留时间</th>
+<th>清除机制与可靠性</th>
+<th>评级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主库 freelist 已删数据</td>
+<td>密文（有 key 时可取证恢复）</td>
+<td>永久 <sup class="cite">[244]</sup></td>
+<td><code>secure_delete=ON</code> + 定期 VACUUM（先实测默认值；VACUUM 需约 2 倍空间与写锁）</td>
+<td>A</td>
+</tr>
+<tr>
+<td>WAL 旧帧</td>
+<td>密文</td>
+<td>至 checkpoint + 截断</td>
+<td>secure_delete 在 WAL 下延迟生效，帧历史可完整恢复已删记录；需 checkpoint truncate + VACUUM <sup class="cite">[248]</sup></td>
+<td>A（有陷阱）</td>
+</tr>
+<tr>
+<td>rollback journal</td>
+<td>密文（头为明文）</td>
+<td>事务结束即删</td>
+<td>DELETE 模式天然利于安全删除 <sup class="cite">[215]</sup></td>
+<td>A</td>
+</tr>
+<tr>
+<td>temp 排序/索引文件</td>
+<td>明文</td>
+<td>语句执行期间</td>
+<td><code>temp_store=MEMORY</code> 消除落盘；代价内存无界、可能 OOM <sup class="cite">[236]</sup></td>
+<td>A</td>
+</tr>
+<tr>
+<td>导出产物（export/ATTACH/VACUUM INTO）</td>
+<td>明文</td>
+<td>直到管理员删除</td>
+<td>authorizer 或 DBCONFIG 禁用导出路径 <sup class="cite">[136]</sup></td>
+<td>B</td>
+</tr>
+<tr>
+<td>备份、快照、镜像层</td>
+<td>密文</td>
+<td>依备份保留策略</td>
+<td>与密钥材料分离保管即可接受</td>
+<td>A</td>
+</tr>
+<tr>
+<td>SSD 物理残影</td>
+<td>密文或 temp 明文残影</td>
+<td>不确定（固件行为）</td>
+<td>覆写不可靠；以全库加密实现加密擦除，销毁密钥即擦除 <sup class="cite">[249]</sup></td>
+<td>C（可转移）</td>
+</tr>
+<tr>
+<td>page cache 明文页</td>
+<td>明文</td>
+<td>连接生命周期</td>
+<td>关连接释放；<code>cipher_memory_security=ON</code> 或 <code>memory_security=1</code> free 前清零 <sup class="cite">[212]</sup><sup class="cite">[34]</sup></td>
+<td>B</td>
+</tr>
+<tr>
+<td>密钥 Buffer 副本</td>
+<td>明文 32 字节</td>
+<td>UKey 拔出后仍在，至 close/退出</td>
+<td>拔出事件触发看门狗：<code>db.close()</code> + <code>fill(0)</code> <sup class="cite">[253]</sup></td>
+<td>B</td>
+</tr>
+<tr>
+<td>V8/JSC 堆明文</td>
+<td>明文</td>
+<td>至 GC 后内存被复写（不可预测）</td>
+<td>不可靠清除；缓解为 Buffer 化流转、禁 heapdump <sup class="cite">[254]</sup></td>
+<td>C</td>
+</tr>
+<tr>
+<td>swap/休眠镜像</td>
+<td>明文投影</td>
+<td>换出后至被覆写；休眠镜像关机后仍在</td>
+<td>OS 层禁/加密 swap、禁休眠；mlock 不防 S4 <sup class="cite">[226]</sup><sup class="cite">[227]</sup></td>
+<td>A（OS 层）</td>
+</tr>
+</tbody>
+</table>
+<p>表中呈现清晰的"清除能力分层"：磁盘侧除 SSD 残影外全部可达 A 级，因为清除动作（VACUUM、checkpoint、禁 temp 落盘）都在 SQLite 与 OS 的文档化能力之内；内存侧整体下沉到 B/C 级——page cache 与密钥副本需应用自建看门狗，V8 堆受 GC 语义限制无法保证零化。两个"有陷阱"的 A 级项需单独强调：WAL 模式下"开了 secure_delete ≠ 已删数据消失"，须叠加 checkpoint 截断与定期 VACUUM 才闭环<sup class="cite">[248]</sup>；<code>temp_store=MEMORY</code> 消除落盘的同时移除了内存上限承诺，大查询场景需压测确定水位<sup class="cite">[236]</sup>。A 档完整清单还包括 coredump 三层封堵、<code>ptrace_scope=2</code>、日志脱敏、依赖锁定加代码签名、UKey PIN 策略确认<sup class="cite">[219]</sup><sup class="cite">[225]</sup><sup class="cite">[217]</sup><sup class="cite">[237]</sup><sup class="cite">[239]</sup>；B 档另有静态链接 OpenSSL/sqlite3mc 缩小 LD_PRELOAD 面、容器 <code>--ulimit core=0</code> 与 drop 全部 capability<sup class="cite">[229]</sup><sup class="cite">[223]</sup>。</p>
+<h4 id="832">8.3.2 残余风险声明</h4>
+<p>三项风险在当前架构下<strong>无解</strong>，必须写入威胁模型文档而非回避。其一，<strong>root/CAP_SYS_PTRACE 内存读取</strong>：主机沦陷后一切用户态防护失效，page cache 明文与密钥副本全暴露，只能靠主机加固与入侵检测降低概率<sup class="cite">[217]</sup><sup class="cite">[218]</sup>。其二，<strong>Frida 级运行时 hook</strong>：可按偏移 hook 未导出的 codec 内部函数直接 dump raw key，反调试与混淆只提高成本<sup class="cite">[231]</sup>。其三，<strong>V8/JSC 堆明文不可彻底清除</strong>：字符串不可变与 GC 不零化是运行时语义，只能减少驻留量（Buffer 化流转、缩短对象生命周期），无法给出清除保证<sup class="cite">[253]</sup><sup class="cite">[254]</sup>。UKey 导出 raw key 瞬间的主机内存暴露属同一性质：除非改用卡内运算、永不导出的硬件方案，该窗口无法消除。这四项残余风险不推翻第 7 章的选型结论——给定"拷走文件不可读"的目标，SQLCipher v4/sqlite3mc + raw key + UKey 达标——但划定了适用边界：本架构防御的是<strong>离线攻击者</strong>，不是<strong>同主机在线攻击者</strong>。</p>
+<h2 id="9-wcdb">9. 腾讯 WCDB 专题与迁移接入</h2>
+<p>第 2 章已把腾讯 WCDB 列为国产开源代表（11,618 Stars、BSD-3-Clause、v2.1.16 活跃维护、加密经内嵌 SQLCipher 实现）<sup class="cite">[54]</sup>。鉴于它是微信全端在用的终端数据库、且在加密修复/备份方向有业界稀缺的能力，本章单独展开：9.1 节解析其架构、加密实现、特色能力与风险，9.2 节给出各平台接入、与 SQLCipher 生态互通、三条迁移路径、Node.js 侧结论与密钥管理集成。</p>
+<h3 id="91-wcdb">9.1 WCDB 深度解析</h3>
+<h4 id="911-c">9.1.1 架构演进：从三套实现到统一 C++ 核心</h4>
+<p>WCDB v1.x（2017-06 开源）同时提供 Objective-C/Swift/Java 三种语言接口，但三套代码除"共用同一版本 SQLite、共用同一套备份修复逻辑"外完全独立开发，新能力基本只在 ObjC 版落地，Swift/Java 版长期停更<sup class="cite">[256]</sup><sup class="cite">[257]</sup>。v2.x 于 2019 年启动重写、<strong>放弃接口向后兼容</strong>，2024-04-09 正式官宣：因 ObjC 版核心本就是 C++ 实现，顺势将核心逻辑完全 C++ 化，Swift/Java/Kotlin 经 C Bridge 桥接层接入同一核心（Kotlin 直接复用 Java 实现），形成 C++/Java/Kotlin/Swift/ObjC 五语言薄绑定；不同语言可集成进同一项目操作同一数据库而无逻辑冲突<sup class="cite">[256]</sup>。平台覆盖 iOS/macOS/Android/Windows/Linux/OpenHarmony（Windows 于 v2.0.2、OpenHarmony 于 v2.1.7、Mac Catalyst 于 v2.1.15 加入）<sup class="cite">[54]</sup><sup class="cite">[258]</sup>。v2.x 自我定位为"纯 ORM 框架"，官方明确表示对适配 Room 兴趣不大<sup class="cite">[259]</sup>。</p>
+<p>需要特别注意其 <strong>SQLite 版本跟随策略</strong>：WCDB 不直接跟随上游 SQLite/SQLCipher，而是跟随腾讯自维护的 Tencent/sqlcipher fork（git submodule 形式逐文件编译进 WCDB，CocoaPods 上以 <code>WCDBOptimizedSQLCipher</code> 发布）<sup class="cite">[54]</sup><sup class="cite">[260]</sup>。实测该 fork 在 WCDB 当前 submodule 指针（f049bed，2025-11-11 更新）处 CHANGELOG 顶端仍为 <strong>SQLCipher 4.1.0（基线 SQLite 3.27.2，2019-03）</strong>，腾讯在此基线上叠加自有补丁（异步 checkpoint 钩子、崩溃修复等）<sup class="cite">[260]</sup>。即 WCDB 的加密基线<strong>明显滞后于上游</strong>（上游 SQLCipher 已到 4.6.x 代际），这是选型时必须计入的事实。</p>
+<h4 id="912-sqlcipher">9.1.2 加密实现：接口极简，文件即标准 SQLCipher 格式</h4>
+<p>v2.x 的加密接口被压缩为一个方法：<code>setCipherKey(key, pageSize=4096, cipherVersion=Default)</code>，等价于依次配置 <code>PRAGMA key</code>（经 <code>sqlite3_key()</code> 下发）、<code>PRAGMA cipher_page_size</code>、<code>PRAGMA cipher_compatibility</code>；<strong>当前默认 cipherVersion = SQLCipher 4</strong>（256k 次 PBKDF2 迭代 + HMAC-SHA512），而 v1.x 时代默认为 3<sup class="cite">[263]</sup><sup class="cite">[264]</sup>。官方提供 <code>canOpen()</code> 接口，可在不确定建库参数时逐组配置探测<sup class="cite">[263]</sup>。v1.x 曾用 <code>SQLiteCipherSpec</code> 结构封装 cipher/pageSize/kdfIteration/hmacEnabled/版本号五个参数，同一结构可直接传给 RepairKit 复用<sup class="cite">[261]</sup><sup class="cite">[262]</sup>。未暴露的底层参数包括自定义 HMAC/KDF 算法、<code>cipher_plaintext_header_size</code> 与国密 SM4（issues #597、#1526）<sup class="cite">[265]</sup>。默认运行配置为 WAL 模式、<code>synchronous=NORMAL</code>、Apple 平台 <code>fullfsync=1</code>，且全平台统一 pageSize 4096（上游 SQLCipher 在 macOS 默认 1024）<sup class="cite">[263]</sup><sup class="cite">[266]</sup>。</p>
+<p>由于底层就是 SQLCipher，<strong>WCDB 产出的文件即标准 SQLCipher 格式</strong>：参数对齐后可用 DB Browser for SQLite、sqlcipher CLI 等第三方工具直接打开，社区大量微信数据库解密实践依赖这一点<sup class="cite">[267]</sup><sup class="cite">[268]</sup>。WCDB 还把 <code>sqlcipher_export()</code> 扩展为双参数形式，支持密文↔明文双向互迁<sup class="cite">[269]</sup>。但 fork 与上游并非逐版本对齐：v1.x 的 <code>setSQLCipherVersion(4)</code> 曾被报"完全没法解密"（issue #834），说明个别版本存在行为偏差<sup class="cite">[265]</sup>。社区逆向整理的微信桌面端参数变迁恰好对应 WCDB 默认 cipherVersion 3→4 的演进：Windows 微信 3.x = SQLCipher v3 + page 4096 + kdf 64000 + SHA-1，4.0 起切换为 v4 默认（kdf 256000）；其中 4.0 的 HMAC 算法存在口径分歧——v4 默认值为 SHA-512，另有来源称 SHA-256，两说并存、本文并列呈现<sup class="cite">[267]</sup><sup class="cite">[270]</sup>。</p>
+<h4 id="913">9.1.3 特色能力：修复/备份三板斧是对加密场景的核心价值</h4>
+<p>WCDB 与加密正交的能力（WINQ 语言集成查询、FTS5 拼音分词、Zstd 字段级压缩、可中断事务）此处不展开<sup class="cite">[256]</sup><sup class="cite">[275]</sup>。对加密场景价值最高的是<strong>修复与备份链路全程兼容加密库</strong>——通用 SQLite 工具对加密损坏库基本无解，而 WCDB 的"三板斧"均可带密工作（需正确 key 与 CipherSpec）<sup class="cite">[271]</sup><sup class="cite">[272]</sup>：</p>
+<ol>
+<li><strong>Dump 恢复</strong>：遍历 <code>sqlite_master</code> + <code>SELECT *</code> 导出 SQL，天然支持加密库，但成功率仅约 30%（master 表或第 0 页损坏即全灭）<sup class="cite">[271]</sup>；</li>
+<li><strong>备份恢复</strong>：自定义二进制格式 + 加密 + 多线程流水线，Android 微信在"充电并灭屏"时经 JobScheduler 触发，上线后恢复成功率 72%<sup class="cite">[271]</sup><sup class="cite">[272]</sup>；</li>
+<li><strong>RepairKit（B-tree 解析恢复）</strong>：仿造只读最小系统（VFS 读 + SQLCipher 解密逻辑 + B-tree 解析）绕过 SQLite 引擎；因 salt 丢失会导致所有页无法解密，加密 salt 与 <code>sqlite_master</code> 一并纳入提前备份<sup class="cite">[271]</sup>。注意 RepairKit 并非对外公开接口<sup class="cite">[274]</sup>，且有用户报告加密库恢复率约 80%（issue #703）<sup class="cite">[265]</sup>。</li>
+</ol>
+<p>v2 的全新备份方案采用分段按需 mmap（每次 map 1MB）+ LRU Cache + 读事务内零拷贝备份，增量备份依托自研异步 Checkpoint 低成本记录变更页号与叶子页 CRC（根页+中间页仅占 1~2%），<strong>500MB 库备份从 3 秒降到 63ms，10GB 库 &lt;0.9s</strong><sup class="cite">[257]</sup><sup class="cite">[273]</sup>。性能方面，官方口径（iOS、WAL、<code>cache_size=-2000</code>、page 4096、对比 FMDB）为读劣 5%、写优 28%、事务批量写优 180%<sup class="cite">[277]</sup>；加密本身的开销，SQLCipher 官方口径 5~15%，微信系工具文档口径 10~15%，并列呈现<sup class="cite">[260]</sup><sup class="cite">[267]</sup>。第三方来源可引用的数据点是微信实测现网 DB 损坏率约 0.02%、经同步策略优化后降低一半多<sup class="cite">[272]</sup>；而 2025-09 集中出现的一批"WCDB 快 2~3 倍""修复率 &gt;90%"文章疑似 AI 生成，本报告不予采信<sup class="cite">[278]</sup>。</p>
+<h4 id="914">9.1.4 维护状态与风险</h4>
+<p>仓库实测（2026-07）：v2.1.16 发布于 2026-03-27，2025 年以来保持约每月一个小版本；v2.1.14 支持 Android 16KB 页、v2.1.7 支持 OpenHarmony，说明仍在跟进平台演进；贡献者 33 人<sup class="cite">[54]</sup><sup class="cite">[255]</sup><sup class="cite">[258]</sup>。License 为 BSD 3-Clause（版权方 THL A29 Limited），<strong>无额外专利条款</strong>，但随附第三方组件各自持证（Android 源码 Apache-2.0 含专利授权、SQLCipher BSD-3、OpenSSL 双许可等）<sup class="cite">[279]</sup>。风险有三：其一，<strong>SQLCipher 基线陈旧</strong>——2024-11 有用户指出 4.1.0 存在 CVE-2020-27207、CVE-2021-3119 并询问升级计划（issue #1245），修复以腾讯自行 backport 为主<sup class="cite">[260]</sup><sup class="cite">[265]</sup>；其二，公开可查的腾讯之外知名采用者很少，第三方多为中小 App<sup class="cite">[256]</sup>；其三，2.x 放弃向后兼容造成生态断代，1.x 停止迭代仍被广泛使用，形成事实上的两个生态<sup class="cite">[259]</sup>。文档侧官方 wiki 覆盖较全，但英文社区讨论稀少、issue 响应以关闭为主<sup class="cite">[280]</sup>。</p>
+<h3 id="92">9.2 迁移与接入指南</h3>
+<h4 id="921">9.2.1 各平台接入</h4>
+<table>
+<thead>
+<tr>
+<th>平台</th>
+<th>依赖/集成方式</th>
+<th>加密打开接口</th>
+<th>关键注意点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Android</td>
+<td><code>com.tencent.wcdb:main:2.1.16</code> + <code>annotation</code> + <code>compiler</code>（Kotlin 用 ksp）；可选 <code>compat</code> 兼容 1.0 与 AOSP 接口 <sup class="cite">[283]</sup></td>
+<td><code>Database.setCipherKey(byte[], pageSize, CipherVersion)</code> <sup class="cite">[284]</sup></td>
+<td>旧坐标 <code>wcdb-android:1.0.8</code> 属已停更 1.x，勿用</td>
+</tr>
+<tr>
+<td>iOS / macOS</td>
+<td>SPM（2.1.0 起，产物 <code>WCDBSwift</code>/<code>WCDBSwiftDynamic</code>，推荐动态库）、<code>pod 'WCDB.swift'</code>/<code>'WCDB.objc'</code>、Carthage <sup class="cite">[286]</sup></td>
+<td><code>setCipher(key: Data?, pageSize: Int = 4096, cipherVersion:)</code> <sup class="cite">[264]</sup></td>
+<td>2.x 已将 sqlcipher 编进框架，不再需单独引入 <code>WCDBOptimizedSQLCipher</code> pod <sup class="cite">[287]</sup><sup class="cite">[288]</sup></td>
+</tr>
+<tr>
+<td>Windows / Linux</td>
+<td>CMake 编译 C++ 核心（VS2017+；先 <code>git submodule update --init sqlcipher zstd</code>） <sup class="cite">[290]</sup><sup class="cite">[291]</sup></td>
+<td><code>WCDB::Database::setCipherKey(UnsafeData, 4096, VersionX)</code> <sup class="cite">[263]</sup></td>
+<td>仅 C++ 接口层，无 .NET/Java 桌面绑定</td>
+</tr>
+<tr>
+<td>OpenHarmony</td>
+<td>v2.1.7 起 C++ 核心支持 <sup class="cite">[258]</sup></td>
+<td>同 C++ 接口</td>
+<td>官方无 Kotlin Multiplatform 计划，C++ 层是官方跨平台答案 <sup class="cite">[293]</sup></td>
+</tr>
+</tbody>
+</table>
+<p>四行反映同一架构事实：五语言接口共享一个 C++ 核心，加密参数语义在各语言间完全对齐，差异只在包管理通道。两个易踩的坑集中在 Android 侧——坐标断代（1.x 与 2.x 的 group 模块完全不同）与密码类型（WCDB 收 <code>byte[]</code>，而 SQLCipher Android Binding 收 <code>String</code>，跨库迁移时编码不一致即开库失败）。iOS 侧的坑在集成层：CocoaPods <code>sqlcipher</code> framework 命名冲突（#1413）、SPM 拉取依赖失败（#1098）均有 issue 记录<sup class="cite">[265]</sup>。Windows 实测需手动处理符号导出（<code>CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS</code>）与 MT/MD 运行库切换<sup class="cite">[291]</sup>。</p>
+<p>最小接入代码（须在首次读写前设置密钥，否则按"无法解密"报错）：</p>
+<pre><code class="language-kotlin">// Android / Kotlin —— WCDB 2.x 新接口
+import com.tencent.wcdb.Database
+import java.nio.charset.StandardCharsets
+
+val database = Database(filePath)
+// 密钥为 byte[]（非 String！）；默认 pageSize=4096, cipherVersion=默认(SQLCipher 4)
+val password = &quot;password&quot;.toByteArray(StandardCharsets.UTF_8)
+database.setCipherKey(password)
+// 官方建议用 canOpen() 探测密钥与参数组合是否正确，再进入业务读写
+check(database.canOpen()) { &quot;数据库密钥或加密参数不匹配&quot; }
+// 注意：若经 compat 层使用 AOSP 风格 API，务必自定义 DatabaseErrorHandler——
+// 默认实现会把&quot;打不开的加密库&quot;误判为损坏库并执行重命名/删除
+</code></pre>
+<pre><code class="language-swift">// iOS / macOS / Swift —— WCDB 2.x
+import WCDBSwift
+
+let database = Database(at: filePath)
+// 接口原型：setCipher(key: Data?, pageSize: Int = 4096, cipherVersion: CipherVersion = .defaultVersion)
+database.setCipher(key: &quot;password&quot;.data(using: .utf8)) // 须在首次读写前调用
+assert(database.canOpen()) // 探测密钥/参数是否正确
+</code></pre>
+<h4 id="922-sqlcipher">9.2.2 与 SQLCipher 生态互通</h4>
+<p>互通的技术基础是"参数对齐即同一格式"。下表为 WCDB 参数与 SQLCipher PRAGMA 的一一对应：</p>
+<table>
+<thead>
+<tr>
+<th>WCDB 参数</th>
+<th>SQLCipher PRAGMA</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cipherKey</code>（byte[]/Data）</td>
+<td><code>PRAGMA key</code> / <code>sqlite3_key()</code></td>
+<td>默认作为 passphrase 经 PBKDF2 派生</td>
+</tr>
+<tr>
+<td><code>pageSize</code></td>
+<td><code>PRAGMA cipher_page_size</code></td>
+<td>WCDB 全平台默认 4096；上游部分平台默认 1024</td>
+</tr>
+<tr>
+<td><code>cipherVersion</code>（1/2/3/4）</td>
+<td><code>PRAGMA cipher_compatibility</code></td>
+<td>覆盖 HMAC、KDF 迭代、算法组合</td>
+</tr>
+<tr>
+<td><code>kdfIteration</code>（1.x spec）</td>
+<td><code>PRAGMA kdf_iter</code></td>
+<td>v1/v2≈4000，v3=64000，v4=256000</td>
+</tr>
+<tr>
+<td><code>hmacEnabled</code>（1.x spec）</td>
+<td><code>PRAGMA cipher_use_hmac</code></td>
+<td>v1 默认关，其余默认开</td>
+</tr>
+<tr>
+<td>cipher 算法</td>
+<td><code>PRAGMA cipher</code></td>
+<td>默认 <code>aes-256-cbc</code></td>
+</tr>
+</tbody>
+</table>
+<p>这张表是全部跨工具操作的"换算表"。两组兼容版本的参数组合须记牢：SQLCipher 3 = kdf 64000 + HMAC-SHA1 + PBKDF2-SHA1；SQLCipher 4（WCDB 2.x 默认）= kdf 256000 + HMAC-SHA512 + PBKDF2-SHA512 + page 4096<sup class="cite">[262]</sup><sup class="cite">[267]</sup>。由此推出三条可验证结论：WCDB 2.x 默认参数即 "SQLCipher 4 defaults"，DB Browser 3.12+ 直接选该项即可开库，非默认参数用"自定义"逐项填写、raw key 以 0x 前缀输入<sup class="cite">[294]</sup><sup class="cite">[292]</sup>；命令行 <code>sqlcipher</code> 依次执行 <code>PRAGMA key</code>、<code>PRAGMA cipher_page_size=4096</code>（必要时 <code>cipher_compatibility</code>）即可验证<sup class="cite">[295]</sup>；SQLiteStudio 底层用 SQLite3MultipleCiphers，选 <code>SQLCipher: AES 256 Bit</code> cipher + 匹配参数亦可打开<sup class="cite">[34]</sup>。唯一的例外是历史版本：1.1-19 时代的 WCDB 曾有 salt/派生差异导致与官方 SQLCipher 4 不完全对齐（issue #834），2.x 默认已与 SQLCipher 4 默认一致<sup class="cite">[296]</sup>。</p>
+<p>对服务端（Node/bun），打开 WCDB 创建的加密库等价于"用 sqlite3mc 模拟 SQLCipher 4 兼容模式"：</p>
+<pre><code class="language-ts">// 服务端读取 WCDB 移动端生成的加密库 —— better-sqlite3-multiple-ciphers（sqlite3mc 内核）
+import Database from &quot;better-sqlite3-multiple-ciphers&quot;;
+
+const db = new Database(&quot;/path/to/wcdb-created.db&quot;);
+// 三行 PRAGMA 顺序不可乱：先选 cipher 方案，再设兼容版本与页大小，最后下发密钥
+db.pragma(`cipher='sqlcipher'`);   // sqlite3mc 的 SQLCipher 兼容方案
+db.pragma(`legacy=4`);             // WCDB 2.x 默认 = SQLCipher 4（kdf 256000 / HMAC-SHA512）
+db.pragma(`cipher_page_size=4096`);// WCDB 全平台统一 4096
+db.pragma(`key='${process.env.DB_PASSPHRASE}'`); // 与移动端一致的 passphrase（或 raw key）
+// 验证可读；报错 &quot;file is not a database&quot; 即参数不匹配
+console.log(db.prepare(&quot;SELECT count(*) FROM sqlite_master&quot;).get());
+</code></pre>
+<h4 id="923">9.2.3 三条迁移路径</h4>
+<p><strong>明文 SQLite → WCDB 加密库</strong>：官方推荐 ATTACH + <code>sqlcipher_export()</code>，无独立"一键加密 API"。在已打开的加密库上执行 <code>ATTACH DATABASE '/path/old.db' AS old KEY '';</code> 附加明文旧库，再 <code>SELECT sqlcipher_export('main', 'old');</code>——注意 WCDB 扩展了该函数，第二参数可指定源库实现反向导入<sup class="cite">[285]</sup><sup class="cite">[297]</sup>。迁移后按旧库 <code>user_version</code> 走 onUpgrade/onDowngrade，确认无误再删旧文件。若库结构也要调整，可用 2.x 的框架级数据迁移（<code>addMigration</code> + <code>enableAutoMigration</code>/<code>stepMigration</code>）：开发者"假定迁移已完成"直接读写目标库，WCDB 后台每 2 秒迁约 0.01 秒直至完成，支持进度回调与过滤条件；迁移加密源库时需在 <code>addMigration</code> 传入源库密码，且源库只能走 <code>setDefaultCipherConfiguration</code> 的进程级默认加密配置（ATTACH 时只能传 key）<sup class="cite">[298]</sup><sup class="cite">[299]</sup>。已知缺陷：2.1.15 在"加密目标 + 明文源"场景 ATTACH 不带 KEY 存在 bug（issue #1545，2026-05 仍 open）<sup class="cite">[265]</sup>。</p>
+<p><strong>既有 SQLCipher 加密库 → WCDB</strong>：文件格式相同，<strong>参数匹配即可直开、无需转格式</strong>。1.x 风格写法是 <code>new SQLiteCipherSpec().setPageSize(1024).setSQLCipherVersion(3)</code> 配 <code>openOrCreateDatabase(path, passphrase.getBytes(), cipher, ...)</code>；2.x 等价于 <code>setCipherKey(passphrase.getBytes(), 1024, CipherVersion.version3)</code><sup class="cite">[285]</sup><sup class="cite">[284]</sup>。五个要点：密码转 <code>byte[]</code>；参数必须与建库时完全一致，否则报"文件已损坏/不是数据库"；<strong>务必自定义 <code>DatabaseErrorHandler</code></strong>——默认实现会把打不开的库当损坏库重命名/删除，密钥错误直接演变成数据丢失；删掉原 SQLCipher 的 <code>loadLibs()</code>；先 <code>canOpen()</code> 灰度验证再上线<sup class="cite">[285]</sup>。</p>
+<p><strong>WCDB 1.x → 2.x</strong>：2.x 是放弃向后兼容的重写<sup class="cite">[301]</sup>。Android 坐标从 <code>wcdb-android</code> 换成 <code>main/annotation/compiler</code>，不想改旧代码就加 <code>compat</code> 模块把 import 改为 <code>com.tencent.wcdb.compat.*</code>，旧 <code>SQLiteDatabase</code> 对象可经 <code>getInnerDB()</code> 拿到 2.x <code>Database</code> 混用<sup class="cite">[283]</sup><sup class="cite">[302]</sup>。iOS pod 从 <code>WCDB</code> 换成 <code>WCDB.swift</code>/<code>WCDB.objc</code>，查询 API 有变更<sup class="cite">[303]</sup>。<strong>最关键的加密坑是默认值切换：1.x 默认 SQLCipher 3，2.x 默认 SQLCipher 4</strong>——沿用 1.x 建的加密库必须显式 <code>setCipherKey(key, pageSize, CipherVersion.version3)</code>（1.x 时代 page 可能是 1024 或 4096），否则打不开；微信自身做法也是以创建时版本参数打开旧库、新库才用 v4<sup class="cite">[284]</sup><sup class="cite">[264]</sup>。数据文件本身无需转换，纯接口层迁移。</p>
+<h4 id="924-nodejs">9.2.4 Node.js / 服务端结论</h4>
+<p><strong>WCDB 不适用于 bun/Node 服务端</strong>，依据有三：官方自我定位为"移动/终端数据库框架"，五种语言接口全部是客户端语言，README/wiki 无任何 JavaScript 绑定或 Node 支持计划<sup class="cite">[256]</sup><sup class="cite">[269]</sup>；npm registry 实测（2026-07-27）<code>wcdb</code> 包名 404、全站搜索 0 结果，不存在官方或实质可用的 Node 绑定<sup class="cite">[304]</sup>；理论上可将 C++ 核心自行封装为 N-API  addon，但成本远高于直接选用 Node 原生生态。服务端正解仍是第 7 章给出的 better-sqlite3-multiple-ciphers（sqlite3mc 内核）；老分支 better-sqlite3-sqlcipher 多年未维护、无法在现代 Node 上编译，应避免<sup class="cite">[163]</sup>。</p>
+<p>但"<strong>一端 WCDB（移动端）+ 一端 sqlite3mc（服务端）</strong>"的跨端架构成立：两侧共享同一 SQLCipher v4 文件格式与同一密钥，数据库文件可直接双向拷贝使用。这正是 9.2.2 节 ts 示例对应的部署形态：</p>
+<div class="mermaid">
+flowchart LR
+    K[&quot;同一密钥：passphrase 或 x&#x27;64hex&#x27; raw key&quot;] --&gt; M
+    K --&gt; S
+    M[&quot;移动端 App：WCDB setCipherKey，默认 SQLCipher 4&quot;] --&gt; F[&quot;SQLCipher v4 文件：page 4096，kdf 256000，HMAC-SHA512&quot;]
+    S[&quot;服务端 bun/Node：better-sqlite3-multiple-ciphers，cipher=&#x27;sqlcipher&#x27; + legacy=4&quot;] --&gt; F
+</div>
+
+<p>图：WCDB 移动端与 sqlite3mc 服务端经同一 SQLCipher v4 文件格式与同一密钥互通，文件可双向拷贝，无需格式转换。</p>
+<h4 id="925-byte-raw-key-ukeykms">9.2.5 密钥管理：byte[] 接口与 raw key 对接 UKey/KMS</h4>
+<p>WCDB 各语言加密接口统一收<strong>字节密钥</strong>（Android <code>byte[]</code>、Swift <code>Data</code>、ObjC <code>NSData*</code>、C++ <code>UnsafeData</code>），不内置任何 KMS/Keystore 对接，密钥来源完全由应用层负责<sup class="cite">[284]</sup><sup class="cite">[264]</sup><sup class="cite">[289]</sup><sup class="cite">[263]</sup>。默认语义是 passphrase：SQLCipher 内部经 PBKDF2 派生真实密钥（v4 = PBKDF2-HMAC-SHA512 × 256000，salt 存于库文件头 16 字节）<sup class="cite">[267]</sup>。由于字节最终原样传给 <code>sqlite3_key()</code>，SQLCipher 的 raw key 机制同样生效：传入 ASCII 形式的 <code>x'&lt;64 hex&gt;'</code>（32 字节密钥直用、跳过派生）或 <code>x'&lt;96 hex&gt;'</code>（密钥 + salt 指定），即可把 UKey/KMS 下发的真实密钥直接注入而不经口令派生<sup class="cite">[2]</sup><sup class="cite">[137]</sup>；微信 PC 端正是用外部下发的 32 字节 raw key 直接加密数据库的实例<sup class="cite">[267]</sup><sup class="cite">[292]</sup>。推荐集成模式为：启动时从 UKey/KMS 取回密钥字节 → <code>setCipherKey</code> → <code>canOpen()</code> 校验 → 用完即弃内存副本。两个边界须知晓：WCDB 没有密钥回调/provider 抽象，也没有按表/按连接动态换钥的钩子；rekey 是高成本操作，官方明确提醒慎重使用<sup class="cite">[284]</sup>。进程级默认加密配置可用 <code>setDefaultCipherConfiguration()</code> 修改，服务于 ATTACH 加密库等只能传 key 的场景<sup class="cite">[298]</sup>。</p>
+<h2 id="10">10. 局限与数据缺口</h2>
+<p>本报告的结论建立在公开资料交叉验证之上：高置信结论均经两个以上独立维度证实，单一来源论断已标注置信等级。但调研过程中仍发现多处无法闭环的数据缺口与口径冲突，本章如实列出，供读者判断结论的适用边界。</p>
+<h3 id="101">10.1 数据缺口</h3>
+<table>
+<thead>
+<tr>
+<th>缺口</th>
+<th>现有证据</th>
+<th>对本报告结论的影响</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>sqleet / sqlite3mc 无量化官方 benchmark</td>
+<td>仅有作者与官方文档的定性结论（"ChaCha20-Poly1305 适合慢 CPU""AES 运行时性能通常低于 ChaCha20"），无跑分表<sup class="cite">[148]</sup><sup class="cite">[29]</sup></td>
+<td>第 5 章性能对比对这两个方案只能给定性排序，无法给出百分比</td>
+</tr>
+<tr>
+<td>Turso 加密 6% 读 / 14% 写开销无第三方复现</td>
+<td>数据全部来自 Turso 官方博客（2025-10，AEGIS-256，batch 100）<sup class="cite">[55]</sup>；第三方索引明确提示其 benchmark "需要厂商文档或独立测试"<sup class="cite">[79]</sup></td>
+<td>该数字只能作为官方宣称引用，与 SQLCipher 的第三方实测数据不具备同等置信度</td>
+</tr>
+<tr>
+<td>libSQL embedded replica 加密静默失效 bug 未修复</td>
+<td>上游 issue #1122 与社区复现（2026-02）确认 sync 模式丢弃 <code>encryption_config</code>、副本为明文<sup class="cite">[75]</sup><sup class="cite">[76]</sup></td>
+<td>凡涉及 <code>syncUrl</code> 的部署，"加密生效"必须实测副本文件，不能依赖文档承诺</td>
+</tr>
+</tbody>
+</table>
+<p>三项缺口性质不同：前两项是<strong>测量缺口</strong>——sqleet 已停更、sqlite3mc 官方无意补齐跑分，短期内出现权威量化数据的概率低；Turso 的缺口则与其 experimental 定位互为因果（加密功能需 <code>--experimental-encryption</code> 启用、官方明示仅用于测试开发、无安全审计背书）<sup class="cite">[66]</sup><sup class="cite">[77]</sup>。第三项是<strong>工程缺口</strong>：bug 根因清晰但修复节奏不可预测。同类缺口还包括：SQLCipher 官方"5–15% 开销"为长期宣传语、无公开原始数据<sup class="cite">[8]</sup>；better-sqlite3-multiple-ciphers 的 Forward Email 生产数据两组口径矛盾（Insert/Update 慢 70–75% vs 约 18%），因测试条件不同，本报告只并列、不取舍<sup class="cite">[150]</sup><sup class="cite">[151]</sup>；Turso 侧缺 rekey、passphrase KDF 与既有明文库加密迁移，密钥轮换只能导出重建<sup class="cite">[64]</sup><sup class="cite">[65]</sup>。</p>
+<h3 id="102">10.2 时效性声明</h3>
+<p>本报告所有 Star 数、维护状态、版本号与 issue 开闭状态均为 <strong>2026-07-26 的 GitHub API 实测快照</strong><sup class="cite">[52]</sup><sup class="cite">[53]</sup>。加密方案生态正处于快速变动期——libSQL 新功能已转移至 Turso、默认 cipher 自 2024-03 起由 SQLCipher 切换为 aes256cbc<sup class="cite">[74]</sup><sup class="cite">[70]</sup>，sqleet 仓库未归档（archived=false）但 README 自认停更<sup class="cite">[24]</sup><sup class="cite">[25]</sup>——此类时间敏感表述均已按"当前状态 + 历史沿革"并列标注，读者在快照之后引用时应对 Star 数与 issue 状态（如 drizzle-kit #3198<sup class="cite">[166]</sup>）做时效校验。冲突口径的并列呈现是刻意的：任何单一数字都不代表全部测试条件，直接取用本章之前任一性能数字做容量规划前，应回到其原始来源核对测试条件。</p>
+<h1 id="references">References</h1>
+<p>[1] SQLCipher Design - Security Approach and Features, Zetetic[EB/OL]. （2026-07-26）. https://www.zetetic.net/sqlcipher/design
+[2] SQLCipher API - PRAGMAs, Functions, and Settings, Zetetic[EB/OL]. （2022-03-03，2026-07-26）. https://www.zetetic.net/sqlcipher/sqlcipher-api
+[3] PSA - Deprecating LibTomCrypt and NSS crypto providers, GitHub sqlcipher/sqlcipher issue #564[EB/OL]. （2025-08-22）. https://github.com/sqlcipher/sqlcipher/issues/564
+[4] sqlcipher/CHANGELOG.md, GitHub[EB/OL]. （2026-07-26）. https://github.com/sqlcipher/sqlcipher/blob/master/CHANGELOG.md
+[5] SQLCipher Enterprise - FIPS 140-3 Validated Cryptographic Module, Zetetic[EB/OL]. （2026-07-26）. https://www.zetetic.net/sqlcipher/fips
+[6] SQLCipher Evaluation Checklist, Zetetic[EB/OL]. （2026-07-26）. https://www.zetetic.net/sqlcipher/comparison
+[7] SQLCipher 4.12.0 Release, Zetetic Blog[EB/OL]. （2025-12-08）. https://www.zetetic.net/blog/2025/12/08/sqlcipher-4.12.0-release
+[8] SQLCipher Performance Optimization, Zetetic[EB/OL]. （2026-07-26）. https://www.zetetic.net/sqlcipher/performance
+[9] SQLCipher: AES 256 Bit — SQLite3MultipleCiphers 文档[EB/OL]. （2026-07-26）. https://utelle.github.io/SQLite3MultipleCiphers/docs/ciphers/cipher_sqlcipher
+[10] wetrace/docs/13-密钥提取与解密.md, GitHub[EB/OL]. （2026-02-07）. https://github.com/afumu/wetrace/blob/main/docs/13-密钥提取与解密.md
+[11] marmot-protocol/mdk Security 文档, GitHub[EB/OL]. （2026-07-26）. https://github.com/marmot-protocol/mdk/security
+[12] SQLCipher Cryptographic Module Security Policy (CMVP 140sp5185), NIST CSRC[EB/OL]. https://csrc.nist.gov/CSRC/media/projects/cryptographic-module-validation-program/documents/security-policies/140sp5185.pdf
+[13] SCONE: Secure Linux Containers with Intel SGX (OSDI'16)[EB/OL]. （2016）. https://www.doc.ic.ac.uk/~cp3213/files/16-osdi-scone.pdf
+[14] Buy SQLCipher - Commercial Edition, Zetetic[EB/OL]. （2026-07-26）. https://www.zetetic.net/sqlcipher/commercial；https://www.zetetic.net/sqlcipher/community；https://www.zetetic.net/sqlcipher/license
+[15] SQLCipher 4.7.0 Release, Zetetic Blog[EB/OL]. （2025-03-25）. https://www.zetetic.net/blog/2025/03/25/sqlcipher-4.7.0-release
+[16] SQLCipher 4.5.7 Release, Zetetic Blog[EB/OL]. （2024-04-24）. https://www.zetetic.net/blog/2024/04/24/sqlcipher-4.5.7-release
+[17] SQLCipher 3.0.1数据库加密库实战应用, CSDN[EB/OL]. （2025-12-03）. https://blog.csdn.net/weixin_35755434/article/details/155565644
+[18] SQLCipher License Information, Zetetic[EB/OL]. （2026-07-26）. https://www.zetetic.net/sqlcipher/license
+[19] SQLCipher - Full Database Encryption for SQLite（版本对比表）, Zetetic[EB/OL]. （2026-07-26）. https://www.zetetic.net/sqlcipher
+[20] SQLCipher Value Level Encryption (VLE) Functions, Zetetic[EB/OL]. （2026-07-26）. https://www.zetetic.net/sqlcipher/value-level-encryption
+[21] SQLCipher Enterprise Program, Zetetic[EB/OL]. （2026-07-26）. https://www.zetetic.net/sqlcipher/enterprise
+[22] Salesforce Mobile Offline Guide 2026[EB/OL]. （2026-01-15）. https://www.jitendrazaa.com/blog/salesforce/salesforce-mobile-offline-complete-guide-2026-briefcase-2
+[23] GitHub REST API: repos/sqlcipher/sqlcipher（stars/releases/commits 实测，2026-07-26）[EB/OL].
+[24] GitHub REST API — resilar/sqleet 仓库元数据[EB/OL]. （2026-07-26）. https://api.github.com/repos/resilar/sqleet
+[25] sqleet 官方 README[EB/OL]. （2026-07-26）. https://raw.githubusercontent.com/resilar/sqleet/master/README.md
+[26] GitHub REST API — resilar/sqleet 最新 release[EB/OL]. （2026-07-26）. https://api.github.com/repos/resilar/sqleet/releases/latest
+[27] GitHub REST API — utelle/SQLite3MultipleCiphers 仓库元数据[EB/OL]. （2026-07-26）. https://api.github.com/repos/utelle/SQLite3MultipleCiphers
+[28] utelle/SQLite3MultipleCiphers Releases[EB/OL]. （2026-07-25）. https://github.com/utelle/SQLite3MultipleCiphers/releases
+[29] SQLite3 Multiple Ciphers 官方文档 Overview[EB/OL]. https://utelle.github.io/SQLite3MultipleCiphers；https://utelle.github.io/SQLite3MultipleCiphers/docs/ciphers/cipher_sqlcipher
+[30] 官方文档 Supported Ciphers[EB/OL]. https://utelle.github.io/SQLite3MultipleCiphers/docs/ciphers/cipher_overview
+[31] 官方文档 sqleet: ChaCha20-Poly1305 cipher[EB/OL]. https://utelle.github.io/SQLite3MultipleCiphers/docs/ciphers/cipher_chacha20
+[32] 官方文档 Legacy cipher modes[EB/OL]. https://utelle.github.io/SQLite3MultipleCiphers/docs/ciphers/cipher_legacy_mode
+[33] 官方文档 URI Parameters[EB/OL]. https://utelle.github.io/SQLite3MultipleCiphers/docs/configuration/config_uri
+[34] 官方文档 SQL Pragmas[EB/OL]. https://utelle.github.io/SQLite3MultipleCiphers/docs/configuration/config_sql_pragmas
+[35] 官方文档 System.Data.SQLite: RC4 cipher[EB/OL]. https://utelle.github.io/SQLite3MultipleCiphers/docs/ciphers/cipher_sds_rc4
+[36] 官方文档 C Interface（含 mc_legacy_wal）[EB/OL]. https://utelle.github.io/SQLite3MultipleCiphers/docs/configuration/config_capi
+[37] 官方文档 Installation / Language Bindings[EB/OL]. https://utelle.github.io/SQLite3MultipleCiphers/docs/installation/install_overview
+[38] GitHub Discussion #72 — rekey 原地转换[EB/OL]. （2022-03-28）. https://github.com/utelle/SQLite3MultipleCiphers/discussions/72
+[39] Brice Lam — More SQLite Encryption in .NET[EB/OL]. （2023-11-10）. https://www.bricelam.net/2023/11/10/more-sqlite-encryption.html
+[40] NuGet SQLitePCLRaw.bundle_e_sqlite3mc[EB/OL]. （2026-07-12）. https://www.nuget.org/packages/SQLitePCLRaw.bundle_e_sqlite3mc；https://www.nuget.org/packages/SQLite3MC.PCLRaw.bundle
+[41] better-sqlite3-multiple-ciphers（GitHub/npm）[EB/OL]. （2026-07-26）. https://github.com/m4heshd/better-sqlite3-multiple-ciphers；https://www.npmjs.com/package/better-sqlite3-multiple-ciphers
+[42] SQLiteStudio ChangeLog（pawelsalawa/letos）[EB/OL]. https://github.com/pawelsalawa/letos/blob/master/ChangeLog.md；https://github.com/pawelsalawa/letos/wiki/Official_plugins；https://www.oschina.net/p/sqlitestudio
+[43] Forward Email — Quantum Resistant Email Service[EB/OL]. （2026-07-22）. https://forwardemail.net/en/blog/docs/best-quantum-safe-encrypted-email-service
+[44] thejeshgn — SQLCipher for Encrypted SQLite Database（普通 sqlite3 打开加密库报错实测）[EB/OL]. （2014-12-09）. https://thejeshgn.com/2014/12/09/sqlcipher-for-encrypted-sqlite-database
+[45] context7 — utelle/sqlite3multipleciphers 项目摘要（VFS 实现、SQLite ≥3.32.0）[EB/OL]. （2026-04-30）. https://context7.com/utelle/sqlite3multipleciphers
+[46] Dart package:sqlite3 3.4.0 changelog（捆绑 sqlite3mc 2.3.6）[EB/OL]. https://pub.dev/packages/sqlite3/versions/3.4.0/changelog
+[47] 博客园 — 深入解析：sqlite3的加解密全过程（中文，cipher scheme 全景）[EB/OL]. （2025-09-19）. https://www.cnblogs.com/wzzkaifa/p/19101765
+[48] utelle/wxsqlite3 README, GitHub[EB/OL]. （2026-07-26）. https://github.com/utelle/wxsqlite3
+[49] GitHub REST API: repos/utelle/wxsqlite3（stars 652, pushed 2026-07-16）[EB/OL]. https://api.github.com/repos/utelle/wxsqlite3
+[50] SQLiteCrypt 官网[EB/OL]. （2026-07-26）. https://www.sqlite-crypt.com
+[51] SQLite Pro Support / SEE purchase[EB/OL]. https://sqlite.org/prosupport.html；https://sqlite.org/purchase/see
+[52] GitHub REST API: repos/sqlcipher/sqlcipher（stars 7,213, BSD-3-Clause, v4.17.0 released 2026-07-08）[EB/OL]. https://api.github.com/repos/sqlcipher/sqlcipher
+[53] GitHub REST API: repos/tursodatabase/turso（23,431 stars, MIT）; repos/tursodatabase/libsql（16,991 stars, MIT）[EB/OL]. https://api.github.com
+[54] Tencent/wcdb：GitHub API（11,618 stars, v2.1.16 2026-03-27, pushed 2026-04-10）+ Gitee 镜像 README（BSD-3-Clause, SQLCipher 加密）[EB/OL]. https://github.com/Tencent/wcdb；https://gitee.com/mirrors/wcdb
+[55] Turso 博客：Introducing Fast, Native Encryption in Turso Database[EB/OL]. （2025-10-07）. https://turso.tech/blog/introducing-fast-native-encryption-in-turso-database
+[56] Turso 博客：Fully Open Source Encryption for SQLite[EB/OL]. （2024-02-20）. https://turso.tech/blog/fully-open-source-encryption-for-sqlite-b3858225；https://docs.turso.tech/tursodb/encryption
+[57] resilar/sqleet README + GitHub API（394 stars, Unlicense, pushed 2023-05-03, tags 至 v0.31.1）[EB/OL]. https://github.com/resilar/sqleet
+[58] Willena/sqlite-jdbc-crypt：GitHub API（218 stars, Apache-2.0, pushed 2026-07-06）[EB/OL]. https://github.com/Willena/sqlite-jdbc-crypt
+[59] CovenantSQL/go-sqlite3-encrypt（58 stars, MIT, pushed 2019-06-21）；xeodou/go-sqlcipher（232 stars, MIT, pushed 2023-12-17）；mattn/go-sqlite3（9,185 stars, MIT）[EB/OL]. https://github.com/CovenantSQL/go-sqlite3-encrypt
+[60] rindeal/SQLite3-Encryption：GitHub API（129 stars, archived, pushed 2019-08-31）[EB/OL]. https://github.com/rindeal/SQLite3-Encryption
+[61] SQLitePCL.raw wiki "SQLite encryption options for use with SQLitePCLRaw"[EB/OL]. （2026-01-21）. https://github.com/ericsink/SQLitePCL.raw/wiki/SQLite-encryption-options-for-use-with-SQLitePCLRaw
+[62] GitHub API — tursodatabase/libsql repo &amp; releases[EB/OL]. （2026-07-26）. https://github.com/tursodatabase/libsql
+[63] GitHub API — tursodatabase/turso repo &amp; releases[EB/OL]. （2026-07-26）. https://github.com/tursodatabase/turso
+[64] Turso Docs — Encryption (tursodb)[EB/OL]. （2026-07-16）. https://docs.turso.tech/tursodb/encryption
+[65] Turso Docs — PRAGMA Statements / cipher &amp; hexkey[EB/OL]. （2026-07-16）. https://docs.turso.tech/sql-reference/pragmas
+[66] Turso Docs — Experimental Features / CLI flags[EB/OL]. （2026-07-16）. https://docs.turso.tech/sql-reference/experimental-features；https://docs.turso.tech/sql-reference/cli/command-line-options
+[67] Turso Blog — Introducing BYOK Encryption in Turso Cloud[EB/OL]. （2026-02-18）. https://turso.tech/blog/turso-cloud-native-encryption
+[68] Turso Docs — BYOK Encryption (Cloud)[EB/OL]. （2026-07-16）. https://docs.turso.tech/cloud/encryption
+[69] Turso Blog — Reviewing the Turso Beta week[EB/OL]. （2025-10-16）. https://turso.tech/blog/turso-beta-week-why-we-did-it
+[70] Turso Docs — libSQL encryption at rest 说明[EB/OL]. https://turso.mintlify.app/libsql
+[71] Turso Docs — TS SDK Reference（@tursodatabase/database / @libsql/client encryption）[EB/OL]. （2026-05-19）. https://docs.turso.tech/sdk/ts/reference
+[72] Turso Docs — Python SDK Reference（pyturso EncryptionOpts）[EB/OL]. （2026-05-19）. https://docs.turso.tech/sdk/python/reference
+[73] Turso Docs — Go SDK Reference（tursogo DSN encryption）[EB/OL]. （2026-05-19）. https://docs.turso.tech/sdk/go/reference
+[74] libsql-client-ts CHANGELOG（encryptionKey/encryptionCipher/默认 cipher 变更）[EB/OL]. https://github.com/tursodatabase/libsql-client-ts
+[75] GitHub Issue — libsql #1122 Embedded replicas encryption doesn't work on SQLCipher cipher type[EB/OL]. （2024-03-04）. https://github.com/tursodatabase/libsql/issues/1122
+[76] GitHub Issue — tauri-plugin-libsql #1：V2 sync 静默丢弃 encryption_config[EB/OL]. （2026-02-25）. https://github.com/HuakunShen/tauri-plugin-libsql/issues/1
+[77] tursodatabase/agent-skills — turso-db SKILL.md（beta/限制清单）[EB/OL]. （2026-03-25）. https://github.com/tursodatabase/agent-skills/blob/main/skills/turso-db/SKILL.md
+[78] Better Stack — How Turso Eliminates SQLite's Single-Writer Bottleneck[EB/OL]. （2025-11-27）. https://betterstack.com/community/guides/databases/turso-explained
+[79] DEV.co — Turso 开源数据库索引（stars/beta/未审计提示）[EB/OL]. （2026-05-22）. https://dev.co/databases/open-source/turso
+[80] SoloDevStack — Turso 对比系列（2026-05-29 数据：stars/npm 下载/版本）[EB/OL]. https://solodevstack.com/blog/turso-vs-cloudflare-d1-solo-developers
+[81] muetool — GitHub 日榜 2026-06-20（turso 20,016 stars）[EB/OL]. https://muetool.com/9814.html
+[82] github.com — releases[EB/OL]. （2026-06-18）. https://github.com/m4heshd/better-sqlite3-multiple-ciphers/releases
+[83] security.snyk.io — better-sqlite3-multiple-ciphers[EB/OL]. （2026-06-18，2026-07-26）. https://security.snyk.io/package/npm/better-sqlite3-multiple-ciphers
+[84] github.com — 14[EB/OL]. （2022-03）. https://github.com/m4heshd/better-sqlite3-multiple-ciphers/issues/14
+[85] github.com — 61[EB/OL]. （2023-09）. https://github.com/m4heshd/better-sqlite3-multiple-ciphers/issues/61
+[86] github.com — 69[EB/OL]. （2023-10）. https://github.com/m4heshd/better-sqlite3-multiple-ciphers/issues/69
+[87] juejin.cn — 7117536487519813669[EB/OL]. （2022-07）. https://juejin.cn/post/7117536487519813669
+[88] www.npmjs.com — sqlcipher[EB/OL]. （2026-04-29）. https://www.npmjs.com/package/@journeyapps/sqlcipher
+[89] github.com — node-sqlcipher[EB/OL]. https://github.com/journeyapps/node-sqlcipher
+[90] orm.drizzle.team — get-started-sqlite[EB/OL]. https://orm.drizzle.team/docs/get-started-sqlite
+[91] docs.turso.tech — introduction[EB/OL]. （2026-07-16）. https://docs.turso.tech/features/embedded-replicas/introduction
+[92] solodevstack.com — neon-vs-turso-solo-developers[EB/OL]. （2026-05-29）. https://solodevstack.com/blog/neon-vs-turso-solo-developers
+[93] github.com — 11397[EB/OL]. （2026-07-26）. https://github.com/oven-sh/bun/issues/11397
+[94] github.com — libsql-js[EB/OL]. https://github.com/tursodatabase/libsql-js
+[95] github.com — 16049[EB/OL]. （2024-12）. https://github.com/oven-sh/bun/discussions/16049
+[96] github.com — 14301[EB/OL]. （2024-10）. https://github.com/oven-sh/bun/issues/14301
+[97] juejin.cn — 7202807471881306172[EB/OL]. （2023-02）. https://juejin.cn/post/7202807471881306172
+[98] github.com — 83[EB/OL]. （2024-02）. https://github.com/m4heshd/better-sqlite3-multiple-ciphers/issues/83
+[99] npmx.dev — tauri-plugin-libsql-api[EB/OL]. （2026-02-24）. https://npmx.dev/package/tauri-plugin-libsql-api
+[100] codeforreal.com — setup-encrypted-sqlitedb-in-tauri-with-drizzle-orm[EB/OL]. （2025-11-25）. https://codeforreal.com/blogs/setup-encrypted-sqlitedb-in-tauri-with-drizzle-orm
+[101] github.com — sqlcipher[EB/OL]. https://github.com/sqlcipher/sqlcipher
+[102] www.youdiandongxi.com — nuxt-with-drizzle-and-turso.html[EB/OL]. （2026-03-26）. https://www.youdiandongxi.com/article/nuxt-with-drizzle-and-turso.html
+[103] mattn/go-sqlite3[EB/OL]. （2026-07-26，2026-07-13）. https://github.com/mattn/go-sqlite3
+[104] go-sqlite3 with static library · Issue #557[EB/OL]. https://github.com/mattn/go-sqlite3/issues/557
+[105] hanzoai/iam LLM.md（CGO_LDFLAGS=-lsqlcipher 实践）[EB/OL]. （2026-07-13）. https://github.com/hanzoai/iam/blob/main/LLM.md
+[106] mutecomm/go-sqlcipher[EB/OL]. （2023-06-30）. https://github.com/mutecomm/go-sqlcipher
+[107] wefuture/go-sqlite3-sqlcipher（fork 的 sqlcipher/libsqlcipher tag 与 <code>_key</code> DSN 文档）[EB/OL]. https://gitee.com/wefuture/go-sqlite3-sqlcipher
+[108] tursodatabase/go-libsql[EB/OL]. （2026-04-24）. https://github.com/tursodatabase/go-libsql
+[109] ncruces/go-sqlite3[EB/OL]. （2026-07-25）. https://github.com/ncruces/go-sqlite3
+[110] ncruces vfs/adiantum README[EB/OL]. https://github.com/ncruces/go-sqlite3/blob/main/vfs/adiantum/README.md
+[111] cznic/sqlite Issue #138 "Support sqlcipher"（opened）[EB/OL]. （2024-12-12）. https://gitlab.com/cznic/sqlite/-/issues/138
+[112] tursodatabase/turso-go（archived）[EB/OL]. （2026-01-06）. https://github.com/tursodatabase/turso-go
+[113] rusqlite/rusqlite[EB/OL]. （2026-07-25）. https://github.com/rusqlite/rusqlite
+[114] libsqlite3-sys 构建说明（bundled-sqlcipher / vendored-openssl）[EB/OL]. https://docs.rs/crate/libsqlite3-sys/latest
+[115] HuLa#441：Windows vendored-openssl 构建坑[EB/OL]. （2025-12-17）. https://github.com/HuLaSpark/HuLa/issues/441
+[116] Turso Rust SDK 参考（libsql encryption feature / turso crate 推荐）[EB/OL]. （2026-05-19）. https://docs.turso.tech/sdk/rust/reference
+[117] coleifer/sqlcipher3[EB/OL]. （2026-01-08）. https://github.com/coleifer/sqlcipher3
+[118] sqlcipher3-binary 0.6.0[EB/OL]. （2025-12-31）. https://pypi.org/project/sqlcipher3-binary
+[119] rigglemania/pysqlcipher3[EB/OL]. （2023-12-05）. https://github.com/rigglemania/pysqlcipher3
+[120] ericsink/SQLitePCL.raw[EB/OL]. （2026-07-19）. https://github.com/ericsink/SQLitePCL.raw
+[121] SQLite3MultipleCiphers-NuGet releases（SQLite3MC.PCLRaw.bundle 2.3.6）[EB/OL]. （2026-07）. https://github.com/utelle/SQLite3MultipleCiphers-NuGet/releases
+[122] utelle/SQLite3MultipleCiphers[EB/OL]. （2026-07-25）. https://github.com/utelle/SQLite3MultipleCiphers
+[123] Akavache#1180（sqlite3mc 选型论证）[EB/OL]. （2026-04-15）. https://github.com/reactiveui/Akavache/issues/1180
+[124] 微软文档：自定义 SQLite 版本（.Core + bundle 替换）[EB/OL]. （2026-02-24）. https://learn.microsoft.com/zh-cn/dotnet/standard/data/sqlite/custom-versions
+[125] Zetetic SQLCipher for .NET（仅商业版）[EB/OL]. https://www.zetetic.net/sqlcipher/sqlcipher-for-dotnet
+[126] sqlcipher/android-database-sqlcipher[EB/OL]. （2025-09-17）. https://github.com/sqlcipher/android-database-sqlcipher
+[127] sqlcipher/SQLCipher.swift（官方 SPM）[EB/OL]. （2026-07）. https://swiftpackageindex.com/sqlcipher/SQLCipher.swift
+[128] ccgus/fmdb（FMDB/SQLCipher subspec）[EB/OL]. https://github.com/ccgus/fmdb
+[129] stephencelis/SQLite.swift 文档（SQLCipher trait）[EB/OL]. https://github.com/stephencelis/SQLite.swift/blob/master/Documentation/Index.md
+[130] OP-Engineering/op-sqlite[EB/OL]. （2026-07-14）. https://github.com/OP-Engineering/op-sqlite
+[131] PowerSync op-sqlite SQLCipher 配置[EB/OL]. （2026-06-24）. https://www.npmjs.com/package/@powersync/op-sqlite
+[132] andpor/react-native-sqlite-storage[EB/OL]. （2024-05-24）. https://github.com/andpor/react-native-sqlite-storage
+[133] Boolean-Autocrat/go-sqlcipher（mutecomm 的维护 fork, SQLCipher 4.6.1）[EB/OL]. （2025-03-11）. https://gitee.com/suzd2025/go-sqlcipher
+[134] KMP/Firebase 符号冲突导致 SQLCipher 静默失效案例[EB/OL]. （2026-05-12）. https://funkymuse.dev/posts/encrypt-kmp-database-with-firebase-in-project
+[135] SQLite Encryption Extension (SEE) Documentation[EB/OL]. （2026-07-13，2026-07-26）. https://www.sqlite.org/see/doc/trunk/www/readme.wiki
+[136] Encrypting a Plaintext SQLite Database to Use SQLCipher[EB/OL]. （2026-07-26）. https://www.zetetic.net/sqlcipher/encrypting-plaintext-databases
+[137] SQLCipher 3.0.0 Beta Release[EB/OL]. （2013-09-03）. https://www.zetetic.net/blog/2013/9/3/sqlcipher-300-beta-release.html
+[138] SQLite3 Multiple Ciphers — wxSQLite3: AES 256 Bit[EB/OL]. https://utelle.github.io/SQLite3MultipleCiphers/docs/ciphers/cipher_aes256cbc
+[139] SQLite Database File Format[EB/OL]. （2025-12-25）. https://www.sqlite.org/fileformat.html
+[140] sqlcipher-android issue #32: file is not a database (code 26)[EB/OL]. （2024-02-20）. https://github.com/sqlcipher/sqlcipher-android/issues/32
+[141] SQLite User Forum: Encryption（DRH/Slavin 答复）[EB/OL]. （2024-02-21）. https://sqlite.org/forum/forumpost/20b2639ec5
+[142] SEE 11.0 How SEE Works（论坛转引）[EB/OL]. （2024-01）. https://ifnotnil.com/t/the-sqlite-encryption-extension-see/3766
+[143] pysqlcipher README（SQLITE_HAS_CODEC 编译、PRAGMA key/rekey 用法）[EB/OL]. https://github.com/isislovecruft/pysqlcipher
+[144] SQLite3 API 编程手册（codec 源码：sqlite3CodecAttach/sqlite3pager_set_codec/sqlite3Codec）[EB/OL]. https://www.cnblogs.com/jiangminqian/articles/3392382.html
+[145] WeChat 4.1+ key extraction（PBKDF2 passphrase 派生分析）[EB/OL]. （2026-05-13）. https://github.com/ylytdeng/wechat-decrypt/issues/96
+[146] mdk encrypted-storage-plan（sidecar/临时文件加密边界）[EB/OL]. https://github.com/marmot-protocol/mdk/blob/master/crates/mdk-core/docs/encrypted-storage-plan.md
+[147] sonique6784/SQLCipherPerformance（GitHub, 2020-09）[EB/OL]. https://github.com/sonique6784/SQLCipherPerformance
+[148] resilar/sqleet issue #12 "sqleet vs. SQLCipher comparison"（2018-02/2019-02）[EB/OL]. https://github.com/resilar/sqleet/issues/12
+[149] CSDN 博客《SQLCipher加密SQLite数据库实战练习项目》[EB/OL]. （2025-10-04）. https://adg.csdn.net/69533d5e5b9f5f31781bfe90.html
+[150] forwardemail/sqlite-benchmarks（GitHub, 更新至 2026-07-25）[EB/OL]. https://github.com/forwardemail/sqlite-benchmarks
+[151] Forward Email 博客《SQLite Performance Optimization》[EB/OL]. （2026-06-12）. https://forwardemail.net/en/blog/docs/sqlite-performance-optimization-pragma-chacha20-production-guide
+[152] Turso docs, Encryption[EB/OL]. （2026-07-16）. https://docs.turso.tech/tursodb/encryption
+[153] Tencent/wcdb Wiki, Android Benchmark[EB/OL]. （2017-07）. https://github.com/Tencent/wcdb/wiki/Android-Benchmark/e3ae1679a1af5302315dd78fc08b4178a5cff32c
+[154] WCDB Benchmark 中文镜像（2019-05, Nexus 5）[EB/OL]. https://www.bookstack.cn/read/tencent-wcdb/61ba9ab9d3cb1fd8.md
+[155] crypto.stackexchange #88692[EB/OL]. （2021-03）. https://crypto.stackexchange.com/questions/88692
+[156] Zetetic blog《SQLCipher 4.0.0 Release》[EB/OL]. （2018-11-30）. https://www.zetetic.net/blog/2018/11/30/sqlcipher-400-release
+[157] npm — better-sqlite3-multiple-ciphers[EB/OL]. （2026-06-18）. https://npmjs.com/package/better-sqlite3-multiple-ciphers
+[158] GitHub — HuakunShen/tauri-plugin-libsql README[EB/OL]. https://github.com/HuakunShen/tauri-plugin-libsql
+[159] CSDN/初学教程 — sqlcipher 使用（备份 API 不支持加密库、sqlcipher_export）[EB/OL]. https://blog.csdn.net/qq_16810885/article/details/130973301
+[160] GitHub — NTQQ 解密数据库教程（DB Browser/SQLiteStudio/sqlcipher CLI 配置）[EB/OL]. （2024-12-16）. https://github.com/wfl123/qq-win-db-key-qq-/blob/master/基础教程 - NTQQ 解密数据库.md
+[161] Expo 官方文档 — expo-sqlite（SQLCipher 支持）[EB/OL]. https://github.com/expo/expo/blob/main/docs/pages/versions/unversioned/sdk/sqlite.mdx
+[162] Capawesome — Capacitor SQLite 插件 FAQ[EB/OL]. （2026-01-30）. https://capawesome.io/docs/sdks/capacitor/sqlite
+[163] GitCode 博客 — better-sqlite3 项目中使用 SQLCipher 加密的注意事项[EB/OL]. （2025-06-04）. https://blog.gitcode.com/fe0b699520342bfe0f93de41937c9d49.html
+[164] npm — @capacitor-community/sqlite（Electron 端用 better-sqlite3-multiple-ciphers）[EB/OL]. （2026-03-30）. https://www.npmjs.com/package/@capacitor-community/sqlite
+[165] kunkun.sh — Tauri + Drizzle Proxy（自写 callback 完整代码）[EB/OL]. （2026-01-17）. https://docs.kunkun.sh/blog/tauri--drizzle-proxy
+[166] GitHub — drizzle-team/drizzle-orm issue #3198（drizzle-kit/Studio 加密库支持，open）[EB/OL]. （2025-08-30，2025-08-12）. https://github.com/drizzle-team/drizzle-orm/issues/3198
+[167] GitHub — drizzle-orm issue #2405（drizzle-kit 需安装 @libsql/client）[EB/OL]. https://github.com/drizzle-team/drizzle-orm/issues/2405
+[168] Turso Docs — Drizzle + Turso（drizzle.config.ts dialect turso 示例）[EB/OL]. （2026-04-20）. https://docs.turso.tech/sdk/ts/orm/drizzle
+[169] GitHub — typeorm issue #8475（better-sqlite3 + sqlcipher 反例）[EB/OL]. https://github.com/typeorm/typeorm/issues/8475
+[170] GitHub — drizzle-orm issue #5782（迁移事务包裹致 FK pragma 失效）[EB/OL]. （2026-05-19）. https://github.com/drizzle-team/drizzle-orm/issues/5782
+[171] Astro 文档 — Astro DB（libSQL URL 中 encryptionKey 查询参数）[EB/OL]. https://astro.nodejs.cn/en/guides/astro-db
+[172] cnblogs — .NET 加密 sqlite（DB Browser / SQLiteStudio 打开加密库步骤）[EB/OL]. （2025-03-08）. https://www.cnblogs.com/chinasoft/p/18759135
+[173] Drizzle 官方文档 — Drizzle Proxy[EB/OL]. https://orm.drizzle.team/docs/connect-drizzle-proxy
+[174] Drizzle 中文文档 — v0.29.5 发布（sqlite-proxy batch/关系查询）[EB/OL]. https://drizzle.zhcndoc.com/learn/latest-releases/drizzle-orm-v0295
+[175] GitHub — WiseLibs/better-sqlite3 issue #1171（drizzle-kit + Electron ABI）[EB/OL]. https://github.com/WiseLibs/better-sqlite3/issues/1171
+[176] op-sqlite 官方文档 — Installation（sqlcipher 编译开关）[EB/OL]. https://op-engineering.github.io/op-sqlite/docs/installation
+[177] GitHub — johnny4young/puntovivo（package.json npm alias）[EB/OL]. https://github.com/johnny4young/puntovivo
+[178] puntovivo — packages/server/src/db/connection.ts（cipher/legacy/key 顺序与运行时迁移）[EB/OL]. https://github.com/johnny4young/puntovivo/blob/main/packages/server/src/db/connection.ts
+[179] SQLCipher — Full Database Encryption for SQLite（官网，版本/价格/特性矩阵）[EB/OL]. http://www.sqlcipher.net
+[180] Zetetic: Technical Guidance — Using Random Values as SQLCipher Keys[EB/OL]. （2019-06-07）. https://www.zetetic.net/blog/2019/06/07/technical-guidance-using-random-values-as-sqlcipher-keys
+[181] SQLCipher License Codes[EB/OL]. https://www.zetetic.net/sqlcipher/sqlcipher-license-codes
+[182] LumoSQL Context-Relevant Knowledgebase（SQLite 加密项目盘点，2026-07-01）[EB/OL]. https://lumosql.org/src/lumosql/doc/bb31984e81/doc/context-relevant-knowledgebase.md
+[183] Room + SQLCipher Deep Dive: Encrypted Database for Android[EB/OL]. （2026-02-20）. https://davideagostini.com/android/2026-02-20-room-sqlcipher-encrypted-database
+[184] Database Security on Android: Room Database Encryption with SQLCipher + Keystore[EB/OL]. （2025-07-26）. https://proandroiddev.com/how-to-encrypt-your-room-database-in-android-using-sqlcipher-0bce78328bd6
+[185] Security.SE: How does Signal protect data on the device[EB/OL]. （2024-06-12）. https://security.stackexchange.com/questions/277330/how-does-signal-protect-data-on-the-device-from-unauthorized-access
+[186] Turso — SQLite for Production（encryption at rest/in transit、per-tenant）[EB/OL]. https://turso.tech
+[187] Introducing the Turso Per-User Starter[EB/OL]. （2024-08-28）. https://turso.tech/blog/introducing-the-turso-per-user-starter-boilerplate
+[188] Best Boilerplates with Turso 2026（多租户定价/模式对比）[EB/OL]. （2026-03-08）. https://starterpick.com/guides/best-boilerplates-with-turso-sqlite-edge-database-2026
+[189] HN: Mendeley encrypts users' database after Zotero provides an importer[EB/OL]. （2019-01-23）. https://news.ycombinator.com/item?id=18977785
+[190] HN: SQLCipher – Full Database Encryption for SQLite[EB/OL]. （2015-02-09）. https://news.ycombinator.com/item?id=9019836
+[191] HN 评论：SEE $2000 perpetual license（SQLite File Format Viewer 讨论）[EB/OL]. （2025-04-14）. https://news.ycombinator.com/item?id=43684327
+[192] HN 评论：SEE 不免费 vs SQLCipher 社区版（Signal Desktop 讨论）[EB/OL]. （2021-02-28）. https://news.ycombinator.com/item?id=26293258
+[193] HN: Why the KeePass format should be based on SQLite（页级 vs 整文件加密争论）[EB/OL]. （2026-02-24）. https://news.ycombinator.com/item?id=47142929
+[194] HN: Show HN — Roast my SQLite encryption at-rest（VFS 加密讨论）[EB/OL]. （2024-04-30）. https://news.ycombinator.com/item?id=40217168
+[195] HN 评论：加密 SQLite 破坏开放格式（SQLite as an Application File Format）[EB/OL]. （2020-06-13）. https://news.ycombinator.com/item?id=23510336
+[196] Scott Arc: Encryption At Rest — Whose Threat Model Is It Anyway?[EB/OL]. （2024-06-02）. https://scottarc.blog/2024/06/02/encryption-at-rest-whose-threat-model-is-it-anyway
+[197] Thales: Selecting the Right Encryption Approach[EB/OL]. https://cpl.thalesgroup.com/encryption/selecting-right-encryption-approach
+[198] WorkOS: When database security is not enough — application-level encryption[EB/OL]. （2025-03-07）. https://workos.com/blog/application-level-data-encryption
+[199] Encryption Consulting: Field-Level Encryption[EB/OL]. （2025-05-06）. https://www.encryptionconsulting.com/field-level-encryption-ensuring-data-privacy-and-security
+[200] Android Database Encryption using SQLCipher（包体积/性能/出口管制/密钥管理）[EB/OL]. （2015-08-14）. https://androidbycode.wordpress.com/2015/02/18/android-database-encryption-using-sqlcipher
+[201] HIPAA-Compliant Mobile App Development: 2026 Cost &amp; Compliance Guide[EB/OL]. （2026-06-04）. https://keytotech.com/blog/hipaa-compliant-mobile-app-development-cost-guide
+[202] 人大金仓：可信数据库核心机制解析——从国密算法到国密标准[EB/OL]. （2026-07-15）. https://www.kingbase.com.cn/explore/tech-blog/可信数据库核心机制解析：从国密算法到国密标准
+[203] OceanBase 博客：数据库数据加密管理体系（合规要求与路线图）[EB/OL]. （2025-10-11）. https://open.oceanbase.com/blog/22700793856
+[204] CSDN：等保测评中的密码技术与密钥管理[EB/OL]. （2024-08-06）. https://blog.csdn.net/A526847/article/details/140944004
+[205] CSDN/知乎：制作 Sqlcipher+SM4 加密的 framework 包（OC）[EB/OL]. （2020-11-26）. https://blog.csdn.net/weixin_39603908/article/details/110506209
+[206] Encryption Consulting: FIPS 140-3 — What Organizations Need to Know by Sept. 2026[EB/OL]. （2026-06-16）. https://www.encryptionconsulting.com/fips-140-3
+[207] HN: Server managed SQLite for multi-tenant? Open-source idea[EB/OL]. （2026-03-13）. https://news.ycombinator.com/item?id=47362175
+[208] OneUptime: How to Implement Encryption with SQLCipher（Node/Electron @journeyapps/sqlcipher）[EB/OL]. （2026-02-02）. https://oneuptime.com/blog/post/2026-02-02-sqlcipher-encryption/view
+[209] SQLitePCLRaw.bundle_e_sqlite3mc（.NET 生态 sqlite3mc 绑定）[EB/OL]. https://github.com/ericsink/SQLitePCL.raw/blob/master/src/SQLitePCLRaw.bundle_e_sqlite3mc/README.md
+[210] HN 评论：SEE flat fee perpetual license（Awesome SQLite 讨论）[EB/OL]. （2022-04-29）. https://news.ycombinator.com/item?id=31202317
+[211] HN 评论：Golang SQLite cipher/encryption 组合之问（Benchmarks for Golang SQLite Drivers）[EB/OL]. （2025-08-22）. https://news.ycombinator.com/item?id=44984413
+[212] SQLCipher 4.5.0 Release（cipher_memory_security 默认关闭、开启后不可逆）, Zetetic Blog[EB/OL]. （2021-10-28）. https://www.zetetic.net/blog/2021/10/28/sqlcipher-4.5.0-release/
+[213] SQLite, PRAGMA Statements — secure_delete[EB/OL]. （2026-06-04 快照）. https://sqlite.org/pragma.html
+[214] SQLite, Compile-time Options — SQLITE_SECURE_DELETE[EB/OL]. （2026-01-26 快照）. https://sqlite.org/compile.html
+[215] Anton Zhiyanov, Secure delete in SQLite（WAL 模式下 secure_delete 失效演示、FAST 不清 freelist、FTS 影子表）[EB/OL]. （2024-05-29）. https://antonz.org/sqlite-secure-delete/
+[216] SQLite, VACUUM（"clean the database of all traces of deleted content"；VACUUM INTO）[EB/OL]. （2025-07-12）. https://sqlite.org/lang_vacuum.html
+[217] HackTricks, Linux Privilege Escalation — Process memory / yama ptrace_scope[EB/OL]. （2025-09-13）. https://book.hacktricks.wiki/en/linux-hardening/privilege-escalation/index.html
+[218] Cloudflare Blog, Diving into /proc/[pid]/mem（mem 访问三层检查与 dumpable 的关系）[EB/OL]. （2020-10-27）. https://blog.cloudflare.com/diving-into-proc-pid-mem/
+[219] HashiCorp Vault Issue #4150, hardening: use PR_SET_DUMPABLE on Linux?[EB/OL]. （2018-03-18）. https://github.com/hashicorp/vault/issues/4150
+[220] CSDN, 国芯BISS安全系统C语言实现详解（prctl(PR_SET_DUMPABLE,0) 防 dump 实践）[EB/OL]. （2025-10-10）. https://blog.csdn.net/weixin_34885746/article/details/153007506
+[221] 博客园, python gdb（docker --cap-add SYS_PTRACE）[EB/OL]. （2019-01-05）. https://www.cnblogs.com/testzcy/p/10225484.html
+[222] freeOA, Linux上核心转储(Core Dumps)的设置（coredump 含密码/密钥、三层禁用法、fs.suid_dumpable）[EB/OL]. （2023-07-02）. http://www.freeoa.net/osuport/sysadmin/coredump-setting_3414.html
+[223] zhoushuke, Kubernetes 学习：宿主机根目录被容器 coredump 打爆（容器 ulimit 独立、coredump.conf Storage=none）[EB/OL]. （2023-07-29）. https://zhoushuke.github.io/2023/07/29/Kubernetes-OutofDisk-CoreDump/
+[224] Ceph cephadm Troubleshooting（core dumps not namespaced by the kernel）[EB/OL]. https://github.com/ceph/ceph/blob/main/doc/cephadm/troubleshooting.rst
+[225] GitHub ycjyy, Linux系统安全加固指南（coredump 三种禁用 + vm.swappiness=1）[EB/OL]. （2022-07-08）. https://github.com/ycjyy/ycjyy/issues/10
+[226] Embedded Pathashala, Memory Locking: mlock() &amp; mlockall()（mlock 不防休眠、CAP_IPC_LOCK、explicit_bzero）[EB/OL]. （2026-06-15）. https://embeddedpathashala.com/memory-locking-mlock-mlockall/
+[227] J. Mayrhofer, Secure and User-Friendly Encrypted Suspend-to-Disk with Debian GNU/Linux（S3/S4 安全语义）[EB/OL]. （2019-02-23）. https://www.mayrhofer.eu.org/post/encrypted-suspend-to-disk/
+[228] 博客园, man mlock 翻译与实验[EB/OL]. （2024-11-11）. https://www.cnblogs.com/hellokitty2/p/18539585
+[229] Sumit Ghosh, Hijacking Library Functions and Injecting Code Using the Dynamic Linker（LD_PRELOAD 机制、静态链接免疫、AT_SECURE）[EB/OL]. （2020-05-10）. https://sumit-ghosh.com/posts/hijacking-library-functions-code-injection-ld-preload/
+[230] Forenza, /etc/ld.so.preload: Linux Library Preload Rootkit Persistence（MITRE T1574.006）[EB/OL]. （2026-05-30）. https://forenza.io/linux-ld-so-preload/
+[231] marginaldeer, Hooking Native Libraries with Frida Interceptor（按偏移 hook 未导出函数、反检测猫鼠游戏）[EB/OL]. （2025-11-25）. https://www.marginaldeer.com/blog/frida-native-hooking/
+[232] CSDN DevPress, Bun 打包二进制如何还原成 JavaScript？extract_bun.js 使用教程[EB/OL]. （2026-07-03）. https://devpress.csdn.net/v1/article/detail/162549272
+[233] Goldinium tool_secure_sqlcipher CHANGELOG（4.1.0: Disable backup API for encrypted databases）[EB/OL]. https://github.com/Goldinium/tool_secure_sqlcipher/blob/master/CHANGELOG.md
+[234] utelle SQLite3MultipleCiphers（备份 API cipher 组合表及降级警告）, 转引自[EB/OL]. https://github.com/sebkur/sqlite-jdbc-crypt
+[235] SQLite, Temporary Files Used By SQLite（瞬时索引等 9 类临时文件）[EB/OL]. （2025-06-12）. https://sqlite.org/tempfiles.html
+[236] SQLite Forum, CREATE INDEX ignoring pragma cache_size（temp_store=memory 时排序内存无界）[EB/OL]. （2020-12-21）. https://sqlite.org/forum/forumpost/0c262eefb2
+[237] GitHub Security Advisory GHSA-f2qf-f544-xm4p（密码经 URL 参数进入访问日志；引 OWASP ASVS V3.1.1）[EB/OL]. （2026-01-18）. https://github.com/Quenary/tugtainer/security/advisories/GHSA-f2qf-f544-xm4p
+[238] signalapp/sqlcipher CHANGELOG 4.0.0（readline 不记录 key/rekey）[EB/OL]. https://github.com/signalapp/sqlcipher/blob/master/CHANGELOG.md
+[239] EITCA Academy, How can supply chain attacks impact the security of a Node.js project[EB/OL]. （2023-08-05）. https://eitca.org/cybersecurity/eitc-is-wasf-web-applications-security-fundamentals/...
+[240] Offseq Radar, CVE-2023-38552: Node.js policy 完整性校验绕过[EB/OL]. （2025-10-28）. https://radar.offseq.com/threat/cve-2023-38552-vulnerability-in-nodejs-node-bed581
+[241] Microsoft Docs, TPM Fundamentals — Dictionary Attack Prevention（PIN 猜测速率限制示例）[EB/OL]. （2025-08-15）. https://docs.microsoft.com/en-us/windows/security/information-protection/tpm/tpm-fundamentals
+[242] 360资源, 廉价智能设备安全攻防实战数据（恶意/公版固件、重放攻击案例）[EB/OL]. （2026-07-22）. https://www.360ziyuan.com/news/2026-07-22_57b019.html
+[243] infradead.org, Smart Card / PKCS#11 support — OpenConnect（C_Login PIN 交互面）[EB/OL]. https://www.infradead.org/openconnect/pkcs11.html
+[244] Elusive Data, Recover Deleted SQLite Records（freelist/空闲块/WAL 取证恢复）[EB/OL]. （2026-04-01）. https://elusivedata.io/it/recover-deleted-sqlite-records-sqlite-database-recovery/
+[245] Belkasoft, Forensic data recovery with SQLite analysis（freelist 恢复与 VACUUM 清除）[EB/OL]. https://belkasoft.com/sqlite
+[246] 知乎, sqlcipher的wal文件是如何加密的？（WAL 帧逐帧加密、首帧 16 字节盐明文）[EB/OL]. （2023-10-25）. https://www.zhihu.com/question/627797038
+[247] CSDN, SQLCipher WAL模式加密[EB/OL]. （2025-11-10）. https://blog.csdn.net/gitblog_01076/article/details/151878165
+[248] DFRWS 2019, bring2lite: Forensic Data Analysis and Recovery of Deleted SQLite Records（secure_delete=1+WAL 仍可从 WAL 帧完整恢复）[EB/OL]. https://dfrws.org/wp-content/uploads/2019/06/2019_USA_paper-bring2lite_a_structural_concept_and_tool_for_forensic_data_analysis_and_recovery_of_deleted_sqlite_records.pdf
+[249] Full Circle Electronics, Data Remanence After Sanitization: NIST SP 800-88 Guide（SSD wear-leveling 使覆写不可靠、加密擦除）[EB/OL]. （2026-05-19）. https://blog.fcelect.com/data-remanence-after-sanitization/
+[250] Kingston, How to Securely Erase an SSD（TRIM 不保证即时清除；crypto-erase 原理）[EB/OL]. https://www.kingston.com/en/blog/personal-storage/how-to-securely-erase-ssd
+[251] deltachat-core Issue #196, Compile SQLite with secure_delete（"SQLCipher enables secure_delete by default"的集成记录）[EB/OL]. （2018-06-21）. https://github.com/deltachat/deltachat-core/issues/196
+[252] 吾爱破解, 解开 Windows 微信 4.0 版本的主数据库（SQLCipher codec 内部明文 buffer 与解密路径逆向）[EB/OL]. （2026-05-02）. https://www.52pojie.cn/thread-2105908-1-1.html
+[253] 掘金, 从零开发 Obsidian 密码管理器插件：MinePass 技术实践（JS 字符串不可变无法清零；Uint8Array.fill(0) 策略）[EB/OL]. （2026-05-17）. https://juejin.cn/post/7640357362860736564
+[254] SpecterOps, V8 Heap Archaeology（V8 堆内存取证可读性）[EB/OL]. （2026-02-11）. https://specterops.io/blog/2026/02/11/v8-heap-archaeology-finding-exploitation-artifacts-in-chromes-memory/
+[255] WCDB Releases（v2.1.16 tag）[EB/OL]. （2026-03-27）. https://github.com/Tencent/wcdb/releases/tag/v2.1.16
+[256] 微信客户端团队：五年沉淀，微信全平台终端数据库WCDB迎来重大升级, 腾讯云开发者社区[EB/OL]. （2024-04-09）. https://cloud.tencent.com/developer/article/2407011
+[257] OSCHINA 转载报道：微信 WCDB2[EB/OL]. （2024-04-09）. https://www.oschina.net/news/286835/weixin-wcdb2
+[258] Tencent/wcdb CHANGELOG.md（master，至 v2.1.16）[EB/OL]. （2026-03-27）. https://github.com/Tencent/wcdb/blob/master/CHANGELOG.md
+[259] 掘金：让WCDB兼容最新版Room（WCDBRoomX 方案）[EB/OL]. （2024-03-30）. https://juejin.cn/post/7352079398072320063
+[260] Tencent/sqlcipher fork（tags 及 submodule 指针 f049bed；CHANGELOG 顶端 4.1.0，基线 SQLite 3.27.2）[EB/OL]. （2025-11）. https://github.com/Tencent/sqlcipher
+[261] 微信移动端数据库组件WCDB系列（四）— Android 特性篇（WeMobileDev）[EB/OL]. https://github.com/WeMobileDev/article
+[262] WCDB for Android API 文档：SQLiteCipherSpec（字段与 SQLCipher 参数语义）[EB/OL]. https://tencent.github.io/wcdb/references/android/reference/com/tencent/wcdb/database/SQLiteCipherSpec.html
+[263] Tencent/wcdb Wiki：C++ 加密与配置[EB/OL]. （2024-03-07）. https://github.com/Tencent/wcdb/wiki/C++-%E5%8A%A0%E5%AF%86%E4%B8%8E%E9%85%8D%E7%BD%AE
+[264] Tencent/wcdb Wiki：Swift 加密与配置[EB/OL]. （2024-03-07）. https://github.com/tencent/wcdb/wiki/Swift-%E5%8A%A0%E5%AF%86%E4%B8%8E%E9%85%8D%E7%BD%AE
+[265] Tencent/wcdb Issues（#834、#1245、#1504、#1545 等加密相关 issue 汇总）[EB/OL]. https://github.com/Tencent/wcdb/issues
+[266] WCDB - 腾讯开源的移动数据库框架：进阶教程-加密与配置, BookStack[EB/OL]. https://www.bookstack.cn/read/tencent-wcdb/dbb1433dc25ad5fd.md
+[267] 微信聊天记录解密, sarv.blog（各平台 WCDB 加密参数表：v3 64000/SHA1、v4 256000/SHA512、page 4096）[EB/OL]. （2025-03-25）. https://sarv.blog/posts/chatlog/
+[268] 安卓微信本地数据库解密与删除聊天记录恢复（SQLiteCipherSpec 参数 ↔ SQLCipher PRAGMA 对照）[EB/OL]. https://www.elefans.com/xitong/1727893038a1136508.html
+[269] Tencent/wcdb Wiki：Home（五语言架构图、功能清单；Android 接入与迁移入口）[EB/OL]. https://github.com/Tencent/wcdb/wiki
+[270] CSDN 文库：手把手教你用DB Browser打开任意版本Windows微信数据库[EB/OL]. （2026-05）. https://wenku.csdn.net/column/g0478p9703c
+[271] 微信移动端数据库组件WCDB系列（二）— 数据库修复三板斧[EB/OL]. （2017-06）. https://cloud.tencent.com/developer/article/1005513
+[272] 微信客户端 SQLite 数据库修复实践（WeMobileDev）[EB/OL]. （2017-04）. https://cloud.tencent.com/developer/article/2256739
+[273] 五年沉淀…重大升级（博客园转载，mmap/增量备份/Savepoint 细节）[EB/OL]. （2024-04-10）. https://brands.cnblogs.com/tencentcloud/p/18997
+[274] bobzhangfw/SqliteRepairKit（RepairKit 非对外接口的说明）[EB/OL]. https://gitcode.com/bobzhangfw/SqliteRepairKit
+[275] GitCode：WCDB全文检索中Tokenizer的演进与使用指南[EB/OL]. （2025-05-21）. https://blog.gitcode.com/adf55d5db174700243740b643f6d4042.html
+[276] 腾讯云：微信团队开源的终端数据库WCDB有什么优势？[EB/OL]. （2024-05-25）. https://cloud.tencent.com/developer/article/2421429
+[277] 为什么要从FMDB迁移到WCDB（官方 benchmark 口径转载）[EB/OL]. （2023-10）. https://blog.wyan.vip/2023/10/iOS_wx_migrate_to_wcdb.html
+[278] CSDN：实测！WCDB性能碾压SQLite（低可信度，疑似 AI 生成）[EB/OL]. （2025-09-06）. https://blog.csdn.net/gitblog_00487/article/details/151250922
+[279] Tencent/wcdb LICENSE 全文（BSD-3 + 第三方组件清单）[EB/OL]. https://github.com/Tencent/wcdb/blob/master/LICENSE
+[280] 掘金：iOS DB技术框架对比[EB/OL]. （2020-10-22）. https://juejin.cn/post/6886332549908414478
+[281] Tencent/wcdb Releases（v2.1.7–v2.1.16 变更记录）[EB/OL]. （2026-03-26）. https://github.com/Tencent/wcdb/releases
+[282] CSDN：终极WCDB编译实战指南：跨平台集成核心问题深度解析[EB/OL]. （2026-03-12）. https://blog.csdn.net/gitblog_01023/article/details/155743207
+[283] Tencent/wcdb Wiki：Java|Kotlin 安装与兼容性（含"迁移到 WCDB 新版本"）[EB/OL]. （2024-05）. https://github.com/Tencent/wcdb/wiki/Java%7CKotlin-%E5%AE%89%E8%A3%85%E4%B8%8E%E5%85%BC%E5%AE%B9%E6%80%A7
+[284] Tencent/wcdb Wiki：Java|Kotlin 加密与配置（含默认配置）[EB/OL]. （2024-03-07）. https://github.com/Tencent/wcdb/wiki/Java%7CKotlin-%E5%8A%A0%E5%AF%86%E4%B8%8E%E9%85%8D%E7%BD%AE
+[285] Tencent/wcdb Wiki：Android接入与迁移（明文→加密 sqlcipher_export、从 SQLCipher Android 迁移）[EB/OL]. （2017-06）. https://github.com/Tencent/wcdb/wiki/Android%E6%8E%A5%E5%85%A5%E4%B8%8E%E8%BF%81%E7%A7%BB
+[286] Tencent/wcdb Wiki：Swift 安装与兼容性（SPM/CocoaPods/Carthage/源码四种方式）[EB/OL]. https://github.com/Tencent/wcdb/wiki/Swift-%E5%AE%89%E8%A3%85%E4%B8%8E%E5%85%BC%E5%AE%B9%E6%80%A7
+[287] CSDN：WCDB快速入门：iOS/Android跨平台集成教程（WCDBOptimizedSQLCipher 说明）[EB/OL]. （2025-09）. https://blog.csdn.net/gitblog_01146/article/details/151248836
+[288] SQLiteRepairKit.podspec（1.x 依赖 WCDBOptimizedSQLCipher）[EB/OL]. https://gitee.com/mtxcfw/wcdb/blob/master/SQLiteRepairKit.podspec
+[289] Tencent/wcdb Wiki：Objc 加密与配置[EB/OL]. （2024-03-07）. https://github.com/Tencent/wcdb/wiki/Objc-%E5%8A%A0%E5%AF%86%E4%B8%8E%E9%85%8D%E7%BD%AE
+[290] Tencent/wcdb Wiki：C++ 安装与兼容性（Windows/Linux/OpenHarmony/Android/iOS 构建）[EB/OL]. （2024-08-18）. https://github.com/Tencent/wcdb/wiki/C++-%E5%AE%89%E8%A3%85%E4%B8%8E%E5%85%BC%E5%AE%B9%E6%80%A7
+[291] 掘金：WCDB 在 Visual Studio 2019 下的编译指南[EB/OL]. （2023-08-03）. https://juejin.cn/post/7263014913688404026
+[292] 看雪论坛：使用pysqlcipher3操作Windows微信数据库（WCDB PRAGMA 序列、DB Browser raw key 打开方法）[EB/OL]. （2024-04-26）. https://bbs.kanxue.com/thread-281525.htm
+[293] GitCode：WCDB数据库对HarmonyOS及跨平台支持的技术解析[EB/OL]. （2025-05-21）. https://blog.gitcode.com/e565ab8db20060dbf987d77097c3b173.html
+[294] sqlitebrowser.org（DB4S 3.13.0 内置 SQLCipher）[EB/OL]. （2026-04）. https://sqlitebrowser.org
+[295] 掘金：wcdb使用笔记（sqlcipher CLI 打开 WCDB 库 + sqlcipher_export 导出明文）[EB/OL]. （2018-11-15）. https://juejin.cn/post/6844903715145515022
+[296] Tencent/wcdb Issue #834：1.1-19 版本 SQLCipher 4.x 解密问题[EB/OL]. （2021-11-01）. https://github.com/Tencent/wcdb/issues/834
+[297] Tencent/wcdb Wiki（1.x Home 存档）：Migrate from Plain-text SQLite Databases / sample-encryptdb[EB/OL]. https://github.com/Tencent/wcdb/wiki/Home/f98adfe255e218339333c7e0be9d8b705c70746b
+[298] Tencent/wcdb Wiki：Objc 数据迁移（addMigration、setDefaultCipherConfiguration）[EB/OL]. （2024-03-07）. https://github.com/Tencent/wcdb/wiki/Objc-%E6%95%B0%E6%8D%AE%E8%BF%81%E7%A7%BB
+[299] Tencent/wcdb Wiki：Swift 数据迁移[EB/OL]. （2024-03-07）. https://github.com/tencent/wcdb/wiki/Swift-%E6%95%B0%E6%8D%AE%E8%BF%81%E7%A7%BB
+[300] ysy950803/WCDBRoomX（Room → WCDB OpenHelperFactory 桥接示例）[EB/OL]. （2024-03-27）. https://github.com/ysy950803/WCDBRoomX
+[301] 微信公众号：五年沉淀，微信全平台终端数据库WCDB迎来重大升级（2.x 放弃向后兼容的重写背景）[EB/OL]. （2024-04-10）. http://mp.weixin.qq.com/s?__biz=MjM5ODYwMjI2MA==&amp;mid=2649783272&amp;idx=1&amp;sn=78b58536989b47c01d0d55c780b59b1c
+[302] GitCode：WCDB Android 2.0升级指南：SQL语句兼容性与动态库加载解析[EB/OL]. https://blog.gitcode.com/5020779c04ddc71eba3a04d1b740f8d8.html
+[303] GitCode：WCDB数据库版本迁移：从Objective-C 1.1.0到2.1.2的查询API变更解析[EB/OL]. （2025-05-21）. https://blog.gitcode.com/e04010578b24c06c0eea164e654bbbf2.html
+[304] npm registry 实测：wcdb 包名不存在（404）、全站搜索 0 结果[EB/OL]. （2026-07-27 实测，无公开 URL）.
+[305] kevin2li/wechat-analyzer（greycode/wcdb-sqlcipher 为 Docker 解密工具镜像）[EB/OL]. （2023-05-15）. https://github.com/kevin2li/wechat-analyzer</p>
+</div>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'neutral',
+  flowchart: { htmlLabels: true, curve: 'basis' },
+  sequence: { actorMargin: 60, messageMargin: 40 },
+  themeVariables: {
+    primaryColor: '#f4f1ec',
+    primaryBorderColor: '#8b7355',
+    primaryTextColor: '#2b2b2b',
+    lineColor: '#8b7355',
+    actorBord: '#8b7355',
+    actorLineColor: '#8b7355'
+  }
+});
+</script>
+</body>
+</html>

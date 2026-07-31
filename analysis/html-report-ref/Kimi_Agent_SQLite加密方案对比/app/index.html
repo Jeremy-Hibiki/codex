@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SQLite 加密方案调研汇报</title>
+<style>
+:root{
+  --bg:#f7f4ef; --card:#ffffff; --ink:#2b2823; --muted:#7a7267;
+  --accent:#8b6f4e; --accent-soft:#b8a586; --line:#e6dfd3;
+  --good:#5f7a5a; --warn:#a5663f; --bad:#9c4f3e;
+  --code-bg:#2e2a25; --code-ink:#e8e2d8;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;line-height:1.8;font-size:16px}
+
+/* ── nav ── */
+nav{position:sticky;top:0;z-index:50;background:rgba(247,244,239,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+nav .inner{max-width:1080px;margin:0 auto;padding:10px 24px;display:flex;gap:22px;align-items:center;overflow-x:auto;font-size:.85rem}
+nav .brand{font-weight:700;color:var(--accent);white-space:nowrap}
+nav a{color:var(--muted);text-decoration:none;white-space:nowrap}
+nav a:hover{color:var(--ink)}
+
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+
+/* ── hero ── */
+.hero{padding:72px 0 48px;border-bottom:1px solid var(--line)}
+.hero .kicker{color:var(--accent);font-size:.85rem;letter-spacing:.15em;font-weight:600;margin-bottom:14px}
+.hero h1{font-size:2.5rem;line-height:1.3;letter-spacing:-.01em;margin-bottom:18px}
+.hero .lede{font-size:1.1rem;color:var(--muted);max-width:760px}
+.hero .meta{margin-top:22px;font-size:.82rem;color:var(--muted);display:flex;gap:18px;flex-wrap:wrap}
+.hero .meta span{background:var(--card);border:1px solid var(--line);border-radius:99px;padding:4px 14px}
+
+/* ── sections ── */
+section{padding:56px 0;border-bottom:1px solid var(--line)}
+.sec-no{color:var(--accent);font-size:.8rem;font-weight:700;letter-spacing:.2em;margin-bottom:8px}
+h2{font-size:1.6rem;margin-bottom:8px;letter-spacing:-.01em}
+.sec-sub{color:var(--muted);margin-bottom:28px;max-width:720px}
+h3{font-size:1.1rem;margin:26px 0 10px}
+p{margin:.6em 0}
+strong{color:#1f1c18}
+
+/* ── takeaway cards ── */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px 24px}
+.card .tag{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.08em;padding:2px 10px;border-radius:99px;margin-bottom:12px}
+.tag.g{background:#eef2ea;color:var(--good)} .tag.w{background:#f7efe7;color:var(--warn)} .tag.b{background:#f6eae6;color:var(--bad)} .tag.n{background:#f0ece4;color:var(--accent)}
+.card h4{font-size:1.02rem;margin-bottom:8px}
+.card p{font-size:.92rem;color:#4a453d}
+
+/* ── big numbers ── */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px 20px;text-align:center}
+.stat .num{font-size:2rem;font-weight:800;color:var(--accent);letter-spacing:-.02em}
+.stat .lbl{font-size:.85rem;color:var(--muted);margin-top:4px}
+.stat .sub{font-size:.75rem;color:var(--muted);margin-top:6px}
+
+/* ── table ── */
+.tbl-scroll{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%;font-size:.9rem;min-width:760px}
+th,td{padding:11px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+thead th{background:#f2ede4;color:#3a352d;font-weight:700;border-bottom:2px solid #c9bda6}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#faf7f1}
+td .pill{font-size:.72rem;font-weight:700;padding:1px 9px;border-radius:99px;white-space:nowrap}
+.pill.g{background:#eef2ea;color:var(--good)} .pill.w{background:#f7efe7;color:var(--warn)} .pill.b{background:#f6eae6;color:var(--bad)} .pill.n{background:#f0ece4;color:var(--accent)}
+.note{font-size:.8rem;color:var(--muted);margin-top:10px}
+
+/* ── mermaid ── */
+.mermaid{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:28px;margin:18px 0;text-align:center;overflow-x:auto}
+.figcap{font-size:.82rem;color:var(--muted);text-align:center;margin-top:6px}
+
+/* ── code ── */
+pre{background:var(--code-bg);border-radius:10px;padding:18px 20px;overflow-x:auto;margin:14px 0}
+pre code{font-family:"JetBrains Mono",Consolas,monospace;font-size:.84rem;line-height:1.65;color:var(--code-ink);background:none;padding:0}
+code{font-family:"JetBrains Mono",Consolas,monospace;font-size:.85em;background:#f0ece4;padding:2px 6px;border-radius:4px;color:#5b4a36}
+
+/* ── lists ── */
+ul,ol{padding-left:1.4em} li{margin:.35em 0}
+.check li{list-style:none;position:relative;padding-left:1.7em}
+.check li::before{content:"✓";position:absolute;left:0;color:var(--good);font-weight:800}
+.cross li{list-style:none;position:relative;padding-left:1.7em}
+.cross li::before{content:"✕";position:absolute;left:0;color:var(--bad);font-weight:800}
+
+/* ── callout ── */
+.callout{border-left:4px solid var(--accent);background:var(--card);border-radius:0 10px 10px 0;padding:16px 22px;margin:16px 0;font-size:.95rem}
+.callout.warn{border-color:var(--warn)}
+.callout.bad{border-color:var(--bad)}
+
+/* ── footer ── */
+footer{padding:40px 0 64px;color:var(--muted);font-size:.82rem}
+footer a{color:var(--accent)}
+
+@media(max-width:640px){.hero h1{font-size:1.8rem}.hero{padding:48px 0 36px}}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="inner">
+    <span class="brand">SQLite 加密调研</span>
+    <a href="#conclusion">核心结论</a>
+    <a href="#landscape">方案对比</a>
+    <a href="#principle">加密原理</a>
+    <a href="#perf">性能</a>
+    <a href="#drizzle">Drizzle 接入</a>
+    <a href="#wechat">微信/WCDB 案例</a>
+    <a href="#scenario">落地建议</a>
+    <a href="#security">攻击向量</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<!-- ═══ HERO ═══ -->
+<div class="hero">
+  <div class="kicker">TECH BRIEFING · 2026-07</div>
+  <h1>SQLite 数据库加密方案调研汇报</h1>
+  <p class="lede">免费/开源方案全景对比、加解密原理、兼容性与性能实测、Drizzle ORM 接入路径，以及针对 <strong>bun 单文件打包 + 硬件 UKey 密钥注入</strong>场景的落地架构建议。</p>
+  <div class="meta">
+    <span>数据快照 2026-07-26（GitHub API 实测）</span>
+    <span>10 个调研维度 · 200+ 次检索 · 211 条来源</span>
+    <span>完整版报告 9 章 / 11 表 / 6 图</span>
+  </div>
+</div>
+
+<!-- ═══ 1 核心结论 ═══ -->
+<section id="conclusion">
+  <div class="sec-no">01 · EXECUTIVE SUMMARY</div>
+  <h2>一页看懂结论</h2>
+  <p class="sec-sub">2026 年的开源格局已收敛为「一超一强一新」三层；你的场景（bun 打包 + UKey 密钥）有明确的最优路径。</p>
+
+  <div class="cards">
+    <div class="card">
+      <span class="tag g">选型结论</span>
+      <h4>生产选型只有两条成熟路径</h4>
+      <p><strong>SQLCipher 系</strong>（7,213★，事实标准，移动端验证最充分）与 <strong>SQLite3MultipleCiphers 系</strong>（661★，下游覆盖最广、2026 最活跃，可读写 SQLCipher/sqleet 文件）。Turso 原生加密仍 experimental，适合新项目试水。</p>
+    </div>
+    <div class="card">
+      <span class="tag g">你的场景</span>
+      <h4>bun compile + better-sqlite3-multiple-ciphers</h4>
+      <p>加密库以 raw 32 字节 key 直开（对接 UKey 零摩擦），Drizzle 经 npm alias 无缝接入；<code>.node</code> 原生模块作为 asset 嵌入单文件、启动时解包 dlopen——Claude Agent SDK 官方同款模式。</p>
+    </div>
+    <div class="card">
+      <span class="tag w">性能认知</span>
+      <h4>两个独立的成本轴，别混为一谈</h4>
+      <p>KDF 只在打开连接时发生一次（SQLCipher 25.6 万迭代 ≈ 手机端 100–120ms，<strong>UKey 直供 raw key 可完全跳过</strong>）；稳态开销与访问页数成正比——索引查询 2–5%，全表扫描可达 5 倍。</p>
+    </div>
+    <div class="card">
+      <span class="tag b">威胁模型</span>
+      <h4>文件级加密防「拷走」，不防「本机」</h4>
+      <p>微信 PC 的实践证明：常驻进程的密钥必然以可用形态存在于内存，逆向社区 30ms 可提取。你的 UKey 方案已解决密钥来源问题，防御目标应明确定位为<strong>静态文件失窃 + 泄漏兜底</strong>。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 2 方案全景 ═══ -->
+<section id="landscape">
+  <div class="sec-no">02 · LANDSCAPE</div>
+  <h2>开源方案对比（精选）</h2>
+  <p class="sec-sub">Star 数与维护状态为 2026-07-26 GitHub API 快照。SQLiteCrypt（$128/平台起，专有许可）与官方 SEE（$2,000）为商业闭源，不满足免费/开源要求，仅作基准，不列入。</p>
+
+  <div class="stats" style="margin-bottom:24px">
+    <div class="stat"><div class="num">7,213</div><div class="lbl">SQLCipher ★</div><div class="sub">事实标准 · BSD-3</div></div>
+    <div class="stat"><div class="num">661</div><div class="lbl">SQLite3MultipleCiphers ★</div><div class="sub">2026 最活跃 · MIT</div></div>
+    <div class="stat"><div class="num">23,431</div><div class="lbl">Turso ★</div><div class="sub">Rust 重写 · 加密 experimental</div></div>
+    <div class="stat"><div class="num">394</div><div class="lbl">sqleet ★</div><div class="sub">已停更 · 勿用于新项目</div></div>
+  </div>
+
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr>
+      <th>方案</th><th>Star / License</th><th>加密算法</th><th>维护状态</th><th>文件格式</th><th>一句话定位</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>SQLCipher</strong></td>
+        <td>7,213★ · BSD-3</td>
+        <td>AES-256-CBC + HMAC-SHA512<br>PBKDF2-SHA512 ×256,000</td>
+        <td><span class="pill g">活跃</span> v4.17.0（2026-07-08）</td>
+        <td>私有格式，工具链最全（DB Browser 等）</td>
+        <td>移动端事实标准，Signal/微信同款</td>
+      </tr>
+      <tr>
+        <td><strong>SQLite3MultipleCiphers</strong><br>(sqlite3mc)</td>
+        <td>661★ · MIT</td>
+        <td>7 种 scheme：sqleet ChaCha20-Poly1305（默认）、SQLCipher v1–v4、wxSQLite3 AES、RC4、Ascon、AEGIS</td>
+        <td><span class="pill g">活跃</span> v2.4.0（2026-07-25）</td>
+        <td><strong>legacy 模式可读 sqleet/SQLCipher 文件（唯一「格式逃生舱」）</strong></td>
+        <td>sqleet 官方继任者，下游覆盖最广</td>
+      </tr>
+      <tr>
+        <td><strong>Turso</strong>（Rust 重写）</td>
+        <td>23,431★ · MIT</td>
+        <td>AEGIS-256（推荐）/ AES-GCM<br>AEAD-only，无 KDF（raw key）</td>
+        <td><span class="pill w">活跃但加密 experimental</span></td>
+        <td>私有格式，<strong>只能被 Turso 引擎打开</strong></td>
+        <td>官方称读 6%/写 14% 开销，无第三方验证</td>
+      </tr>
+      <tr>
+        <td><strong>libSQL</strong></td>
+        <td>16,991★ · MIT</td>
+        <td>AES-256-CBC（默认 aes256cbc），page-based</td>
+        <td><span class="pill w">发版停滞</span>（最新 release 2025-02）</td>
+        <td>理论兼容 SQLCipher v4 工具链（未验证）</td>
+        <td>Drizzle 官方驱动支持 encryptionKey</td>
+      </tr>
+      <tr>
+        <td><strong>sqleet</strong></td>
+        <td>394★ · Unlicense</td>
+        <td>ChaCha20-Poly1305，PBKDF2 ×12,345</td>
+        <td><span class="pill b">停更</span>（卡死 SQLite 3.31.1）</td>
+        <td>私有格式</td>
+        <td>作者官方推荐迁移至 sqlite3mc</td>
+      </tr>
+      <tr>
+        <td><strong>wxSQLite3 / WCDB</strong></td>
+        <td>652★ / 11.6k★</td>
+        <td>AES-128/256-CBC（无 HMAC）/ 内嵌 SQLCipher</td>
+        <td><span class="pill g">活跃</span></td>
+        <td>加密核心已剥离至 sqlite3mc</td>
+        <td>WCDB 即微信/企业微信移动端数据库组件</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note">分析：Star 数与技术现实存在错位——sqlite3mc 仅 661★ 却是 SQLiteStudio、better-sqlite3-multiple-ciphers、SQLitePCLRaw、Dart sqlite3 的共同加密内核；Turso 23k★ 反映的是项目整体热度而非加密功能成熟度。评估加密方案应看「加密功能的维护状态 + 下游采用」，而非仓库总 Star。</p>
+</section>
+
+<!-- ═══ 3 加密原理 ═══ -->
+<section id="principle">
+  <div class="sec-no">03 · HOW IT WORKS</div>
+  <h2>加密 / 解密运行过程</h2>
+  <p class="sec-sub">所有主流方案同构：在 pager 层挂接 page-level codec，读页时解密、写页时加密，内存中恒为明文，落盘恒为密文。</p>
+
+  <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant App as 应用 (Drizzle)
+    participant Drv as 驱动层
+    participant Codec as 加密 Codec
+    participant Pager as SQLite Pager
+    participant Disk as 磁盘文件
+    App->>Drv: 打开数据库
+    Drv->>Codec: sqlite3CodecAttach 挂载
+    App->>Codec: PRAGMA key = UKey 密钥
+    Note over Codec: KDF 派生加密钥 + HMAC 钥<br>(raw key 模式跳过 KDF)
+    App->>Pager: 第一条 SQL（触发验钥）
+    Pager->>Disk: 读取密文页
+    Disk-->>Pager: 密文页 + 页尾 IV/tag
+    Pager->>Codec: 验证 HMAC/AEAD → 解密
+    Codec-->>Pager: 明文页入 page cache
+    Pager-->>App: 返回查询结果
+    Note over App,Disk: 密钥错误时此刻才报 SQLITE_NOTADB(26)
+  </div>
+  <p class="figcap">图 1 · 打开与读路径时序：PRAGMA key 必须是打开后的第一个操作；错钥延迟到首次读页才暴露</p>
+
+  <div class="mermaid">
+flowchart LR
+    subgraph W["写路径"]
+      W1["明文页<br>(page cache)"] --> W2["生成随机 IV/nonce"]
+      W2 --> W3["加密 + 计算 HMAC/AEAD tag"]
+      W3 --> W4["IV + tag 写入页尾<br>reserved bytes"]
+      W4 --> W5["密文落盘<br>(主库/WAL/journal 同密钥)"]
+    end
+    subgraph R["读路径"]
+      R1["读取密文页"] --> R2["验证页尾 tag<br>防篡改"]
+      R2 --> R3["解密"]
+      R3 --> R4["明文入 page cache"]
+    end
+  </div>
+  <p class="figcap">图 2 · 页级加解密数据流：SQLCipher v4 每页保留 80 字节（16 IV + 64 HMAC）；Turso 保留 100 字节明文文件头</p>
+
+  <div class="callout">
+    <strong>各方案互不兼容的根源在文件头处理</strong>：SQLCipher 用盐覆盖 magic header、SEE 保留 16–23 字节、Turso 保留全部 100 字节明文头。加密库对普通 <code>sqlite3</code> 一律报 <code>file is not a database</code>；明文库 ↔ 加密库互转须走 <code>ATTACH + sqlcipher_export()</code>。
+  </div>
+</section>
+
+<!-- ═══ 4 性能 ═══ -->
+<section id="perf">
+  <div class="sec-no">04 · PERFORMANCE</div>
+  <h2>性能：两个成本轴</h2>
+  <p class="sec-sub">脱离连接模型谈「性能损失 X%」没有意义。你的场景（UKey 直供 raw key）天然消除第一条轴。</p>
+
+  <div class="cards">
+    <div class="card">
+      <span class="tag w">轴一 · 打开成本（一次性）</span>
+      <h4>KDF 迭代 ≈ 每次连接的固定延迟</h4>
+      <p>SQLCipher v4 默认 25.6 万次 PBKDF2，手机 CPU 实测外推约 100–120ms/次打开。高频短连接场景（serverless、CLI）这条轴主导延迟。<strong>使用 32 字节 raw key（UKey 场景）可完全跳过 KDF，打开零成本</strong>——代价是密钥熵管理责任转移给你，UKey 恰好解决这一点。</p>
+    </div>
+    <div class="card">
+      <span class="tag w">轴二 · 稳态开销（与访问量成正比）</span>
+      <h4>查询形态决定放大倍数</h4>
+      <p>第三方实测（Nokia 6.1）：事务内 Insert <strong>+2.3%</strong>、索引 Select <strong>+3.4%</strong>、非索引全表扫描 <strong>+496%</strong>。长连接服务端应关注这条轴——索引设计比加密方案本身更影响稳态性能。</p>
+    </div>
+  </div>
+
+  <h3>各方案实测 / 宣称一览</h3>
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>方案</th><th>读开销</th><th>写开销</th><th>打开延迟</th><th>来源性质</th></tr></thead>
+    <tbody>
+      <tr><td>SQLCipher 4.x</td><td>索引查询 2–5% / 全表扫描可达 ~5×</td><td>事务内 +2.3%</td><td>256k 迭代 ≈ 100–120ms（手机）</td><td><span class="pill g">第三方实测</span> + 官方 5–15%</td></tr>
+      <tr><td>Turso（AEGIS-256）</td><td>0.2%→5.5%</td><td>9.4%→13.9%</td><td>零（无 KDF）</td><td><span class="pill w">官方宣称</span>，无第三方复现</td></tr>
+      <tr><td>better-sqlite3-multiple-ciphers</td><td colspan="2">两组矛盾口径：慢 45–75%（含绑定层差异）vs 仅 ~18%（仅切加密开关）</td><td>—</td><td><span class="pill w">生产环境</span>，口径并列</td></tr>
+      <tr><td>sqleet / sqlite3mc</td><td colspan="2">无量化 benchmark（数据缺口）；仅定性「AES 通常慢于 ChaCha20-Poly1305」</td><td>12,345 / 64,007 迭代，打开较快</td><td><span class="pill b">数据缺口</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note">关键选型提示：无 AES-NI 的平台（部分 ARM/嵌入式）软件 AES 慢约 28 倍，应选 ChaCha20-Poly1305（sqlite3mc 默认）；x86 服务器有 AES-NI，AES-256 与 ChaCha20 差距不大。事务批量写入、4K 页、WAL 模式均可显著摊薄开销。</p>
+</section>
+
+<!-- ═══ 5 Drizzle ═══ -->
+<section id="drizzle">
+  <div class="sec-no">05 · DRIZZLE ORM</div>
+  <h2>Drizzle 接入：三条路径</h2>
+  <p class="sec-sub">运行时层三条路径都透明；真正的接入成本在 drizzle-kit 工具链。</p>
+
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>路径</th><th>做法</th><th>适用</th><th>关键约束</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>A · libsql 驱动</strong></td>
+        <td><code>createClient({url:'file:x.db', encryptionKey})</code> 后 <code>drizzle(client)</code></td>
+        <td>最快上手；Turso 生态</td>
+        <td>bun compile 下有打包障碍（见下节）；replica 模式加密有未修复 bug</td>
+      </tr>
+      <tr>
+        <td><strong>B · better-sqlite3-multiple-ciphers</strong></td>
+        <td>npm alias 顶替 better-sqlite3，Drizzle 零改动</td>
+        <td><strong>你的场景推荐</strong>；Electron/服务端主流</td>
+        <td>PRAGMA 顺序强制 cipher→legacy→key，须在首条 SQL 前</td>
+      </tr>
+      <tr>
+        <td><strong>C · sqlite-proxy</strong></td>
+        <td>Drizzle 生成 SQL 经 callback 发给加密后端</td>
+        <td>Tauri / 移动端</td>
+        <td><code>db.transaction()</code> 不可用，须用 <code>db.batch()</code></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>路径 B 最小接入示例（对应你的场景）</h3>
+<pre><code>// package.json —— npm alias 无缝顶替
+// "better-sqlite3": "npm:better-sqlite3-multiple-ciphers@^12"
+
+import Database from 'better-sqlite3-multiple-ciphers';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+
+const sqlite = new Database('app.db');
+// PRAGMA 顺序固定，且必须是打开后的第一条语句
+sqlite.pragma(`cipher='sqlcipher'`);   // 默认 sqleet 可省略；选 sqlcipher 兼容工具链
+sqlite.pragma(`legacy=4`);            // 兼容 SQLCipher v4 文件格式
+sqlite.pragma(`key="x'${keyFromUKey}'"`); // UKey 读出的 32 字节 raw key（hex），跳过 KDF
+
+const db = drizzle({ client: sqlite }); // 之后所有 ORM 操作与常规 SQLite 完全一致</code></pre>
+
+  <div class="callout warn">
+    <strong>最大的坑在 drizzle-kit，不在 ORM</strong>：push / migrate / studio / pull 均无加密参数，对加密库一律 <code>SQLITE_NOTADB</code>（issue #3198，提出 20+ 个月仍 open）。标准解法：CI 中 <code>drizzle-kit generate</code>（离线生成 SQL，不受影响）+ 应用启动时用 <code>drizzle-orm/libsql-migrator</code> 或 <code>better-sqlite3/migrator</code> 在 key 之后跑 <code>migrate()</code>。另外 <code>bun:sqlite</code> 与 <code>node:sqlite</code> 均不支持加密，<code>:memory:</code> 库不能 key。
+  </div>
+</section>
+
+<!-- ═══ 6 微信 PC 案例 ═══ -->
+<section id="wechat">
+  <div class="sec-no">06 · CASE STUDY</div>
+  <h2>微信 PC 客户端是怎么做的</h2>
+  <p class="sec-sub">微信是「客户端 SQLite 加密」最成熟的量产案例。以下技术细节来自逆向工程社区（看雪/吾爱破解/GitHub 开源工具）的公开分析，非腾讯官方披露。</p>
+
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th></th><th>PC 3.x（Windows）</th><th>PC 4.0（Win/Mac 统一）</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>引擎</strong></td>
+        <td>SQLCipher v3 参数（腾讯 WCDB 内嵌变种）</td>
+        <td>SQLCipher v4 默认（PBKDF2-SHA512 ×256,000，HMAC-SHA512）</td>
+      </tr>
+      <tr>
+        <td><strong>文件布局</strong></td>
+        <td><code>WeChat Files\&lt;wxid&gt;\Msg\</code>：MicroMsg.db + MSG0~n.db 分片（约 240MB/片）</td>
+        <td><code>xwechat_files\&lt;wxid&gt;\db_storage\</code>：按业务域分库，message_0~9 分片，消息体再叠 ZSTD 压缩</td>
+      </tr>
+      <tr>
+        <td><strong>密钥派生</strong></td>
+        <td colspan="2">每账号 × 每设备<strong>随机生成</strong>的 32 字节 raw key —— 不从口令派生、不依赖设备指纹</td>
+      </tr>
+      <tr>
+        <td><strong>密钥存储</strong></td>
+        <td colspan="2"><strong>不落盘，仅内存常驻</strong>（4.0 内存中甚至存在 <code>x'&lt;key&gt;&lt;salt&gt;'</code> 明文格式）</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout bad">
+    <strong>密钥管理的真相</strong>：所有社区工具（PyWxDump 基址偏移、wechat-dump-rs 特征扫描、lldb/WinDbg 断点）都从运行进程内存提取密钥，Windows 下最快 30ms 可得。混淆、反调试、版本快速迭代只提高成本、不改变结局。反例是 Android 端旧方案 key = MD5(IMEI+UIN) 取前 7 位且 IMEI 可获取——可离线推导，等于没加密。
+  </div>
+
+  <h3>深挖：WCDB 本身值得知道的五件事</h3>
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>维度</th><th>结论</th></tr></thead>
+    <tbody>
+      <tr><td><strong>架构</strong></td><td>v2.x = 统一 C++ 核心 + 五语言薄绑定（ObjC/Swift/Java/Kotlin/C++），覆盖 iOS/macOS/Android/Windows/Linux/OpenHarmony；SQLite 不跟随上游，跟随腾讯自维护的 SQLCipher fork</td></tr>
+      <tr><td><strong>加密实现</strong></td><td>接口只暴露 key / pageSize（4096）/ cipherVersion（默认 v4 = 256k 迭代 + HMAC-SHA512）；文件即标准 SQLCipher 格式。但内嵌 fork 基线停在 SQLCipher 4.1.0（2019），落后上游、靠腾讯自行 backport——CVE 修复跟随速度是引入前必须自评的信任问题</td></tr>
+      <tr><td><strong>差异化价值</strong></td><td>修复/备份三板斧（Dump → 备份 → RepairKit + mmap 增量备份，500MB 库备份 63ms），全链路兼容加密库——这是它相对裸 SQLCipher 对<strong>加密场景独有</strong>的核心价值；另有 FTS5 拼音分词、WINQ</td></tr>
+      <tr><td><strong>接入</strong></td><td>Android：<code>com.tencent.wcdb:main:2.1.16</code> + <code>setCipherKey(byte[], 4096, v4)</code> + <code>canOpen()</code> 验钥，旧代码走 <code>compat</code> 模块改 import；iOS：SPM + <code>setCipher(key: Data)</code>；Windows/Linux 仅 C++ 接口</td></tr>
+      <tr><td><strong>迁移</strong></td><td>明文→加密：ATTACH + <code>sqlcipher_export</code> 或 2.x 框架级 <code>addMigration</code> 渐进迁移；既有 SQLCipher 库：参数匹配即直开，<strong>务必自定义 DatabaseErrorHandler 防误判损坏删库</strong>；WCDB 1.x 旧库须显式指定 CipherVersion.version3</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout warn">
+    <strong>对你的 Node/bun 服务端：WCDB 不适用</strong>——五语言接口无 JS 绑定，npm 上无官方包（实测 404）。但这给出一个可行的跨端架构：移动端 WCDB + 服务端 better-sqlite3-multiple-ciphers，<strong>同一 SQLCipher v4 文件、同一密钥，两端互通</strong>（服务端配置 <code>cipher='sqlcipher' + legacy=4 + cipher_page_size=4096</code>）。密钥接口统一收 byte[]/Data，支持 <code>x'64hex'</code> raw key 形式，可直接对接 UKey/KMS 下发的真实密钥。
+  </div>
+
+  <h3>对你场景的三条启示</h3>
+  <ul class="check">
+    <li><strong>密钥来源比算法重要</strong>——微信 PC 用「随机 key + 内存常驻」，你的「UKey 注入 raw key」在密钥来源上已经更强：密钥不经口令派生、不依赖机器指纹、拔出即失效。这一步选对了。</li>
+    <li><strong>算法直接照抄 SQLCipher v4 默认参数即可</strong>（AES-256-CBC + HMAC-SHA512；raw key 模式连 KDF 都不需要）——这是被 Signal、微信等亿级产品验证过的参数组合，没有自研理由。</li>
+    <li><strong>混淆/打包只挡脚本小子</strong>——bun compile 产物的内嵌 JS 可被 marker 轻易提取，切勿把任何秘密编译进二进制；防运行时内存 dump 要靠部署侧补足（禁 ptrace/core dump、UKey 拔出停服、文件 0600 权限）。</li>
+  </ul>
+</section>
+
+<!-- ═══ 7 落地建议 ═══ -->
+<section id="scenario">
+  <div class="sec-no">07 · RECOMMENDATION</div>
+  <h2>你的场景：bun 单文件打包 + UKey 落地架构</h2>
+  <p class="sec-sub">场景约束：Node.js Server（Drizzle ORM）→ bun 打包 + 混淆 + bundle 为单个可执行文件；密钥由硬件 UKey 在启动时提供。</p>
+
+  <div class="mermaid">
+flowchart TD
+    UKey["硬件 UKey<br>(SM2/密钥存储)"] -->|"启动时读取<br>32 字节 raw key"| Boot["应用启动"]
+    Boot --> Unpack["解包内嵌 .node 到 tmpdir<br>(extractFromBunfs 同款)"]
+    Unpack --> DL["process.dlopen 加载<br>better-sqlite3-multiple-ciphers"]
+    DL --> K1["PRAGMA cipher/legacy/key<br>(raw hex key，跳过 KDF)"]
+    K1 --> Mig["运行时 migrator 执行迁移<br>(drizzle-kit generate 的离线 SQL)"]
+    Mig --> ORM["Drizzle ORM 正常读写"]
+    ORM --> DB[("加密数据库文件<br>AES-256 静态加密")]
+    UKey -.->|"拔出 → 停服"| Boot
+  </div>
+  <p class="figcap">图 3 · 推荐启动链路：UKey → 解包原生模块 → raw key 打开加密库 → 运行时迁移 → ORM</p>
+
+  <h3>路径对比（按可行性排序）</h3>
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>#</th><th>路径</th><th>评价</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td><strong>bun compile + better-sqlite3-multiple-ciphers</strong><br>.node 作为 asset 嵌入，启动解包 dlopen</td>
+        <td><span class="pill g">推荐</span> 加密层最成熟（sqlite3mc 内核，兼容 SQLCipher v4 工具链便于审计）；raw hex key 对接 UKey 零摩擦；Drizzle npm alias 零改动；解包模式有 Claude Agent SDK 官方先例（extractFromBunfs）。注意 dlopen 需真实 inode，bun #30717/#30962 相关——「嵌入+解包」是可靠模式</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>bun compile + @libsql/client（encryptionKey）</td>
+        <td><span class="pill w">次选</span> 加密 API 最干净，但本地 file: 库强依赖 libsql native 预编译包、无纯 JS fallback，且 #18909「bun build can't compile @libsql」仍 open，需 patch 动态 require</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>Node.js SEA + better-sqlite3-multiple-ciphers</td>
+        <td><span class="pill w">备选</span> Node 官方文档级背书（assets + getRawAsset + dlopen），可叠加 bytenode 混淆；代价是放弃 Bun 运行时、体积 100MB+</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td>bun compile + 纯 WASM（sqlcipher-wasm / wa-sqlite + sqlite3mc）</td>
+        <td><span class="pill b">不推荐</span> 零 native、打包最干净，但 2–5× 性能损失、生态不成熟、Drizzle 需自行封装 driver</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>混淆的定位：保护 IP，而非保护密钥</h3>
+  <p>密钥来自 UKey 时，混淆不保护密钥本身，只抬高 UKey 交互逻辑与业务代码的静态逆向门槛。注意 bytenode 依赖 V8、在 Bun 不可用；javascript-obfuscator 在 Bun 下可运行但慢约 7 倍（bun #1421），建议只对敏感模块混淆而非全量。</p>
+
+  <div class="callout">
+    <strong>防御闭环检查单</strong>：
+    <ul class="check" style="margin-top:8px">
+      <li>at-rest 加密：数据库文件被拷走 → 无 UKey 无法解密 ✓</li>
+      <li>密钥来源：UKey 注入 raw key，二进制中无任何秘密 ✓</li>
+      <li>密钥使用：raw key 模式跳过 KDF，打开零延迟 ✓</li>
+      <li>运行时防护（部署侧）：禁 ptrace / core dump、UKey 拔出停服、文件 0600 权限 —— 需在部署文档中落实</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═══ 8 攻击向量与明文生命周期 ═══ -->
+<section id="security">
+  <div class="sec-no">08 · THREAT MODEL</div>
+  <h2>攻击向量与明文生命周期</h2>
+  <p class="sec-sub">at-rest 加密只覆盖威胁模型的一环。以下显式列出：谁能打、明文在哪停多久、怎么清、什么防不住。</p>
+
+  <h3>攻击向量 TOP5（按现实威胁排序）</h3>
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>#</th><th>攻击向量</th><th>暴露面</th><th>防护手段</th><th>落地性</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td><strong>运行时内存读取</strong><br>ptrace / gdb / <code>/proc/&lt;pid&gt;/mem</code></td>
+        <td>page cache 明文页 + 密钥副本全暴露，等价于未加密</td>
+        <td><code>prctl(PR_SET_DUMPABLE,0)</code>（同时禁同 uid 读取与 core dump）</td>
+        <td><span class="pill w">标准配置</span><br>root / CAP_SYS_PTRACE 不可防</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td><strong>旁路明文副本</strong><br>sqlcipher_export / ATTACH 明文库 / VACUUM INTO</td>
+        <td>官方功能即合法导出通道：任何能执行 SQL 的路径都能导出全量明文</td>
+        <td>连接层 authorizer 回调禁用 ATTACH / export / VACUUM INTO</td>
+        <td><span class="pill g">标准配置</span></td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td><strong>core dump / crash report</strong></td>
+        <td>密钥 + 明文页 + JS 堆的完整快照；容器内 ulimit 独立于宿主，coredump 无 namespace 隔离</td>
+        <td><code>ulimit -c 0</code> + <code>PR_SET_DUMPABLE=0</code> + systemd <code>Storage=none</code> + 容器 <code>--ulimit core=0</code></td>
+        <td><span class="pill g">标准配置</span><br>须四层同配</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td><strong>运行时 hook</strong><br>LD_PRELOAD / Frida</td>
+        <td>符号劫持或按偏移 hook <code>sqlite3_key</code> 与解密路径；bun 产物内嵌 JS 可被现成工具提取</td>
+        <td>静态链接免疫 LD_PRELOAD；混淆只增成本</td>
+        <td><span class="pill b">基本只能接受</span></td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td><strong>swap / 休眠</strong></td>
+        <td>密钥与明文页被换出落盘；mlock 防常规换出但防不住 S4 休眠（全量 RAM 落盘）</td>
+        <td>OS 层禁用或全盘加密 swap、禁用休眠</td>
+        <td><span class="pill w">部署侧配置</span><br>SQLCipher cipher_memory_security 社区版可用但 4.5.0 起默认关、性能代价大；sqlite3mc 官方明确不锁页</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note">其余向量：temp 排序/瞬时索引文件 codec 不覆盖（见下表）；查询文本与绑定参数进应用日志；<code>.node</code> 模块分发篡改（应对：发布侧代码签名 + 启动校验哈希）；UKey 交互层（PIN 爆破→靠硬件锁定策略、主机↔UKey 通信嗅探）。</p>
+
+  <h3>明文停留位置 × 停留时间 × 清除方式</h3>
+  <div class="mermaid">
+flowchart LR
+    D[("磁盘密文<br>主库/WAL/journal")] -->|"读页: 验 tag + 解密"| PC["page cache<br>明文"]
+    PC -->|"查询结果"| JS["JS/JSC 堆<br>明文副本"]
+    PC -.->|"泄漏点"| SW["swap / 休眠文件"]
+    JS -.->|"泄漏点"| CD["core dump"]
+    PC -->|"排序/临时索引"| TF["temp 文件<br>明文(默认磁盘)"]
+    DB2[("导出/备份产物<br>明文")] -.->|"sqlcipher_export<br>ATTACH / VACUUM INTO"| PC
+    style PC fill:#f7efe7,stroke:#a5663f
+    style JS fill:#f7efe7,stroke:#a5663f
+    style SW fill:#f6eae6,stroke:#9c4f3e
+    style CD fill:#f6eae6,stroke:#9c4f3e
+    style TF fill:#f6eae6,stroke:#9c4f3e
+    style DB2 fill:#f6eae6,stroke:#9c4f3e
+  </div>
+  <p class="figcap">图 5 · 明文暴露面：解密一旦发生，明文沿 page cache → JS 堆扩散，红色为不受 codec 控制的泄漏点</p>
+
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>位置</th><th>形态</th><th>停留时间</th><th>清除方式与残留风险</th></tr></thead>
+    <tbody>
+      <tr><td>主库 / WAL / journal</td><td><span class="pill g">密文</span></td><td>永久</td><td>freelist 中已删数据持 key 可恢复、无 key 不可读；WAL 模式下 secure_delete 要等 checkpoint + 截断才真正生效（DFRWS 实验：旧帧可完整恢复）</td></tr>
+      <tr><td>temp 文件（排序/瞬时索引）</td><td><span class="pill b">明文</span></td><td>语句执行期间</td><td>每连接 <code>PRAGMA temp_store=MEMORY</code>（有内存代价）；删除后 SSD wear-leveling 残影覆写不可靠——防残影的正确解是加密本身（加密擦除）</td></tr>
+      <tr><td>导出 / 备份产物</td><td><span class="pill b">明文</span></td><td>直到显式删除</td><td>authorizer 禁用导出路径；确需备份走加密→加密（SQLCipher 4.3+ backup API 仅支持加密→加密）</td></tr>
+      <tr><td>page cache（内存）</td><td><span class="pill b">明文</span></td><td>连接整个生命周期</td><td>关闭连接即释放；无法避免——这是所有页级加密的架构必然</td></tr>
+      <tr><td>密钥副本（内存）</td><td><span class="pill b">明文</span></td><td>UKey 拔出后仍在，直到 close</td><td>UKey 拔出即主动 <code>db.close()</code> + 密钥 Buffer <code>fill(0)</code>；密钥全程 Buffer 化，避免进入 JS 字符串（字符串不可零化）</td></tr>
+      <tr><td>V8 / JSC 堆（查询结果）</td><td><span class="pill b">明文</span></td><td>不可预测（GC 不保证零化）</td><td>JS 层无法可靠清除——接受为残余风险；缩小窗口：结果即用即弃、避免全局缓存查询结果</td></tr>
+      <tr><td>swap / 休眠</td><td><span class="pill b">明文落盘</span></td><td>落盘后长期残留</td><td>禁 swap 或 swap 加密 + 禁休眠；mlock 只覆盖常规换出</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note">注意 <code>PRAGMA secure_delete</code> 的口径差异：标准 SQLite 默认 OFF，SQLCipher 官方构建默认编译开启（零填充已删页）；<strong>sqlite3mc 发行构建的默认值需实测确认</strong>，建议部署时显式 <code>PRAGMA secure_delete=ON</code> + 定期 VACUUM。</p>
+
+  <div class="callout">
+    <strong>纵深防御检查单（按优先级）</strong>
+    <ul class="check" style="margin-top:8px">
+      <li>启动即 <code>prctl(PR_SET_DUMPABLE,0)</code>，叠加 ulimit / systemd / 容器四层 core dump 封堵</li>
+      <li>每连接 <code>temp_store=MEMORY</code> + <code>secure_delete=ON</code> + authorizer 禁用 ATTACH / sqlcipher_export / VACUUM INTO</li>
+      <li>UKey 拔出 → <code>db.close()</code> + 密钥 Buffer <code>fill(0)</code>；密钥不进 JS 字符串</li>
+      <li>OS 层：禁 swap（或加密 swap）、禁休眠、文件 0600、发布物代码签名</li>
+      <li>明确接受残余风险：root 内存读取、Frida hook、V8 堆明文——这三项在当前架构下无解，写入威胁模型文档而非假装不存在</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═══ 9 决策树 + 局限 ═══ -->
+<section id="decision">
+  <div class="sec-no">09 · DECISION FRAMEWORK</div>
+  <h2>通用选型决策树</h2>
+  <p class="sec-sub">三条否决线先于一切方案对比；通过后再按数据位置与合规级别收敛。</p>
+
+  <div class="mermaid">
+flowchart TD
+    S["需要加密 SQLite？"] --> V1{"否决线检查"}
+    V1 -->|"密钥只能硬编码"| X1["先解决密钥来源<br>(UKey/KMS/OS Keystore)"]
+    V1 -->|"服务端已有 FDE<br>且威胁来自在线攻击"| X2["数据库加密=security theater<br>考虑应用层字段加密"]
+    V1 -->|"仅个别字段敏感"| X3["字段级加密/VLE 更合适"]
+    V1 -->|"通过"| P{"数据位置？"}
+    P -->|"移动端/桌面端"| M["SQLCipher<br>+ OS Keystore/Keychain"]
+    P -->|"服务端本地"| Q{"需要通用工具离线审计？"}
+    Q -->|"是"| R["SQLCipher 或<br>sqlite3mc legacy 格式"]
+    Q -->|"否，接受锁定"| T["Turso 原生加密可试水"]
+    P -->|"多租户 SaaS"| L["libSQL/Turso per-tenant<br>注意 replica 加密 bug，须实测"]
+  </div>
+  <p class="figcap">图 4 · 决策树：否决线 → 数据位置 → 工具链/锁定接受度</p>
+
+  <h3>诚实声明：本调研的数据缺口</h3>
+  <ul>
+    <li>sqleet / sqlite3mc <strong>无量化官方 benchmark</strong>，仅定性结论；</li>
+    <li>Turso 加密性能（读 6%/写 14%）<strong>无第三方复现</strong>，且加密功能仍 experimental（无 rekey、无既有库迁移）；</li>
+    <li>libSQL embedded replica 模式存在<strong>加密被静默丢弃的上游 bug</strong>（副本实为明文），使用前必须实测；</li>
+    <li>better-sqlite3-multiple-ciphers 性能存在两组矛盾口径（70–75% vs ~18%），报告并列呈现、未做取舍；</li>
+    <li>微信 PC 加密细节来自逆向社区公开分析，非官方口径，可能随版本变化。</li>
+  </ul>
+</section>
+
+<footer>
+  <p><strong>SQLite 数据库加密方案调研</strong> · 数据快照 2026-07-26 · Star/维护数据经 GitHub API 实测</p>
+  <p>完整版报告：<a href="./report.html">在线阅读完整版（9 章 / 11 表 / 6 图 / 254 条参考文献）</a> · 调研底稿：<code>/mnt/agents/output/research/</code>（10+3 个维度）</p>
+</footer>
+
+</div><!-- /wrap -->
+
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'neutral',
+  flowchart: { htmlLabels: true, curve: 'basis' },
+  sequence: { actorMargin: 50, messageMargin: 38, boxMargin: 8 },
+  themeVariables: {
+    primaryColor: '#f4f0e8',
+    primaryBorderColor: '#8b6f4e',
+    primaryTextColor: '#2b2823',
+    lineColor: '#8b6f4e',
+    secondaryColor: '#faf7f1',
+    tertiaryColor: '#f7f4ef',
+    actorBord: '#8b6f4e',
+    actorLineColor: '#8b6f4e',
+    signalColor: '#4a453d',
+    signalTextColor: '#2b2823',
+    noteBkgColor: '#f7efe7',
+    noteBorderColor: '#b8a586'
+  }
+});
+</script>
+</body>
+</html>

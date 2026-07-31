@@ -1,16 +1,19 @@
 //! Built-in tool-use interception for encrypted skill storage.
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use codex_encrypted_skills::export_guard;
 use codex_encrypted_skills::paths;
 use codex_encrypted_skills::runtime::EncryptedSkillRuntime;
+use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputBody;
 use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ResponseInputItem;
+use codex_protocol::models::ResponseItem;
 use serde_json::Value;
 
 use crate::session::session::Session;
@@ -170,6 +173,65 @@ fn path_under_dirs(path: &str, dirs: &[PathBuf]) -> bool {
         path == dir.as_ref()
             || (path.starts_with(dir.as_ref()) && path.as_bytes().get(dir.len()) == Some(&b'/'))
     })
+}
+
+/// Redacts known skill plaintext from assistant replies and plaintext
+/// inter-agent messages before they reach durable history, rollout, or the
+/// client stream.
+pub(crate) fn redact_assistant_reply_items<'a>(
+    runtime: &EncryptedSkillRuntime,
+    session_id: &str,
+    items: Cow<'a, [ResponseItem]>,
+) -> Cow<'a, [ResponseItem]> {
+    if !items.iter().any(contains_redactable_text) {
+        return items;
+    }
+    let known = runtime.known_plaintexts(session_id);
+    if known.is_empty() {
+        return items;
+    }
+    let known: Vec<&str> = known.iter().map(String::as_str).collect();
+    let mut items = items;
+    for item in items.to_mut() {
+        match item {
+            ResponseItem::Message { role, content, .. } if role == "assistant" => {
+                for content_item in content {
+                    if let ContentItem::InputText { text } | ContentItem::OutputText { text } =
+                        content_item
+                    {
+                        *text = export_guard::redact_known_plaintext(text, &known);
+                    }
+                }
+            }
+            ResponseItem::AgentMessage { content, .. } => {
+                for content_item in content {
+                    if let AgentMessageInputContent::InputText { text } = content_item {
+                        *text = export_guard::redact_known_plaintext(text, &known);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    items
+}
+
+fn contains_redactable_text(item: &ResponseItem) -> bool {
+    match item {
+        ResponseItem::Message { role, content, .. } => {
+            role == "assistant"
+                && content.iter().any(|content_item| {
+                    matches!(
+                        content_item,
+                        ContentItem::InputText { .. } | ContentItem::OutputText { .. }
+                    )
+                })
+        }
+        ResponseItem::AgentMessage { content, .. } => content
+            .iter()
+            .any(|content_item| matches!(content_item, AgentMessageInputContent::InputText { .. })),
+        _ => false,
+    }
 }
 
 /// Wraps a tool output so any decrypted storage path string is redacted before

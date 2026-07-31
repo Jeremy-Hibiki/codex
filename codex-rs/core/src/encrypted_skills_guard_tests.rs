@@ -9,6 +9,9 @@ use codex_encrypted_skills::runtime::EncryptedSkillRuntime;
 use codex_encrypted_skills::sdk::EnvelopeError;
 use codex_encrypted_skills::sdk::EnvelopeSdk;
 use codex_encrypted_skills::sdk::PackageEntry;
+use codex_protocol::models::AgentMessageInputContent;
+use codex_protocol::models::ContentItem;
+use codex_protocol::models::ResponseItem;
 use serde_json::json;
 
 use super::*;
@@ -125,6 +128,107 @@ fn blocks_view_image_on_unknown_mem_root_subpath() {
         &json!({ "path": format!("{root}/whatever/image.png") }),
     );
     assert!(matches!(decision, GuardDecision::Blocked { .. }));
+}
+
+#[test]
+fn redacts_assistant_reply_plaintext_before_persistence() {
+    let (runtime, _tmp) = loaded_runtime();
+    let reply = ResponseItem::Message {
+        id: None,
+        role: "assistant".to_string(),
+        content: vec![
+            ContentItem::InputText {
+                text: "reasoning about # Guarded content".to_string(),
+            },
+            ContentItem::OutputText {
+                text: "the skill says: # Guarded content".to_string(),
+            },
+        ],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    };
+    let items = std::borrow::Cow::Owned(vec![reply]);
+
+    let redacted = redact_assistant_reply_items(&runtime, "t1", items);
+
+    let ResponseItem::Message { content, .. } = &redacted[0] else {
+        panic!("expected message item");
+    };
+    assert_eq!(
+        content,
+        &[
+            ContentItem::InputText {
+                text: "reasoning about [REDACTED]".to_string(),
+            },
+            ContentItem::OutputText {
+                text: "the skill says: [REDACTED]".to_string(),
+            },
+        ]
+    );
+}
+
+#[test]
+fn redacts_only_assistant_reply_items() {
+    let (runtime, _tmp) = loaded_runtime();
+    let user_item = ResponseItem::Message {
+        id: None,
+        role: "user".to_string(),
+        content: vec![ContentItem::InputText {
+            text: "user says: # Guarded content".to_string(),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    };
+    let items = std::borrow::Cow::Owned(vec![user_item]);
+
+    let redacted = redact_assistant_reply_items(&runtime, "t1", items);
+
+    let ResponseItem::Message { content, .. } = &redacted[0] else {
+        panic!("expected message item");
+    };
+    assert_eq!(
+        content,
+        &[ContentItem::InputText {
+            text: "user says: # Guarded content".to_string(),
+        }]
+    );
+}
+
+#[test]
+fn redacts_plaintext_in_agent_messages() {
+    let (runtime, _tmp) = loaded_runtime();
+    let agent_message = ResponseItem::AgentMessage {
+        id: None,
+        author: "worker".to_string(),
+        recipient: "root".to_string(),
+        content: vec![
+            AgentMessageInputContent::InputText {
+                text: "done with # Guarded content".to_string(),
+            },
+            AgentMessageInputContent::EncryptedContent {
+                encrypted_content: "ciphertext".to_string(),
+            },
+        ],
+        internal_chat_message_metadata_passthrough: None,
+    };
+    let items = std::borrow::Cow::Owned(vec![agent_message]);
+
+    let redacted = redact_assistant_reply_items(&runtime, "t1", items);
+
+    let ResponseItem::AgentMessage { content, .. } = &redacted[0] else {
+        panic!("expected agent message item");
+    };
+    assert_eq!(
+        content,
+        &[
+            AgentMessageInputContent::InputText {
+                text: "done with [REDACTED]".to_string(),
+            },
+            AgentMessageInputContent::EncryptedContent {
+                encrypted_content: "ciphertext".to_string(),
+            },
+        ]
+    );
 }
 
 #[test]

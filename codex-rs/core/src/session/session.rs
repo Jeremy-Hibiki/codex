@@ -1084,7 +1084,10 @@ impl Session {
             let encrypted_skills_audit: Option<
                 Arc<dyn codex_encrypted_skills::audit::AuditSink>,
             > = codex_encrypted_skills::audit::FileAuditSink::new(
-                std::env::temp_dir().join("fm_skill_security_audit.log"),
+                config
+                    .encrypted_skills_audit_path
+                    .clone()
+                    .unwrap_or_else(|| std::env::temp_dir().join("fm_skill_security_audit.log")),
             )
             .ok()
             .map(|sink| Arc::new(sink) as Arc<dyn codex_encrypted_skills::audit::AuditSink>);

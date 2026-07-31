@@ -4,6 +4,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 use crate::audit::AuditEvent;
 use crate::audit::AuditSink;
@@ -35,8 +37,11 @@ pub struct EncryptedSkillRuntime {
     sdk: Arc<dyn EnvelopeSdk>,
     mem_root: PathBuf,
     namespace: String,
+    min_free_bytes: AtomicU64,
     audit: Option<Arc<dyn AuditSink>>,
 }
+
+pub const DEFAULT_MIN_FREE_BYTES: u64 = 4 * 1024 * 1024;
 
 impl EncryptedSkillRuntime {
     pub fn new(sdk: Arc<dyn EnvelopeSdk>, ttl: TtlConfig, mem_root: PathBuf) -> Self {
@@ -80,6 +85,7 @@ impl EncryptedSkillRuntime {
             sdk,
             mem_root,
             namespace: process_namespace(),
+            min_free_bytes: AtomicU64::new(DEFAULT_MIN_FREE_BYTES),
             audit,
         }
     }
@@ -111,6 +117,7 @@ impl EncryptedSkillRuntime {
         }
 
         let entries = self.sdk.decrypt_package(package_path)?;
+        self.check_capacity(&entries)?;
         let plaintext = extract_skill_md(&entries)?;
         let original_dir = package_path.parent().map(Path::to_path_buf);
         let dir = self
@@ -305,6 +312,12 @@ impl EncryptedSkillRuntime {
         &self.mem_root
     }
 
+    /// Sets the minimum free space required below the memory root before a new
+    /// decryption is accepted (injectable for tests and deployment tuning).
+    pub fn set_min_free_bytes(&self, bytes: u64) {
+        self.min_free_bytes.store(bytes, Ordering::Relaxed);
+    }
+
     /// All decrypted directories currently registered for a session.
     pub fn decrypted_dirs(&self, session_id: &str) -> Vec<PathBuf> {
         self.registry
@@ -359,6 +372,26 @@ impl EncryptedSkillRuntime {
         if let Some(sink) = &self.audit {
             sink.emit(event);
         }
+    }
+
+    fn check_capacity(&self, entries: &[PackageEntry]) -> Result<(), EnvelopeError> {
+        let Some(free) = crate::mem_root::available_bytes(&self.mem_root)
+            .ok()
+            .flatten()
+        else {
+            return Ok(());
+        };
+        let package_bytes: u64 = entries
+            .iter()
+            .map(|entry| entry.contents.len() as u64)
+            .sum();
+        let needed = package_bytes.saturating_add(self.min_free_bytes.load(Ordering::Relaxed));
+        if free < needed {
+            return Err(EnvelopeError::Internal(
+                "memory root has insufficient free space".into(),
+            ));
+        }
+        Ok(())
     }
 }
 

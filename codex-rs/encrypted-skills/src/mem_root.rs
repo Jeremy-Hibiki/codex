@@ -31,6 +31,42 @@ pub fn resolve_default_mem_root() -> PathBuf {
     }
 }
 
+/// Free bytes available on the filesystem containing `path`. Returns `None`
+/// on platforms where the check is unavailable (no capacity gating).
+#[cfg(target_os = "linux")]
+pub fn available_bytes(path: &Path) -> io::Result<Option<u64>> {
+    // The memory root may not exist yet; walk up to the nearest existing
+    // ancestor (statvfs needs an existing path).
+    let mut current = Some(path);
+    while let Some(candidate) = current {
+        if candidate.exists() {
+            return statvfs_free_bytes(candidate);
+        }
+        current = candidate.parent();
+    }
+    Ok(None)
+}
+
+#[cfg(target_os = "linux")]
+fn statvfs_free_bytes(path: &Path) -> io::Result<Option<u64>> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let c_path = std::ffi::CString::new(path.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path contains NUL"))?;
+    let mut stat = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+    let result = unsafe { libc::statvfs(c_path.as_ptr(), stat.as_mut_ptr()) };
+    if result != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let stat = unsafe { stat.assume_init() };
+    Ok(Some(stat.f_bavail.saturating_mul(stat.f_frsize)))
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn available_bytes(_path: &Path) -> io::Result<Option<u64>> {
+    Ok(None)
+}
+
 /// Process-level memory-root initialization: wipes stale decrypted dirs once
 /// per process, then recreates the root with mode 0700. Stale entries are
 /// detected per process namespace (`p<pid>/`): namespaces whose pid is no

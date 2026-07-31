@@ -104,6 +104,14 @@ fn resolve_default_mem_root_returns_absolute_path() {
     assert_eq!(root, PathBuf::from(DEFAULT_MEM_ROOT));
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn available_bytes_reports_positive_free_space() {
+    let tmp = tempfile::tempdir().unwrap();
+    let free = available_bytes(tmp.path()).unwrap();
+    assert!(free.is_some_and(|bytes| bytes > 0));
+}
+
 #[test]
 fn secure_wipe_removes_tree() {
     let tmp = tempfile::tempdir().unwrap();

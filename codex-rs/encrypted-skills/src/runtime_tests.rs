@@ -450,3 +450,17 @@ fn evicting_one_shared_content_skill_keeps_the_other_token_alive() {
         "the surviving skill must keep its token rehydratable after the sweep"
     );
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn load_or_register_fails_when_memory_root_is_full() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let (runtime, _tmp) = test_runtime(sdk);
+    // Demand more free space than /dev/shm (or the temp dir) can ever offer.
+    runtime.set_min_free_bytes(u64::MAX);
+
+    assert!(matches!(
+        runtime.load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc")),
+        Err(EnvelopeError::Internal(_))
+    ));
+}

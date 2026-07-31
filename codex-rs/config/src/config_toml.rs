@@ -170,6 +170,11 @@ pub struct EncryptedSkillsToml {
     /// thread is cleared.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thread_idle_ttl_secs: Option<u64>,
+    /// Audit log path for encrypted-skill security events. Defaults to the
+    /// process temp directory (ephemeral); persistent deployments should set
+    /// this to a path on a mounted volume.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audit_path: Option<String>,
 }
 
 /// Base config deserialized from ~/.codex/config.toml.
@@ -1084,11 +1089,15 @@ command = "   "
     #[test]
     fn encrypted_skills_toml_parses_sdk_and_ttls() {
         let parsed: EncryptedSkillsToml = toml::from_str(
-            "sdk = \"test_zip\"\nskill_idle_ttl_secs = 120\nthread_idle_ttl_secs = 600\n",
+            "sdk = \"test_zip\"\nskill_idle_ttl_secs = 120\nthread_idle_ttl_secs = 600\naudit_path = \"/var/log/codex/encrypted-skills.log\"\n",
         )
         .unwrap();
         assert_eq!(parsed.sdk, Some(EncryptedSkillsSdkToml::TestZip));
         assert_eq!(parsed.skill_idle_ttl_secs, Some(120));
         assert_eq!(parsed.thread_idle_ttl_secs, Some(600));
+        assert_eq!(
+            parsed.audit_path.as_deref(),
+            Some("/var/log/codex/encrypted-skills.log")
+        );
     }
 }

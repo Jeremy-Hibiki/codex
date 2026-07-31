@@ -612,6 +612,9 @@ pub struct Config {
     pub encrypted_skills_sdk: codex_config::config_toml::EncryptedSkillsSdkToml,
     /// Encrypted-skill two-tier TTL configuration.
     pub encrypted_skills_ttl: codex_encrypted_skills::registry::TtlConfig,
+    /// Audit log path for encrypted-skill security events (persistent
+    /// deployments should point this at a mounted volume).
+    pub encrypted_skills_audit_path: Option<std::path::PathBuf>,
 
     /// Provenance for how this [`Config`] was derived (merged layers + enforced
     /// requirements).
@@ -4022,6 +4025,10 @@ impl Config {
                     cfg.encrypted_skills.thread_idle_ttl_secs.unwrap_or(1800),
                 ),
             },
+            encrypted_skills_audit_path: cfg
+                .encrypted_skills
+                .audit_path
+                .map(std::path::PathBuf::from),
             model,
             service_tier,
             review_model,

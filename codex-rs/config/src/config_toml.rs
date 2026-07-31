@@ -144,10 +144,42 @@ pub struct OrchestratorFeatureToml {
     pub enabled: Option<bool>,
 }
 
+/// Envelope SDK selection for encrypted skills. Defaults to fail-closed
+/// (no decryption possible).
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EncryptedSkillsSdkToml {
+    #[default]
+    Unavailable,
+    /// Test-only SDK that decrypts plain ZIP `.zip.enc` packages.
+    TestZip,
+}
+
+/// Encrypted-skill settings.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct EncryptedSkillsToml {
+    /// Envelope SDK used to decrypt encrypted skills.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sdk: Option<EncryptedSkillsSdkToml>,
+    /// Skill-level idle TTL in seconds before a skill's decrypted content is
+    /// unloaded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_idle_ttl_secs: Option<u64>,
+    /// Thread-level idle TTL in seconds before all decrypted content of a
+    /// thread is cleared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_idle_ttl_secs: Option<u64>,
+}
+
 /// Base config deserialized from ~/.codex/config.toml.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct ConfigToml {
+    /// Encrypted-skill settings (SDK selection and TTLs).
+    #[serde(default)]
+    pub encrypted_skills: EncryptedSkillsToml,
+
     /// Optional override of model selection.
     pub model: Option<String>,
     /// Review model override used by the `/review` feature.
@@ -1039,5 +1071,24 @@ command = "   "
                 "model_providers.amazon-bedrock: provider auth.command must not be empty"
             )
         );
+    }
+
+    #[test]
+    fn encrypted_skills_toml_defaults_are_fail_closed() {
+        let parsed: EncryptedSkillsToml = toml::from_str("").unwrap();
+        assert_eq!(parsed.sdk, None);
+        assert_eq!(parsed.skill_idle_ttl_secs, None);
+        assert_eq!(parsed.thread_idle_ttl_secs, None);
+    }
+
+    #[test]
+    fn encrypted_skills_toml_parses_sdk_and_ttls() {
+        let parsed: EncryptedSkillsToml = toml::from_str(
+            "sdk = \"test_zip\"\nskill_idle_ttl_secs = 120\nthread_idle_ttl_secs = 600\n",
+        )
+        .unwrap();
+        assert_eq!(parsed.sdk, Some(EncryptedSkillsSdkToml::TestZip));
+        assert_eq!(parsed.skill_idle_ttl_secs, Some(120));
+        assert_eq!(parsed.thread_idle_ttl_secs, Some(600));
     }
 }

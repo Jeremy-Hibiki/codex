@@ -527,6 +527,13 @@ impl Session {
         git_enrichment_policy: GitEnrichmentPolicy,
         windows_sandbox_proxy_settings_mode: codex_sandboxing::WindowsSandboxProxySettingsMode,
     ) -> anyhow::Result<Arc<Self>> {
+        // Process-level encrypted-skill memory root: wipe stale decrypted
+        // directories once per process, then recreate with mode 0700.
+        let encrypted_skills_mem_root =
+            codex_encrypted_skills::mem_root::resolve_default_mem_root();
+        let _ = codex_encrypted_skills::mem_root::init_mem_root_once(
+            encrypted_skills_mem_root.as_path(),
+        );
         debug!(
             "Configuring session: model={}; provider={:?}",
             session_configuration.collaboration_mode.model(),
@@ -1064,6 +1071,23 @@ impl Session {
             ));
             let session_extension_data =
                 codex_extension_api::ExtensionData::new(session_id.to_string());
+            let encrypted_skills_sdk = codex_encrypted_skills::sdk::sdk_for(match config
+                .encrypted_skills_sdk
+            {
+                codex_config::config_toml::EncryptedSkillsSdkToml::Unavailable => {
+                    codex_encrypted_skills::sdk::SdkKind::Unavailable
+                }
+                codex_config::config_toml::EncryptedSkillsSdkToml::TestZip => {
+                    codex_encrypted_skills::sdk::SdkKind::TestZip
+                }
+            });
+            let encrypted_skills_audit: Option<
+                Arc<dyn codex_encrypted_skills::audit::AuditSink>,
+            > = codex_encrypted_skills::audit::FileAuditSink::new(
+                std::env::temp_dir().join("fm_skill_security_audit.log"),
+            )
+            .ok()
+            .map(|sink| Arc::new(sink) as Arc<dyn codex_encrypted_skills::audit::AuditSink>);
             let mcp_resource_client = Arc::new(McpResourceClient::new(Arc::clone(&mcp_runtime)));
             let extension_metrics =
                 extension_metrics::from_session_telemetry(session_telemetry.clone());
@@ -1112,6 +1136,12 @@ impl Session {
                 guardian_rejection_circuit_breaker: Mutex::new(Default::default()),
                 runtime_handle: tokio::runtime::Handle::current(),
                 skills_service,
+                encrypted_skills_runtime: Arc::new(codex_encrypted_skills::runtime::EncryptedSkillRuntime::new_with_audit(
+                    encrypted_skills_sdk,
+                    config.encrypted_skills_ttl.clone(),
+                    encrypted_skills_mem_root.clone(),
+                    encrypted_skills_audit,
+                )),
                 agents_md_manager,
                 plugins_manager: Arc::clone(&plugins_manager),
                 mcp_manager: Arc::clone(&mcp_manager),

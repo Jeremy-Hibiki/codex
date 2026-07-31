@@ -166,7 +166,7 @@ tracing-subscriber = { workspace = true }
 tracing-test = { workspace = true, features = ["no-env-filter"] }
 walkdir = { workspace = true }
 wiremock = { workspace = true }
-zip = { workspace = true }
+zip = { workspace = true, features = ["deflate"] }
 zstd = { workspace = true }
 
 [package.metadata.cargo-shear]

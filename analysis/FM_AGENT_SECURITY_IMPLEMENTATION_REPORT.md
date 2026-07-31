@@ -203,6 +203,13 @@ opencode → codex 工具映射（guard 迁移依据）：
 - **全量 codex-core lib 回归**：2135/2137——与上次完全一致（2 个已知环境失败：沙箱代理环境变量、tracing 并行偶发），guard reason 重构与 view_image 语义调整后**无新增回归**；
 - **线程删除清理集成测试评估**：`thread/delete` 的 `clear_encrypted_skills` 接线（3 行）已编译验证，`clear_thread` 行为有单测；集成级验证需 app-server 子进程基建（TestAppServer + config.toml + skill 包 + 线程生命周期），成本/收益比不佳，记录为待扩展项；
 - 最终验证矩阵（v15 覆盖矩阵 + 全量回归）确认三个 spec 全部场景有测试锚点，本地可执行验证全绿。
+
+## 14. Windows 交叉编译验证与依赖瘦身（2026-07-31 v17）
+
+- **Windows 目标验证成功**：安装 `x86_64-pc-windows-gnu` target 后，`codex-encrypted-skills` 交叉编译通过（此前因缺 Windows target 无法本地验证）；
+- **依赖瘦身（必要前置）**：zip crate 的默认 features 启用了 zstd/bzip2/lzma（C 依赖，触发 cc-rs 交叉编译失败）；改为 workspace 统一 `default-features = false` + 各使用方（encrypted-skills/core/core-skills/core-plugins）显式 `features = ["deflate"]`；Cargo.lock 移除 bzip2-sys/lzma-sys 等（-68 行）；
+- **本地回归**：encrypted-skills 81/81、core-skills 131/131、集成 10/10 全绿；core-plugins 359/360 的 1 个失败为**环境预存项**（测试断言技能列表，本机预装了 opencode-plugins 外部技能目录），与 zip 改动无关（startup_sync 全部 zip 测试通过）；
+- 剩余记录项收窄：真实 SDK 收敛 `test_zip`、两个时序敏感集成测试待基建扩展。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

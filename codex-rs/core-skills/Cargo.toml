@@ -38,7 +38,7 @@ shlex = { workspace = true }
 tokio = { workspace = true, features = ["fs", "macros", "rt"] }
 toml = { workspace = true }
 tracing = { workspace = true }
-zip = { workspace = true }
+zip = { workspace = true, features = ["deflate"] }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

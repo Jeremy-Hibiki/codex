@@ -97,7 +97,13 @@ fn guard_read(
     let Some(file_path) = tool_input.get("path").and_then(Value::as_str) else {
         return GuardDecision::Allow;
     };
-    if path_under_dirs(file_path, &runtime.decrypted_dirs(session_id)) {
+    // Match guard_shell semantics: block any path under the session's
+    // registered decrypted dirs or under the memory root (runtime root or the
+    // default constant), so unknown/other-session subpaths are also covered.
+    let mut guarded = runtime.decrypted_dirs(session_id);
+    guarded.push(runtime.mem_root().to_path_buf());
+    guarded.push(PathBuf::from(paths::MEM_ROOT));
+    if path_under_dirs(file_path, &guarded) {
         GuardDecision::Blocked(BLOCK_MESSAGE.to_string())
     } else {
         GuardDecision::Allow

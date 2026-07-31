@@ -355,6 +355,110 @@ async fn exec_command_direct_read_is_blocked_by_the_same_guard() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn view_image_on_mem_root_is_blocked() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let test = build_test_with_encrypted_skill(&server).await?;
+    let mock = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_function_call(
+                "call-1",
+                "view_image",
+                &serde_json::to_string(&serde_json::json!({
+                    "path": "/dev/shm/fm-agent-security/whatever/image.png"
+                }))?,
+            ),
+            ev_assistant_message("msg-1", "done"),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+
+    submit_single_turn(&test, "please use $secret-skill").await?;
+
+    let rollout_path = test
+        .session_configured
+        .rollout_path
+        .as_ref()
+        .expect("rollout path");
+    let rollout = std::fs::read_to_string(rollout_path)?;
+    assert!(
+        rollout.contains("Direct access to encrypted skill storage is not allowed"),
+        "view_image reads under the memory root should be blocked, got: {rollout}"
+    );
+    let _ = mock;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn skill_ttl_expiry_forces_redecryption_on_reminder() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let mut builder = test_codex()
+        .with_config(|config| {
+            config.encrypted_skills_sdk = EncryptedSkillsSdkToml::TestZip;
+            config.encrypted_skills_ttl.skill_idle = std::time::Duration::from_secs(1);
+        })
+        .with_workspace_setup(move |cwd, fs| async move { write_encrypted_skill(cwd, fs).await });
+    let test = builder.build_with_auto_env(&server).await?;
+    let mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("resp-1"),
+                ev_assistant_message("msg-1", "done"),
+                ev_completed("resp-1"),
+            ]),
+            sse(vec![
+                ev_response_created("resp-2"),
+                ev_assistant_message("msg-2", "done"),
+                ev_completed("resp-2"),
+            ]),
+        ],
+    )
+    .await;
+
+    submit_single_turn(&test, "please use $secret-skill").await?;
+    // Let the 1s skill TTL expire, then re-mention in a new turn.
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    submit_single_turn(&test, "please use $secret-skill again").await?;
+
+    let rollout_path = test
+        .session_configured
+        .rollout_path
+        .as_ref()
+        .expect("rollout path");
+    let rollout = std::fs::read_to_string(rollout_path)?;
+    let mut tokens = Vec::new();
+    for line in rollout.lines() {
+        if let Some(start) = line.find("[SENSITIVE_SKILL_TOKEN:") {
+            let end = line[start..]
+                .find(']')
+                .map(|end| start + end + 1)
+                .unwrap_or(line.len());
+            tokens.push(line[start..end].to_string());
+        }
+    }
+    assert_eq!(
+        tokens.len(),
+        2,
+        "expected one token per turn, got {tokens:?}"
+    );
+    assert_ne!(
+        tokens[0], tokens[1],
+        "after skill TTL expiry a re-mention must decrypt a fresh token"
+    );
+    let _ = mock;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn script_execution_rewrites_original_path_and_redacts_output() -> Result<()> {
     skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
     skip_if_no_network!(Ok(()));

@@ -145,6 +145,14 @@ opencode → codex 工具映射（guard 迁移依据）：
 ## 10. 续深 Review 记录（2026-07-31 v13）
 
 **审计 reason 细化（已修复）**：guard 的 `Blocked` 从单一字符串改为 `{ message, reason }`，审计事件区分拦截类型——`direct_read`（shell 读取命令）/ `search_probe`（搜索/探测命令）/ `file_view`（view_image）/ `export_plaintext`（apply_patch 导出）；新增 reason 断言单测，guard 13/13。全量 codex-core lib 回归 2135/2137（2 个已知环境/偶发失败，无新增回归）。
+
+## 11. 续深 Review 记录（2026-07-31 v14）
+
+**fork 集成测试调查结论（测试限制，已记录）**：尝试为 v1 spawn 增加 fork 隔离集成测试，经诊断确认：
+
+- 父 rollout 的 token 消息格式正确（`<skill>[SENSITIVE_SKILL_TOKEN:...]</skill>`），`keep_forked_rollout_item` 过滤逻辑有 4 个直接单测覆盖（token 消息丢弃/普通保留/assistant 保留/工具项丢弃）；
+- v1 spawn 的子会话请求在父 turn 完成后的测试窗口内不可靠到达；且父 followup 请求的历史包含 `spawn_agent` 的 FunctionCall（参数含子 prompt 文本），会干扰 `mount_sse_once_match` 的 matcher（捕获到父 followup 而非子请求）；
+- 结论：fork 隔离的端到端集成测试在现有 suite 基建下不可靠，**移除该测试**，安全不变式继续由 spawn 单测保证；记录为已知测试限制，待 v1 spawn 时序稳定或专用 harness 后再补。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

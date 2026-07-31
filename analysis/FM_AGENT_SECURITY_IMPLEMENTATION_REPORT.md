@@ -260,6 +260,21 @@ network_access = false                                      # shell 断网；推
 4. **skill 包位置**：`<name>.zip.enc` 只放执行容器私有路径（如 codex_home/skills），**不得**挂载/暴露给 OpenChamber 容器（用户有 SSH 且 workspace 双挂载）；
 5. **审计持久化**：`audit_path` 指向持久卷，验证 10MB 轮转（`.1` 文件）与容器重启后审计保留；
 6. **网络策略**：容器 `--network none` 或出口白名单；局域网推理服务经白名单可达（模型 API 由 host 进程发起，不经 bwrap）。
+
+## 17. 与汇报 V2 设计差异核对 + 容量预检查（2026-07-31 v20）
+
+### 与项目汇报 V2 思路的差异核对
+
+| 汇报 V2 设想 | 本项目实现 | 结论 |
+|---|---|---|
+| 会话复用、一次解密多次复用 | TTL 内幂等复用（`load_or_register` cache-hit） | ✓ 等价 |
+| TTL 卸载、每次委托续费 | 两级 TTL + 重水合命中续费（`touch`） | ✓ 等价且更细（Skill/Thread 双 TTL） |
+| 内容缓存 SQLite 持久化（突破 64 条） | **有意保持内存缓存 + 硬上限（64 条/8MiB）** | 安全取舍：明文不落盘是核心要求，SQLite 持久化与其冲突；常驻容器不重启，内存缓存足够；容器重启后 token stale → 重新提及（fail-safe） |
+| 硬件 Key 真实集成（PKCS#11/Ukey） | `EnvelopeSdk` trait 预留（`UnavailableSdk`/`TestZipSdk`） | 待 Ukey 接入；部署期保持 `sdk = "unavailable"` fail-closed |
+
+### 本轮修正：解密前容量预检查
+
+原容量检查在解密之后（entries 已进内存）——超大加密包会把 64MB `/dev/shm` 与内存先打满。新增 `check_capacity_for_package`：解密前按包文件大小 + 余量预检查，不足则拒绝且 **SDK 解密不会被调用**（新增测试断言 calls==0）。crate 84/84、Windows 交叉编译通过。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

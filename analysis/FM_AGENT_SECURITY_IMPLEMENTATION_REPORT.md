@@ -141,6 +141,10 @@ opencode → codex 工具映射（guard 迁移依据）：
 ## 9. 续深 Review 记录（2026-07-31 v12）
 
 **集成覆盖补全（resumed-session）**：新增 `resumed_session_keeps_stale_skill_tokens_unreplaced`——turn 1 提及加密 skill 后，用同一 home + rollout 在新会话 `resume`（新 runtime 缓存为空），turn 2 断言请求体保留 stale token 占位符、不重水合为明文、无 `/dev/shm` 路径。至此 spec「Rehydration covers all request paths」的常规 turn、compaction、resumed-session 三个分支均有集成验证——集成 10/10。
+
+## 10. 续深 Review 记录（2026-07-31 v13）
+
+**审计 reason 细化（已修复）**：guard 的 `Blocked` 从单一字符串改为 `{ message, reason }`，审计事件区分拦截类型——`direct_read`（shell 读取命令）/ `search_probe`（搜索/探测命令）/ `file_view`（view_image）/ `export_plaintext`（apply_patch 导出）；新增 reason 断言单测，guard 13/13。全量 codex-core lib 回归 2135/2137（2 个已知环境/偶发失败，无新增回归）。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

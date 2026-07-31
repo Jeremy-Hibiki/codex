@@ -24,7 +24,10 @@ pub(crate) const BLOCK_MESSAGE: &str = "Direct access to encrypted skill storage
 pub(crate) enum GuardDecision {
     Allow,
     Updated(Value),
-    Blocked(String),
+    Blocked {
+        message: String,
+        reason: &'static str,
+    },
 }
 
 pub(crate) fn before_tool(
@@ -54,8 +57,8 @@ pub(crate) fn before_tool_with_runtime(
         }
         _ => GuardDecision::Allow,
     };
-    if let GuardDecision::Blocked(_) = &decision {
-        runtime.record_blocked(session_id, tool_name.name(), BLOCK_MESSAGE);
+    if let GuardDecision::Blocked { reason, .. } = &decision {
+        runtime.record_blocked(session_id, tool_name.name(), reason);
     }
     decision
 }
@@ -78,7 +81,14 @@ fn guard_shell(
     if paths::command_references_dir(command, &guarded_paths)
         && (paths::is_read_command(command) || paths::is_search_command(command))
     {
-        return GuardDecision::Blocked(BLOCK_MESSAGE.to_string());
+        return GuardDecision::Blocked {
+            message: BLOCK_MESSAGE.to_string(),
+            reason: if paths::is_read_command(command) {
+                "direct_read"
+            } else {
+                "search_probe"
+            },
+        };
     }
     let rewritten = runtime.rewrite_paths(session_id, command);
     if rewritten == command {
@@ -104,7 +114,10 @@ fn guard_read(
     guarded.push(runtime.mem_root().to_path_buf());
     guarded.push(PathBuf::from(paths::MEM_ROOT));
     if path_under_dirs(file_path, &guarded) {
-        GuardDecision::Blocked(BLOCK_MESSAGE.to_string())
+        GuardDecision::Blocked {
+            message: BLOCK_MESSAGE.to_string(),
+            reason: "file_view",
+        }
     } else {
         GuardDecision::Allow
     }
@@ -123,10 +136,12 @@ fn guard_export(
     let mut values = Vec::new();
     collect_string_values(tool_input, &mut values);
     if export_guard::args_contain_plaintext(&values, &known) {
-        GuardDecision::Blocked(
-            "Blocked by encrypted skill policy: tool arguments contain encrypted skill content"
-                .to_string(),
-        )
+        GuardDecision::Blocked {
+            message:
+                "Blocked by encrypted skill policy: tool arguments contain encrypted skill content"
+                    .to_string(),
+            reason: "export_plaintext",
+        }
     } else {
         GuardDecision::Allow
     }

@@ -1,0 +1,210 @@
+//! Decrypted skill directory layout under the memory root.
+
+use std::fs;
+use std::io;
+use std::path::Component;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::OnceLock;
+
+use rand::RngCore;
+
+use crate::sdk::EnvelopeError;
+use crate::sdk::EnvelopeSdk;
+use crate::sdk::PackageEntry;
+
+pub const DEFAULT_MEM_ROOT: &str = "/dev/shm/fm-agent-security";
+pub const DECRYPTED_DIR_PREFIX: &str = "fm_skill_security_";
+pub const PROCESS_NAMESPACE_PREFIX: &str = "p";
+
+static INITIALIZED_ROOT: OnceLock<PathBuf> = OnceLock::new();
+
+/// Resolves the platform-appropriate default memory root. Linux uses
+/// `/dev/shm`; other platforms fall back to the process temp directory.
+pub fn resolve_default_mem_root() -> PathBuf {
+    #[cfg(target_os = "linux")]
+    {
+        PathBuf::from(DEFAULT_MEM_ROOT)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        std::env::temp_dir().join("fm-agent-security")
+    }
+}
+
+/// Process-level memory-root initialization: wipes stale decrypted dirs once
+/// per process, then recreates the root with mode 0700. Stale entries are
+/// detected per process namespace (`p<pid>/`): namespaces whose pid is no
+/// longer alive are removed, together with legacy flat `fm_skill_security_*`
+/// directories. The current process's namespace is always kept.
+pub fn init_mem_root_once(root: &Path) -> io::Result<()> {
+    if INITIALIZED_ROOT.get().is_none() {
+        init_mem_root(root)?;
+        let _ = INITIALIZED_ROOT.set(root.to_path_buf());
+    }
+    Ok(())
+}
+
+/// Per-process namespace directory name (for example `p12345`).
+pub fn process_namespace() -> String {
+    format!("{PROCESS_NAMESPACE_PREFIX}{}", std::process::id())
+}
+
+/// The per-process namespace directory under `root` that this process uses.
+pub fn process_namespace_dir(root: &Path) -> PathBuf {
+    root.join(process_namespace())
+}
+
+/// Initializes the memory root: removes stale decrypted directories left by a
+/// previous process, then recreates the root with mode 0700.
+pub fn init_mem_root(root: &Path) -> io::Result<()> {
+    if root.exists() {
+        for entry in fs::read_dir(root)? {
+            let entry = entry?;
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            let stale = if name.starts_with(PROCESS_NAMESPACE_PREFIX) {
+                parse_pid(&name).is_some_and(|pid| !pid_alive(pid))
+            } else {
+                // Legacy flat decrypted dirs predate per-process namespaces.
+                name.starts_with(DECRYPTED_DIR_PREFIX)
+            };
+            if stale {
+                let _ = fs::remove_dir_all(entry.path());
+            }
+        }
+    } else {
+        fs::create_dir_all(root)?;
+    }
+    set_dir_mode_0700(root)?;
+    Ok(())
+}
+
+fn parse_pid(namespace: &str) -> Option<u64> {
+    namespace
+        .strip_prefix(PROCESS_NAMESPACE_PREFIX)
+        .and_then(|rest| rest.parse::<u64>().ok())
+        .filter(|pid| *pid > 0)
+}
+
+/// Best-effort liveness check. On Linux, uses `/proc/<pid>`. On other
+/// platforms we never auto-remove a namespace (stale dirs are bounded by the
+/// TTL sweeps of the owning process and manual cleanup).
+fn pid_alive(pid: u64) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        Path::new(&format!("/proc/{pid}")).exists()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        true
+    }
+}
+
+pub fn decrypted_dir_name(hex: &str) -> String {
+    format!("{DECRYPTED_DIR_PREFIX}{hex}")
+}
+
+/// Orchestrates a decryption: SDK yields package entries, then the entries are
+/// safely written into `target` preserving the package layout.
+pub fn decrypt_to_dir(
+    sdk: &dyn EnvelopeSdk,
+    package_path: &Path,
+    target: &Path,
+) -> Result<(), EnvelopeError> {
+    let entries = sdk.decrypt_package(package_path)?;
+    write_package_entries(&entries, target)
+}
+
+/// Writes decrypted package entries into `target`, rejecting Zip-Slip style
+/// escapes (absolute paths or `..` traversal).
+pub fn write_package_entries(entries: &[PackageEntry], target: &Path) -> Result<(), EnvelopeError> {
+    fs::create_dir_all(target)?;
+    set_dir_mode_0700(target)?;
+    for entry in entries {
+        validate_rel_path(&entry.rel_path)?;
+        let dest = target.join(&entry.rel_path);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+            set_dir_mode_0700(parent)?;
+        }
+        fs::write(dest, &entry.contents)?;
+    }
+    Ok(())
+}
+
+fn validate_rel_path(rel: &Path) -> Result<(), EnvelopeError> {
+    let bad = rel.is_absolute()
+        || rel.components().any(|c| {
+            matches!(
+                c,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        });
+    if bad {
+        return Err(EnvelopeError::InvalidEntry {
+            path: rel.to_string_lossy().into_owned(),
+            reason: "entry escapes the decrypted directory".into(),
+        });
+    }
+    Ok(())
+}
+
+/// Secure wipe: overwrites regular file contents with random bytes, then
+/// removes the whole tree.
+pub fn secure_wipe(dir: &Path) -> io::Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    let mut files = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        for entry in fs::read_dir(&current)? {
+            let entry = entry?;
+            if entry.file_type()?.is_dir() {
+                stack.push(entry.path());
+            } else {
+                files.push(entry.path());
+            }
+        }
+    }
+    for file in files {
+        overwrite_with_random(&file)?;
+        fs::remove_file(file)?;
+    }
+    fs::remove_dir_all(dir)
+}
+
+fn overwrite_with_random(path: &Path) -> io::Result<()> {
+    use std::io::Write;
+
+    let len = fs::metadata(path)?.len();
+    let mut file = fs::OpenOptions::new().write(true).open(path)?;
+    let mut buf = [0u8; 4096];
+    let mut remaining = len;
+    while remaining > 0 {
+        let chunk = remaining.min(buf.len() as u64) as usize;
+        rand::rng().fill_bytes(&mut buf[..chunk]);
+        file.write_all(&buf[..chunk])?;
+        remaining -= chunk as u64;
+    }
+    file.sync_all()?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn set_dir_mode_0700(path: &Path) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+}
+
+#[cfg(not(unix))]
+fn set_dir_mode_0700(_path: &Path) -> io::Result<()> {
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "mem_root_tests.rs"]
+mod tests;

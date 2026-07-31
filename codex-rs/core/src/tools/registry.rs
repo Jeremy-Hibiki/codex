@@ -527,7 +527,7 @@ impl ToolRegistry {
         if let Some(pre_tool_use_payload) = tool.pre_tool_use_payload(&invocation) {
             match crate::encrypted_skills_guard::before_tool(
                 &invocation.session,
-                pre_tool_use_payload.tool_name.name(),
+                &pre_tool_use_payload.tool_name,
                 &pre_tool_use_payload.tool_input,
             ) {
                 crate::encrypted_skills_guard::GuardDecision::Blocked(message) => {

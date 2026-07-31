@@ -16,6 +16,7 @@ use serde_json::Value;
 use crate::session::session::Session;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
+use crate::tools::hook_names::HookToolName;
 
 pub(crate) const BLOCK_MESSAGE: &str = "Direct access to encrypted skill storage is not allowed";
 
@@ -26,7 +27,11 @@ pub(crate) enum GuardDecision {
     Blocked(String),
 }
 
-pub(crate) fn before_tool(session: &Session, tool_name: &str, tool_input: &Value) -> GuardDecision {
+pub(crate) fn before_tool(
+    session: &Session,
+    tool_name: &HookToolName,
+    tool_input: &Value,
+) -> GuardDecision {
     before_tool_with_runtime(
         &session.services.encrypted_skills_runtime,
         &session.thread_id.to_string(),
@@ -38,20 +43,19 @@ pub(crate) fn before_tool(session: &Session, tool_name: &str, tool_input: &Value
 pub(crate) fn before_tool_with_runtime(
     runtime: &EncryptedSkillRuntime,
     session_id: &str,
-    tool_name: &str,
+    tool_name: &HookToolName,
     tool_input: &Value,
 ) -> GuardDecision {
     let decision = match tool_name {
-        "Bash" => guard_shell(runtime, session_id, tool_input),
-        "read" | "view_image" => guard_read(runtime, session_id, tool_input),
-        "grep" | "glob" => guard_search(runtime, session_id, tool_input),
-        "write" | "edit" | "apply_patch" | "webfetch" | "web_search" => {
+        name if name == &HookToolName::bash() => guard_shell(runtime, session_id, tool_input),
+        name if name == &HookToolName::view_image() => guard_read(runtime, session_id, tool_input),
+        name if name == &HookToolName::apply_patch() => {
             guard_export(runtime, session_id, tool_input)
         }
         _ => GuardDecision::Allow,
     };
     if let GuardDecision::Blocked(_) = &decision {
-        runtime.record_blocked(session_id, tool_name, BLOCK_MESSAGE);
+        runtime.record_blocked(session_id, tool_name.name(), BLOCK_MESSAGE);
     }
     decision
 }
@@ -90,33 +94,10 @@ fn guard_read(
     session_id: &str,
     tool_input: &Value,
 ) -> GuardDecision {
-    let file_path = tool_input
-        .get("filePath")
-        .or_else(|| tool_input.get("path"))
-        .and_then(Value::as_str);
-    let Some(file_path) = file_path else {
+    let Some(file_path) = tool_input.get("path").and_then(Value::as_str) else {
         return GuardDecision::Allow;
     };
     if path_under_dirs(file_path, &runtime.decrypted_dirs(session_id)) {
-        GuardDecision::Blocked(BLOCK_MESSAGE.to_string())
-    } else {
-        GuardDecision::Allow
-    }
-}
-
-fn guard_search(
-    runtime: &EncryptedSkillRuntime,
-    session_id: &str,
-    tool_input: &Value,
-) -> GuardDecision {
-    let target_under_dir = tool_input
-        .get("path")
-        .and_then(Value::as_str)
-        .is_some_and(|path| path_under_dirs(path, &runtime.decrypted_dirs(session_id)));
-    let serialized = serde_json::to_string(tool_input).unwrap_or_default();
-    let mentions_mem_root = serialized.contains(paths::MEM_ROOT)
-        || serialized.contains(runtime.mem_root().to_string_lossy().as_ref());
-    if target_under_dir || mentions_mem_root {
         GuardDecision::Blocked(BLOCK_MESSAGE.to_string())
     } else {
         GuardDecision::Allow

@@ -202,6 +202,13 @@ Codex 没有 skill 工具，触发由**宿主侧在 turn 开始时对当前用�
 - 搜索命令分类补充 `ls`（目录探测拦截）；
 - 新增测试：自定义 root 脱敏、`ls <root>` 拦截、`resolve_default_mem_root` 解析。
 
+### 21. guard 迁移到 codex 工具体系（2026-07-31 第七轮）
+
+- `before_tool_with_runtime` 的工具匹配从 opencode 风格字符串（`read`/`grep`/`glob`/`write`/`edit`/`webfetch`）迁移为 **codex 真实工具**的 `HookToolName` 类型化匹配：`HookToolName::bash()`（`shell_command` + `unified_exec`）、`HookToolName::view_image()`（新增构造器）、`HookToolName::apply_patch()`；
+- 删除 codex 中不存在工具的匹配分支（`read`/`grep`/`glob`/`write`/`edit`/`webfetch`/`web_search`）与对应单测；`guard_read` 只服务 `view_image`（`path` 键）；
+- 新增 `mcp__*` 工具放行测试；web 导出面（扩展 `web/run`，无 pre payload）依赖沙箱网络隔离；
+- 集成测试（apply_patch 导出拦截、shell 读取拦截）验证迁移后行为不变。
+
 ## Risks / Trade-offs
 
 - `/dev/shm` 空间不足 → 解密失败 → 限制 skill 总大小并实现清理策略，失败时给出可读 warning。

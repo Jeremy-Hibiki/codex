@@ -10,6 +10,7 @@ use codex_encrypted_skills::sdk::PackageEntry;
 use serde_json::json;
 
 use super::*;
+use crate::tools::hook_names::HookToolName;
 
 struct GuardTestSdk;
 
@@ -41,7 +42,7 @@ fn blocks_read_commands_referencing_mem_root() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        "Bash",
+        &HookToolName::bash(),
         &json!({ "command": "cat /dev/shm/fm-agent-security/fm_skill_security_abc/SKILL.md" }),
     );
     assert!(matches!(decision, GuardDecision::Blocked(_)));
@@ -52,7 +53,12 @@ fn blocks_search_commands_referencing_decrypted_dirs() {
     let (runtime, _tmp) = loaded_runtime();
     let dirs = runtime.decrypted_dirs("t1");
     let command = format!("grep -r secret {}", dirs[0].to_string_lossy());
-    let decision = before_tool_with_runtime(&runtime, "t1", "Bash", &json!({ "command": command }));
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": command }),
+    );
     assert!(matches!(decision, GuardDecision::Blocked(_)));
 }
 
@@ -62,7 +68,7 @@ fn rewrites_original_skill_path_in_execution_commands() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        "Bash",
+        &HookToolName::bash(),
         &json!({ "command": "bash /skills/secret/scripts/build.sh" }),
     );
     match decision {
@@ -77,40 +83,14 @@ fn rewrites_original_skill_path_in_execution_commands() {
 }
 
 #[test]
-fn blocks_read_tool_on_decrypted_directory() {
-    let (runtime, _tmp) = loaded_runtime();
-    let dirs = runtime.decrypted_dirs("t1");
-    let decision = before_tool_with_runtime(
-        &runtime,
-        "t1",
-        "read",
-        &json!({ "filePath": format!("{}/SKILL.md", dirs[0].to_string_lossy()) }),
-    );
-    assert!(matches!(decision, GuardDecision::Blocked(_)));
-}
-
-#[test]
 fn blocks_view_image_on_decrypted_directory() {
     let (runtime, _tmp) = loaded_runtime();
     let dirs = runtime.decrypted_dirs("t1");
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        "view_image",
+        &HookToolName::view_image(),
         &json!({ "path": format!("{}/image.png", dirs[0].to_string_lossy()) }),
-    );
-    assert!(matches!(decision, GuardDecision::Blocked(_)));
-}
-
-#[test]
-fn blocks_grep_tool_targeting_decrypted_directory() {
-    let (runtime, _tmp) = loaded_runtime();
-    let dirs = runtime.decrypted_dirs("t1");
-    let decision = before_tool_with_runtime(
-        &runtime,
-        "t1",
-        "grep",
-        &json!({ "pattern": "x", "path": dirs[0].to_string_lossy() }),
     );
     assert!(matches!(decision, GuardDecision::Blocked(_)));
 }
@@ -118,8 +98,24 @@ fn blocks_grep_tool_targeting_decrypted_directory() {
 #[test]
 fn unrelated_commands_pass_through() {
     let (runtime, _tmp) = loaded_runtime();
-    let decision =
-        before_tool_with_runtime(&runtime, "t1", "Bash", &json!({ "command": "echo hello" }));
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": "echo hello" }),
+    );
+    assert!(matches!(decision, GuardDecision::Allow));
+}
+
+#[test]
+fn mcp_tools_pass_through() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::new("mcp__server__tool"),
+        &json!({ "command": "cat /dev/shm/fm-agent-security/whatever" }),
+    );
     assert!(matches!(decision, GuardDecision::Allow));
 }
 
@@ -130,7 +126,7 @@ fn blocks_listing_the_runtime_mem_root() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        "Bash",
+        &HookToolName::bash(),
         &json!({ "command": format!("ls {root}") }),
     );
     assert!(matches!(decision, GuardDecision::Blocked(_)));
@@ -142,8 +138,8 @@ fn blocks_export_tool_containing_known_plaintext() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        "write",
-        &json!({ "filePath": "/tmp/out.md", "content": "# Guarded content" }),
+        &HookToolName::apply_patch(),
+        &json!({ "command": "*** Begin Patch\n+ # Guarded content\n*** End Patch" }),
     );
     assert!(matches!(decision, GuardDecision::Blocked(_)));
 }
@@ -154,8 +150,8 @@ fn allows_export_tool_without_known_plaintext() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        "write",
-        &json!({ "filePath": "/tmp/out.md", "content": "normal user content" }),
+        &HookToolName::apply_patch(),
+        &json!({ "command": "*** Begin Patch\n+ normal user content\n*** End Patch" }),
     );
     assert!(matches!(decision, GuardDecision::Allow));
 }

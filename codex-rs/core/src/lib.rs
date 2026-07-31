@@ -10,6 +10,7 @@ mod apps;
 mod audio_preparation;
 mod client;
 mod client_common;
+pub(crate) mod encrypted_skills_guard;
 mod realtime_context;
 mod realtime_conversation;
 mod realtime_prompt;

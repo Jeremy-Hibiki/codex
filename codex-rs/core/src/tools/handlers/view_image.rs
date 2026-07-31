@@ -20,7 +20,9 @@ use crate::tools::handlers::parse_arguments;
 use crate::tools::handlers::resolve_tool_environment;
 use crate::tools::handlers::view_image_spec::ViewImageToolOptions;
 use crate::tools::handlers::view_image_spec::create_view_image_tool;
+use crate::tools::hook_names::HookToolName;
 use crate::tools::registry::CoreToolRuntime;
+use crate::tools::registry::PreToolUsePayload;
 use crate::tools::registry::ToolExecutor;
 use codex_tools::ToolName;
 use codex_tools::ToolSpec;
@@ -200,7 +202,18 @@ impl ViewImageHandler {
     }
 }
 
-impl CoreToolRuntime for ViewImageHandler {}
+impl CoreToolRuntime for ViewImageHandler {
+    fn pre_tool_use_payload(&self, invocation: &ToolInvocation) -> Option<PreToolUsePayload> {
+        let ToolPayload::Function { arguments } = &invocation.payload else {
+            return None;
+        };
+        let args: ViewImageArgs = serde_json::from_str(arguments).ok()?;
+        Some(PreToolUsePayload {
+            tool_name: HookToolName::new("view_image"),
+            tool_input: serde_json::json!({ "path": args.path }),
+        })
+    }
+}
 
 pub struct ViewImageOutput {
     image_url: String,

@@ -1,10 +1,22 @@
 use super::*;
+use codex_analytics::build_track_events_context;
+use codex_encrypted_skills::registry::TtlConfig;
+use codex_encrypted_skills::runtime::EncryptedSkillRuntime;
+use codex_encrypted_skills::sdk::EnvelopeError;
+use codex_encrypted_skills::sdk::EnvelopeSdk;
+use codex_encrypted_skills::sdk::PackageEntry;
+use codex_skills::SkillEncryption;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_absolute_path::test_support::PathBufExt;
 use codex_utils_absolute_path::test_support::test_path_buf;
 use pretty_assertions::assert_eq;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 fn make_skill(name: &str, path: &str) -> SkillMetadata {
     SkillMetadata {
@@ -18,6 +30,8 @@ fn make_skill(name: &str, path: &str) -> SkillMetadata {
         scope: codex_protocol::protocol::SkillScope::User,
         plugin_id: None,
         remote_plugin_id: None,
+        encrypted: false,
+        encryption: None,
     }
 }
 
@@ -42,6 +56,168 @@ fn collect_mentions(
     connector_slug_counts: &HashMap<String, usize>,
 ) -> Vec<SkillMetadata> {
     collect_explicit_skill_mentions(inputs, skills, disabled_paths, connector_slug_counts)
+}
+
+struct MockEncryptedSdk {
+    calls: Arc<AtomicUsize>,
+    fail: bool,
+}
+
+impl EnvelopeSdk for MockEncryptedSdk {
+    fn decrypt_package(&self, _package_path: &Path) -> Result<Vec<PackageEntry>, EnvelopeError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        if self.fail {
+            Err(EnvelopeError::Decrypt("mock failure".into()))
+        } else {
+            Ok(vec![PackageEntry {
+                rel_path: PathBuf::from("SKILL.md"),
+                contents: b"# Real encrypted content".to_vec(),
+            }])
+        }
+    }
+}
+
+fn encrypted_skill(name: &str, path: &str) -> SkillMetadata {
+    SkillMetadata {
+        encrypted: true,
+        encryption: Some(SkillEncryption {
+            version: Some(2),
+            key_id: Some("required_hardware_key".into()),
+            algorithm: Some("ZIP-AES-256-CBC".into()),
+            package: Some(format!("{name}.zip.enc")),
+        }),
+        ..make_skill(name, path)
+    }
+}
+
+fn track_events() -> codex_analytics::TrackEventsContext {
+    build_track_events_context(
+        "test".into(),
+        "thread-1".into(),
+        "turn-1".into(),
+        "p".into(),
+    )
+}
+
+#[tokio::test]
+async fn encrypted_skill_injects_token_instead_of_plaintext() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let sdk = Arc::new(MockEncryptedSdk {
+        calls: calls.clone(),
+        fail: false,
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime =
+        EncryptedSkillRuntime::new(sdk, TtlConfig::default(), tmp.path().join("mem-root"));
+    let skill = encrypted_skill("secret", "/skills/secret/SKILL.md");
+
+    let outcome = build_skill_injections(
+        &[skill],
+        Some(&SkillLoadOutcome::default()),
+        Some(&runtime),
+        "thread-1",
+        None,
+        &codex_analytics::AnalyticsEventsClient::disabled(),
+        track_events(),
+    )
+    .await;
+
+    assert!(
+        outcome.warnings.is_empty(),
+        "unexpected warnings: {:?}",
+        outcome.warnings
+    );
+    assert_eq!(outcome.items.len(), 1);
+    let item = &outcome.items[0];
+    assert!(item.encrypted);
+    let token = item.token.as_deref().expect("encrypted token");
+    assert!(token.starts_with("[SENSITIVE_SKILL_TOKEN:thread-1:"));
+    assert!(item.contents.is_empty());
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn encrypted_skill_is_idempotent_within_ttl() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let sdk = Arc::new(MockEncryptedSdk {
+        calls: calls.clone(),
+        fail: false,
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime =
+        EncryptedSkillRuntime::new(sdk, TtlConfig::default(), tmp.path().join("mem-root"));
+    let skill = encrypted_skill("secret", "/skills/secret/SKILL.md");
+
+    let first = build_skill_injections(
+        std::slice::from_ref(&skill),
+        Some(&SkillLoadOutcome::default()),
+        Some(&runtime),
+        "thread-1",
+        None,
+        &codex_analytics::AnalyticsEventsClient::disabled(),
+        track_events(),
+    )
+    .await;
+    let second = build_skill_injections(
+        &[skill],
+        Some(&SkillLoadOutcome::default()),
+        Some(&runtime),
+        "thread-1",
+        None,
+        &codex_analytics::AnalyticsEventsClient::disabled(),
+        track_events(),
+    )
+    .await;
+
+    assert_eq!(first.items[0].token, second.items[0].token);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn encrypted_skill_without_runtime_produces_warning() {
+    let skill = encrypted_skill("secret", "/skills/secret/SKILL.md");
+
+    let outcome = build_skill_injections(
+        &[skill],
+        Some(&SkillLoadOutcome::default()),
+        None,
+        "thread-1",
+        None,
+        &codex_analytics::AnalyticsEventsClient::disabled(),
+        track_events(),
+    )
+    .await;
+
+    assert!(outcome.items.is_empty());
+    assert_eq!(outcome.warnings.len(), 1);
+    assert!(outcome.warnings[0].contains("encrypted"));
+}
+
+#[tokio::test]
+async fn encrypted_skill_decrypt_failure_produces_warning() {
+    let sdk = Arc::new(MockEncryptedSdk {
+        calls: Arc::new(AtomicUsize::new(0)),
+        fail: true,
+    });
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime =
+        EncryptedSkillRuntime::new(sdk, TtlConfig::default(), tmp.path().join("mem-root"));
+    let skill = encrypted_skill("secret", "/skills/secret/SKILL.md");
+
+    let outcome = build_skill_injections(
+        &[skill],
+        Some(&SkillLoadOutcome::default()),
+        Some(&runtime),
+        "thread-1",
+        None,
+        &codex_analytics::AnalyticsEventsClient::disabled(),
+        track_events(),
+    )
+    .await;
+
+    assert!(outcome.items.is_empty());
+    assert_eq!(outcome.warnings.len(), 1);
+    assert!(outcome.warnings[0].contains("mock failure"));
 }
 
 #[test]

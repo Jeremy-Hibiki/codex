@@ -71,6 +71,36 @@ fn blocks_read_commands_referencing_mem_root() {
 }
 
 #[test]
+fn blocks_read_commands_referencing_original_skill_paths() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": "cat /skills/secret/SKILL.md" }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "original-path read must not be rewritten into a decrypted read: {decision:?}"
+    );
+}
+
+#[test]
+fn blocks_search_commands_referencing_original_skill_paths() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": "grep -r secret /skills/secret" }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "original-path search must not be rewritten into a decrypted search: {decision:?}"
+    );
+}
+
+#[test]
 fn blocks_search_commands_referencing_decrypted_dirs() {
     let (runtime, _tmp) = loaded_runtime();
     let dirs = runtime.decrypted_dirs("t1");

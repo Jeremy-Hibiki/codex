@@ -531,9 +531,15 @@ impl Session {
         // directories once per process, then recreate with mode 0700.
         let encrypted_skills_mem_root =
             codex_encrypted_skills::mem_root::resolve_default_mem_root();
-        let _ = codex_encrypted_skills::mem_root::init_mem_root_once(
+        if let Err(error) = codex_encrypted_skills::mem_root::init_mem_root_once(
             encrypted_skills_mem_root.as_path(),
-        );
+        ) {
+            tracing::warn!(
+                error = %error,
+                root = %encrypted_skills_mem_root.display(),
+                "failed to initialize encrypted-skill memory root; encrypted skills will fail to load"
+            );
+        }
         debug!(
             "Configuring session: model={}; provider={:?}",
             session_configuration.collaboration_mode.model(),

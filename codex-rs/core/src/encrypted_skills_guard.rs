@@ -97,6 +97,21 @@ fn guard_shell(
     if rewritten == command {
         return GuardDecision::Allow;
     }
+    // An original-path read/search is rewritten to the decrypted directory;
+    // re-check the rewritten command so `cat /skills/foo/SKILL.md` cannot
+    // bypass the read block by going through the path rewrite.
+    if (paths::is_read_command(command) || paths::is_search_command(command))
+        && paths::command_references_dir(&rewritten, &guarded_paths)
+    {
+        return GuardDecision::Blocked {
+            message: BLOCK_MESSAGE.to_string(),
+            reason: if paths::is_read_command(command) {
+                "direct_read"
+            } else {
+                "search_probe"
+            },
+        };
+    }
     let mut updated = tool_input.clone();
     updated["command"] = Value::String(rewritten);
     GuardDecision::Updated(updated)

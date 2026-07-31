@@ -489,3 +489,47 @@ fn allows_export_tool_without_known_plaintext() {
     );
     assert!(matches!(decision, GuardDecision::Allow));
 }
+
+#[test]
+fn blocks_web_search_tool_containing_known_plaintext() {
+    let (runtime, _tmp) = loaded_runtime();
+    // Standalone web search extension: namespace `web` + tool `run` flattens
+    // to the hook payload name `webrun`.
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::new("webrun"),
+        &json!({ "query": "# Guarded content" }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "web search with skill plaintext must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn allows_web_search_tool_without_known_plaintext() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::new("webrun"),
+        &json!({ "query": "rust async trait" }),
+    );
+    assert!(matches!(decision, GuardDecision::Allow));
+}
+
+#[test]
+fn blocks_extension_tool_args_containing_known_plaintext() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::new("some_extension_tool"),
+        &json!({ "payload": "prefix # Guarded content suffix" }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "extension tool with skill plaintext must be blocked: {decision:?}"
+    );
+}

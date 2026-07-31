@@ -11,6 +11,10 @@ The system SHALL block tool invocations that directly read files or directory li
 - **WHEN** a model or user issues a command that lists `/dev/shm/fm-agent-security/` or its subdirectories (for example `ls`, `find`)
 - **THEN** the tool invocation is blocked with an explanatory message
 
+#### Scenario: Original-path read is not rewritten into a decrypted read
+- **WHEN** a read or search command references the skill's original directory (for example `cat ~/.codex/skills/foo/SKILL.md`, `grep -r secret ~/.codex/skills/foo`)
+- **THEN** the invocation is blocked instead of being rewritten to the decrypted directory
+
 ### Requirement: Allow script execution from decrypted storage
 The system SHALL allow executing scripts located under `/dev/shm/fm-agent-security/` without exposing their source content.
 

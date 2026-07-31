@@ -73,4 +73,5 @@
 - [x] 11.1 写失败单测（红）：`redact_known_plaintext`（完整明文、整行、20 字符前缀、短片段不误伤、多明文、幂等）+ runtime `redact_reply` 会话隔离 + core `redact_assistant_reply_items`（assistant 消息 InputText/OutputText、AgentMessage 明文内容、user 消息不动）
 - [x] 11.2 实现（绿）：`export_guard::redact_known_plaintext`、`EncryptedSkillRuntime::redact_reply`、`encrypted_skills_guard::redact_assistant_reply_items`；`prepare_conversation_items_for_history`（durable history 边界）统一接线，覆盖 `record_conversation_items` 与 `record_inter_agent_communication`
 - [x] 11.3 短行加固（红→绿）：SKILL 中 <20 字符的行以完整行形式出现在回复中时同样脱敏；嵌在句子中不脱敏；幂等
-- [x] 11.4 回归：encrypted-skills 95/95、guard 16/16、集成 10/10（`RUST_MIN_STACK=16MiB`，测试基建栈溢出与本次改动无关，stash 复现确认）、`just fmt` + clippy 全绿
+- [x] 11.4 原路径读/搜索绕过修复（红→绿）：`cat /skills/foo/SKILL.md`、`grep -r ... /skills/foo` 改写前检查改写结果，读/搜索命令命中解密目录即 Blocked；脚本执行仍正常改写放行
+- [x] 11.5 回归：encrypted-skills 95/95、guard 18/18、集成 10/10（`RUST_MIN_STACK=16MiB`，测试基建栈溢出与本次改动无关，stash 复现确认）、`just fmt` + clippy 全绿

@@ -153,6 +153,50 @@ opencode → codex 工具映射（guard 迁移依据）：
 - 父 rollout 的 token 消息格式正确（`<skill>[SENSITIVE_SKILL_TOKEN:...]</skill>`），`keep_forked_rollout_item` 过滤逻辑有 4 个直接单测覆盖（token 消息丢弃/普通保留/assistant 保留/工具项丢弃）；
 - v1 spawn 的子会话请求在父 turn 完成后的测试窗口内不可靠到达；且父 followup 请求的历史包含 `spawn_agent` 的 FunctionCall（参数含子 prompt 文本），会干扰 `mount_sse_once_match` 的 matcher（捕获到父 followup 而非子请求）；
 - 结论：fork 隔离的端到端集成测试在现有 suite 基建下不可靠，**移除该测试**，安全不变式继续由 spawn 单测保证；记录为已知测试限制，待 v1 spawn 时序稳定或专用 harness 后再补。
+
+## 12. Spec 覆盖矩阵（2026-07-31 v15）
+
+三个 spec 的全部 Requirement/Scenario 与测试锚点对照（U=单元测试，I=集成测试）：
+
+### encrypted-skill-tokenization
+
+| Requirement / Scenario | 锚点 |
+|---|---|
+| 解密 on mention / 磁盘 stub 不注入 | I `encrypted_skill_keeps_plaintext_out_of_context_and_rollout` |
+| 重提及 TTL 内复用 | I `re_mention_within_ttl_reuses_the_same_token` |
+| 解密失败 warning | U `encrypted_skill_decrypt_failure_produces_warning` |
+| Token-only 注入 / 明文兼容 | I 上述 + U `plaintext_body_keeps_existing_format` |
+| 重水合 chokepoint | I 上述 + U `request_input_rehydrates_encrypted_skill_tokens` |
+| 重水合覆盖三路径（常规/compaction/resume） | I `compaction_request_rehydrates...` + `resumed_session_keeps_stale...` |
+| Stale token 保留 | I resume + U `keeps_stale_token_when_content_missing` |
+| 跨会话门禁 | U `refuses_cross_session_token` + runtime gate |
+| 路径改写 / base anchor / 输出脱敏 | I `script_execution_rewrites...` + guard U |
+| 信任层级框架 | I 请求 framing 断言 + U `framing_includes_skill_name_and_original_base_dir` |
+| 内容双上限 | U cache（条目 64 + 8MiB） |
+| 审计日志 | U audit/runtime events + I 审计文件断言 |
+| Skill TTL 卸载 / Thread TTL 清空 / 线程结束 | U registry + I `skill_ttl_expiry_forces_redecryption...` + `clear_thread` 接线 |
+| 多会话隔离 | U registry/cache 隔离 + rehydrate 门禁 |
+| 路径隐藏（无 /dev/shm） | I 全部请求/rollout 断言 |
+
+### encrypted-skill-access-control
+
+| Requirement / Scenario | 锚点 |
+|---|---|
+| 直接读取拦截（shell + exec） | I `direct_read_of_decrypted_storage_is_blocked` + `exec_command_direct_read...` |
+| 脚本执行放行 | I `script_execution_rewrites_original_path_and_redacts_output` |
+| 工具参数路径改写 | U `rewrites_original_skill_path_in_execution_commands` + I 执行验证 |
+| 输出路径脱敏 | U `redact_uses_the_runtime_mem_root` + I 无路径断言 |
+| 文件查看工具拦截（view_image） | U `blocks_view_image_on_decrypted_directory` + I `view_image_on_mem_root_is_blocked` |
+| 搜索/探测命令拦截（含 ls） | U `blocks_search_commands...` + `blocks_listing_the_runtime_mem_root` |
+| 导出明文拦截（apply_patch） | I `export_tool_with_skill_plaintext_is_blocked` + U export guard |
+
+### encrypted-skill-fork-isolation
+
+| Requirement / Scenario | 锚点 |
+|---|---|
+| fork 丢弃 token 消息 | U spawn_tests 4 例（token 丢弃/普通保留/assistant/function call） |
+| 子代理重新提及 | 设计语义（集成受 v1 spawn 时序限制，见 §11） |
+| 跨会话不可共享 | U registry/cache 隔离 + rehydrate 门禁 |
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

@@ -208,6 +208,7 @@ Codex 没有 skill 工具，触发由**宿主侧在 turn 开始时对当前用�
 - 删除 codex 中不存在工具的匹配分支（`read`/`grep`/`glob`/`write`/`edit`/`webfetch`/`web_search`）与对应单测；`guard_read` 只服务 `view_image`（`path` 键）；
 - 新增 `mcp__*` 工具放行测试；web 导出面（扩展 `web/run`，无 pre payload）依赖沙箱网络隔离；
 - 集成测试（apply_patch 导出拦截、shell 读取拦截）验证迁移后行为不变。
+- **全量核对**：codex 所有 handler 的 hook 名与 guard 归属已盘点（见分析报告 §5）——`shell_command`/`exec_command` 共用 `Bash`（exec 参数键 `cmd` 由 pre payload 归一化为 `command`，新增 exec 集成用例验证）、`apply_patch`、`view_image`、`mcp__*` 放行、其余 Function 工具走默认 hook 名放行（无宿主文件读取通道）、扩展工具无 pre payload 靠网络隔离。
 
 ## Risks / Trade-offs
 

@@ -315,6 +315,46 @@ async fn direct_read_of_decrypted_storage_is_blocked() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn exec_command_direct_read_is_blocked_by_the_same_guard() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let test = build_test_with_encrypted_skill(&server).await?;
+    let mock = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_function_call(
+                "call-1",
+                "exec_command",
+                &serde_json::to_string(&serde_json::json!({
+                    "cmd": "cat /dev/shm/fm-agent-security/whatever/SKILL.md"
+                }))?,
+            ),
+            ev_assistant_message("msg-1", "done"),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+
+    submit_single_turn(&test, "please use $secret-skill").await?;
+
+    let rollout_path = test
+        .session_configured
+        .rollout_path
+        .as_ref()
+        .expect("rollout path");
+    let rollout = std::fs::read_to_string(rollout_path)?;
+    assert!(
+        rollout.contains("Direct access to encrypted skill storage is not allowed"),
+        "exec_command reads should be blocked by the guard, got: {rollout}"
+    );
+    let _ = mock;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn script_execution_rewrites_original_path_and_redacts_output() -> Result<()> {
     skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
     skip_if_no_network!(Ok(()));

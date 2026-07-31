@@ -464,3 +464,25 @@ fn load_or_register_fails_when_memory_root_is_full() {
         Err(EnvelopeError::Internal(_))
     ));
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn oversized_package_is_rejected_before_decryption() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let sdk = Arc::new(counting_sdk(calls.clone(), |_| SKILL_MD));
+    let (runtime, tmp) = test_runtime(sdk);
+    // A package larger than the enforced headroom.
+    let package_path = tmp.path().join("big.zip.enc");
+    std::fs::write(&package_path, vec![0u8; 1024 * 1024]).unwrap();
+    runtime.set_min_free_bytes(u64::MAX);
+
+    assert!(matches!(
+        runtime.load_or_register("t1", "secret", &package_path),
+        Err(EnvelopeError::Internal(_))
+    ));
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        0,
+        "decryption must not run when the capacity gate rejects the package"
+    );
+}

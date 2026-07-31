@@ -116,6 +116,7 @@ impl EncryptedSkillRuntime {
             }
         }
 
+        self.check_capacity_for_package(package_path)?;
         let entries = self.sdk.decrypt_package(package_path)?;
         self.check_capacity(&entries)?;
         let plaintext = extract_skill_md(&entries)?;
@@ -389,6 +390,28 @@ impl EncryptedSkillRuntime {
         if free < needed {
             return Err(EnvelopeError::Internal(
                 "memory root has insufficient free space".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Pre-decryption capacity gate using the encrypted package file size, so
+    /// an oversized package cannot exhaust `/dev/shm` or allocate its
+    /// in-memory entries before the check runs.
+    fn check_capacity_for_package(&self, package_path: &Path) -> Result<(), EnvelopeError> {
+        let Some(free) = crate::mem_root::available_bytes(&self.mem_root)
+            .ok()
+            .flatten()
+        else {
+            return Ok(());
+        };
+        let package_len = std::fs::metadata(package_path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        let needed = package_len.saturating_add(self.min_free_bytes.load(Ordering::Relaxed));
+        if free < needed {
+            return Err(EnvelopeError::Internal(
+                "memory root has insufficient free space for package".into(),
             ));
         }
         Ok(())

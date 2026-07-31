@@ -530,7 +530,7 @@ impl ToolRegistry {
                 &pre_tool_use_payload.tool_name,
                 &pre_tool_use_payload.tool_input,
             ) {
-                crate::encrypted_skills_guard::GuardDecision::Blocked(message) => {
+                crate::encrypted_skills_guard::GuardDecision::Blocked { message, .. } => {
                     let err = FunctionCallError::RespondToModel(message);
                     dispatch_trace.record_failed(&err);
                     notify_tool_finish_if_unclaimed(

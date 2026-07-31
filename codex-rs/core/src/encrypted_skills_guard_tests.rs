@@ -2,6 +2,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use codex_encrypted_skills::audit::AuditEvent;
+use codex_encrypted_skills::audit::AuditSink;
 use codex_encrypted_skills::registry::TtlConfig;
 use codex_encrypted_skills::runtime::EncryptedSkillRuntime;
 use codex_encrypted_skills::sdk::EnvelopeError;
@@ -11,6 +13,23 @@ use serde_json::json;
 
 use super::*;
 use crate::tools::hook_names::HookToolName;
+
+#[derive(Default)]
+struct GuardCollectingSink {
+    events: std::sync::Mutex<Vec<AuditEvent>>,
+}
+
+impl AuditSink for GuardCollectingSink {
+    fn emit(&self, event: AuditEvent) {
+        self.events.lock().unwrap().push(event);
+    }
+}
+
+impl GuardCollectingSink {
+    fn events(&self) -> Vec<AuditEvent> {
+        self.events.lock().unwrap().clone()
+    }
+}
 
 struct GuardTestSdk;
 
@@ -45,7 +64,7 @@ fn blocks_read_commands_referencing_mem_root() {
         &HookToolName::bash(),
         &json!({ "command": "cat /dev/shm/fm-agent-security/fm_skill_security_abc/SKILL.md" }),
     );
-    assert!(matches!(decision, GuardDecision::Blocked(_)));
+    assert!(matches!(decision, GuardDecision::Blocked { .. }));
 }
 
 #[test]
@@ -59,7 +78,7 @@ fn blocks_search_commands_referencing_decrypted_dirs() {
         &HookToolName::bash(),
         &json!({ "command": command }),
     );
-    assert!(matches!(decision, GuardDecision::Blocked(_)));
+    assert!(matches!(decision, GuardDecision::Blocked { .. }));
 }
 
 #[test]
@@ -92,7 +111,7 @@ fn blocks_view_image_on_decrypted_directory() {
         &HookToolName::view_image(),
         &json!({ "path": format!("{}/image.png", dirs[0].to_string_lossy()) }),
     );
-    assert!(matches!(decision, GuardDecision::Blocked(_)));
+    assert!(matches!(decision, GuardDecision::Blocked { .. }));
 }
 
 #[test]
@@ -105,7 +124,7 @@ fn blocks_view_image_on_unknown_mem_root_subpath() {
         &HookToolName::view_image(),
         &json!({ "path": format!("{root}/whatever/image.png") }),
     );
-    assert!(matches!(decision, GuardDecision::Blocked(_)));
+    assert!(matches!(decision, GuardDecision::Blocked { .. }));
 }
 
 #[test]
@@ -117,7 +136,7 @@ fn blocks_view_image_on_default_mem_root_prefix() {
         &HookToolName::view_image(),
         &json!({ "path": "/dev/shm/fm-agent-security/other/image.png" }),
     );
-    assert!(matches!(decision, GuardDecision::Blocked(_)));
+    assert!(matches!(decision, GuardDecision::Blocked { .. }));
 }
 
 #[test]
@@ -157,6 +176,44 @@ fn mcp_tools_pass_through() {
 }
 
 #[test]
+fn blocked_audit_records_specific_reason() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sink = Arc::new(GuardCollectingSink::default());
+    let runtime = EncryptedSkillRuntime::new_with_audit(
+        Arc::new(GuardTestSdk),
+        TtlConfig::default(),
+        tmp.path().join("mem-root"),
+        Some(sink.clone()),
+    );
+    runtime
+        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+        .expect("load skill");
+
+    let _ = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": "cat /dev/shm/fm-agent-security/x/SKILL.md" }),
+    );
+    let _ = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::apply_patch(),
+        &json!({ "command": "patch with # Guarded content" }),
+    );
+
+    let events = sink.events();
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AuditEvent::Blocked { reason, .. } if reason == "direct_read"
+    )));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AuditEvent::Blocked { reason, .. } if reason == "export_plaintext"
+    )));
+}
+
+#[test]
 fn blocks_listing_the_runtime_mem_root() {
     let (runtime, _tmp) = loaded_runtime();
     let root = runtime.mem_root().to_string_lossy().to_string();
@@ -166,7 +223,7 @@ fn blocks_listing_the_runtime_mem_root() {
         &HookToolName::bash(),
         &json!({ "command": format!("ls {root}") }),
     );
-    assert!(matches!(decision, GuardDecision::Blocked(_)));
+    assert!(matches!(decision, GuardDecision::Blocked { .. }));
 }
 
 #[test]
@@ -178,7 +235,7 @@ fn blocks_export_tool_containing_known_plaintext() {
         &HookToolName::apply_patch(),
         &json!({ "command": "*** Begin Patch\n+ # Guarded content\n*** End Patch" }),
     );
-    assert!(matches!(decision, GuardDecision::Blocked(_)));
+    assert!(matches!(decision, GuardDecision::Blocked { .. }));
 }
 
 #[test]

@@ -75,3 +75,5 @@
 - [x] 11.3 短行加固（红→绿）：SKILL 中 <20 字符的行以完整行形式出现在回复中时同样脱敏；嵌在句子中不脱敏；幂等
 - [x] 11.4 原路径读/搜索绕过修复（红→绿）：`cat /skills/foo/SKILL.md`、`grep -r ... /skills/foo` 改写前检查改写结果，读/搜索命令命中解密目录即 Blocked；脚本执行仍正常改写放行
 - [x] 11.5 回归：encrypted-skills 95/95、guard 18/18、集成 10/10（`RUST_MIN_STACK=16MiB`，测试基建栈溢出与本次改动无关，stash 复现确认）、`just fmt` + clippy 全绿
+- [x] 11.6 流入口脱敏（红→绿）：`handle_output_item_done` 入口对模型输出项先脱敏——发现 `record_conversation_items` 之外还存在 `TurnItem`（ItemStarted/ItemCompleted）、`TaskCompleteEvent.last_agent_message`、`ResponseItem::Reasoning` 三条明文落盘副本；统一在流入口处理后全部干净，`emit_turn_item_*` 保留二次兜底
+- [x] 11.7 E2E 加固：`encrypted_skill_keeps_plaintext_out_of_context_and_rollout` 的 mock 回复改为引用 `REAL_SKILL_CONTENT_MARKER`，断言 rollout 只含 `[REDACTED]`；guard 22/22、集成 10/10

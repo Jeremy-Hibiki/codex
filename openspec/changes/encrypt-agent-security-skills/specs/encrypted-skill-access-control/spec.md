@@ -102,3 +102,7 @@ The system SHALL hard-enforce the skill output policy at the durable history bou
 #### Scenario: User messages are never redacted
 - **WHEN** a recorded message has a role other than assistant
 - **THEN** the content is left unchanged
+
+#### Scenario: Every persistence surface of a quoted reply is redacted
+- **WHEN** the model reply quotes known skill plaintext
+- **THEN** the recorded response item, derived turn item (started/completed events), reasoning text, and `last_agent_message` in the task-complete event all contain the redaction marker instead of the plaintext

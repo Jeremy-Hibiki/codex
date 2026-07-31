@@ -337,6 +337,16 @@ TTL sweep 原只在 **turn 边界**（`build_skills_and_plugins`）执行——�
 - **`write_stdin` 无 pre-tool payload**：guard 无法拦截写入既有 shell 会话的键盘输入；缓解依赖路径随机化 + 输出脱敏（模型无法获知 `fm_skill_security_<hex>` 真实地址，`echo /dev/shm/*` 类探测输出被脱敏）。如后续要求严格拦截，需为 `WriteStdinHandler` 增加 pre payload（会改变全量 hook 可见性，属其他模块行为变更，当前不做）。
 - **`mcp__*`/扩展工具放行**：外部信任边界；受限部署建议不启用带宿主文件访问能力的 MCP server，或容器层隔离 MCP 进程。
 - **工具输出/函数调用参数中的明文**：skill 脚本可能合法输出密钥/令牌（多步流程需要），脱敏会破坏功能；`apply_patch` 文件写出口已 Blocked。
+
+### 复核中发现并修复的落盘副本（P1，`64ebd25942`）
+
+首轮回复脱敏只接在 `record_conversation_items`/`prepare_conversation_items_for_history`，E2E 增强（mock 回复引用 `REAL_SKILL_CONTENT_MARKER`）暴露同一句回复在 rollout 出现**两份明文**：
+
+1. **`TurnItem`（`ItemStarted`/`ItemCompleted` 事件）**：`handle_non_tool_response_item` 把 `ResponseItem` 转成 `TurnItem::AgentMessage`，经 `send_event_raw_with_persistence` 落盘；
+2. **`TaskCompleteEvent.last_agent_message`**：由 finalize 时的原文派生；
+3. **`ResponseItem::Reasoning`**：reasoning summary/content 也经 `record_conversation_items` 落盘，原脱敏只覆盖 assistant Message/AgentMessage。
+
+修复（TDD）：在**模型流入口** `handle_output_item_done` 对输出项先做 `redact_assistant_reply_item`（Message/AgentMessage/Reasoning 全覆盖），使 ResponseItem、派生 TurnItem、`last_agent_message` 全部在源头即干净；`emit_turn_item_started/completed` 保留 TurnItem 级二次兜底（覆盖其他 TurnItem 发射路径）。E2E 断言 rollout 只含 `[REDACTED]`；guard 22/22、集成 10/10、`just fmt` + clippy 全绿。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

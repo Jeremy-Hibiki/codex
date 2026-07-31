@@ -88,7 +88,7 @@ exclude_slash_tmp = false
 | 7 | ~~线程结束未即时清理~~ | **已解决（2026-07-31 v2）**：`thread/delete` 处理器对每个待删线程调用 `CodexThread::clear_encrypted_skills()` | — | — |
 | 8 | **测试 SDK 配置暴露** | `[encrypted_skills] sdk = "test_zip"` 出现在生产 config schema | 误配置把 `.zip.enc` 当普通 zip 解（真加密包会解压失败，fail 保守） | 真实 SDK 接入后收敛该枚举；或移到 `#[cfg(test)]` 注入 |
 | 9 | **外部 hook 信任边界** | guard 在外部 PreToolUse hook 之前执行，hook 可继续改写工具输入 | 被攻陷/恶意 hook 可注入 `/dev/shm` 路径 | hook 属于宿主信任配置；文档声明边界 |
-| 10 | ~~工具覆盖不完整~~ | **已解决（2026-07-31 v5）**：`view_image` 新增 pre payload 并被 guard 拦截（`path` 键）；`read` 分支同时兼容 `filePath`/`path` 键；`mcp_resource` 为服务端资源 URI 不涉及宿主路径 | — | — |
+| 10 | ~~工具覆盖不完整~~ | **已解决（2026-07-31 v5）**：`view_image` 新增 pre payload 并被 guard 拦截（handler 统一输出 `path` 键，guard 以 `path` 匹配）；`mcp_resource` 为服务端资源 URI 不涉及宿主路径 | — | — |
 
 > 注（v6 复核）：扩展工具（`web_search`/`webfetch`）实现 `ToolExecutor<ToolCall>`，不暴露 `pre_tool_use_payload`，guard 的 web 导出拦截分支**在现网实际不触发**；弥补手段是沙箱 `network_access = false`（模型拿不到路径也传不出去）。分支保留以兼容未来暴露 pre payload 的 handler。
 
@@ -266,6 +266,7 @@ network_access = false                                      # shell 断网；推
 6. **网络策略**：容器 `--network none` 或出口白名单；局域网推理服务经白名单可达（模型 API 由 host 进程发起，不经 bwrap）。
 7. **TTL 保洁语义**：两级 TTL 在 turn 边界与**每次模型请求**（重水合入口）双触发——常驻服务器上任何活动都会清理过期解密内容；完全无请求时内容驻留到容器重启（/dev/shm 自动清空），无残留跨容器；
 8. **审计保留**：`audit_path` 指向持久卷，容器重启后审计保留；`/dev/shm` 内明文随容器销毁自动消失。
+9. **双容器拓扑收口（汇报第三章）**：执行容器**不开 SSH**，`/dev/shm` 与 skill 包仅存在于执行容器且对使用者不可见；OpenChamber 容器（用户 SSH + VSCode）只经 HTTP(S) 与执行容器通信，**不得**挂载 skill 目录或 `/dev/shm`；Workspace/EDA 工具双挂载时确认不含加密 skill 包。汇报原文「/dev/shm 不是隔离边界：同容器同 uid 进程可直接读取」→ 必须以**容器文件系统 ACL + 网络策略**收口（skill 包目录权限 0700/非共享，`--network none` 或出口白名单）。
 
 ## 17. 与汇报 V2 设计差异核对 + 容量预检查（2026-07-31 v20）
 
@@ -353,6 +354,11 @@ TTL sweep 原只在 **turn 边界**（`build_skills_and_plugins`）执行——�
 汇报 V1 安全矩阵明确要求「`write` / `edit` / `apply_patch` / `webfetch` / `web_search` 参数含明文直接拦截」。核对发现 guard_export 此前只覆盖 `apply_patch`：独立 web_search（扩展工具 `web/run`，hook 平面名 `webrun`）与 MCP/扩展工具的参数明文均放行，模型可把 Skill 明文直接放入搜索/请求参数外泄。
 
 修复（TDD，3 个新单测红→绿）：`before_tool_with_runtime` 改为——`Bash` → guard_shell、`view_image` → guard_read、**其余所有工具默认 guard_export**（参数含已知明文 Blocked，reason `export_plaintext`）；shell 保持唯一允许运行时使用明文的通道（脚本经路径改写执行）。Codex 无独立 `webfetch` 工具（盘点确认），未来新增网络工具自动落入默认拦截。guard 25/25、集成 10/10。
+
+### V1 辅助层未移植项（记录，不阻塞）
+
+- **入站意图检测（keyword/model 检测器，fail-open 辅助）**：V1 中为辅助层，主防线是 token 化 + 白名单 + 网络隔离；主 Agent 方案已用确定性工具拦截（guard）+ 明文脱敏替代，未移植模型检测器。如需接入可在 `agent/control` 消息入口加 fail-open 检测，不属加解密核心。
+- **压缩链路约束**：V1 用 `session.compacting` prompt 约束「摘要不得写 Skill 明文」（软约束）；本项目压缩摘要取自**已脱敏的历史记录**（`record_conversation_items` 边界），是结构保证而非 prompt 约束，且压缩请求的重水合与回复脱敏走同一机制（`compact.rs` 摘要经 redacted history 提取，`RolloutItem::Compacted` 无明文）。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

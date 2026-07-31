@@ -79,3 +79,22 @@ Tool invocations capable of carrying plaintext out of the session (file writes, 
 #### Scenario: Normal file operations pass through
 - **WHEN** a file or network tool call does not contain known skill plaintext
 - **THEN** the invocation proceeds normally
+
+### Requirement: Persisted model replies are redacted
+The system SHALL hard-enforce the skill output policy at the durable history boundary: assistant replies and plaintext inter-agent messages that quote known skill plaintext SHALL be redacted before they are written to in-memory history, rollout, or the client stream.
+
+#### Scenario: Assistant reply quoting a skill line is redacted
+- **WHEN** an assistant message contains a known skill line of at least 20 characters or the 20-character prefix of such a line
+- **THEN** the quoted fragment is replaced with the redaction marker in the recorded, persisted, and streamed message
+
+#### Scenario: Assistant reply quoting a short skill line is redacted
+- **WHEN** an assistant message contains a shorter skill line (for example `api_key=abc`) as a complete line
+- **THEN** that line is replaced with the redaction marker
+
+#### Scenario: Short fragment embedded in a sentence is preserved
+- **WHEN** an assistant message contains the same short fragment embedded inside a sentence (not as a complete line)
+- **THEN** the text is left unchanged
+
+#### Scenario: User messages are never redacted
+- **WHEN** a recorded message has a role other than assistant
+- **THEN** the content is left unchanged

@@ -15,6 +15,7 @@
 - **安全审计**：解密、token 化、重水合、拦截、清理等安全事件写入 JSONL 审计日志（级别过滤、10 MB 轮转）。
 - **Subagent fork 隔离**：`keep_forked_rollout_item` 过滤掉含哨兵 Token 的 item，子 Agent 不继承父会话的解密内容；需要时自行重新提及 skill 触发解密。
 - **两级 TTL 生命周期**：解密仅在 skill 被触发（提及）时进行；TTL 内幂等复用（注册表命中即不重复解密）。**Skill 层 TTL**：skill 空闲超过阈值即从 `/dev/shm` 卸载（支持现有 per-turn 的加载/卸载语义，卸载后重新提及触发重新解密）；**Thread 层 TTL**：线程（session）空闲超过阈值即清除该线程全部已解密明文与内容缓存。明文在内存/`/dev/shm` 中只存在于 TTL 窗口内；线程结束立即清理；重水合检测到 Token 已卸载时提示重新提及 skill，重新解密后恢复。
+- **回复明文硬脱敏**：`<output_policy>` 是软约束，模型可能复述/引用 Skill 明文导致 assistant 消息落盘（rollout/历史）形成明文驻留。在 durable history 边界对 assistant 回复与明文 inter-agent 消息执行已知明文检测：完整明文、≥20 字符行及其 20 字符前缀、以及作为完整行出现的短行（如 `api_key=abc`）统一替换为 `[REDACTED]`；短片段嵌在句子中时不误伤；user 消息不处理。
 
 ## Capabilities
 

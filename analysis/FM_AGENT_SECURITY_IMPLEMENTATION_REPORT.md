@@ -127,6 +127,11 @@ opencode → codex 工具映射（guard 迁移依据）：
 2. **P2 `decrypt_to_dir` 死代码（已删除）**：仅被测试使用，生产路径未引用；连同其专属测试桩一并移除。
 3. **P2 spec 与实现偏差（已更新）**：access-control spec 原按 opencode 语义描述 `read` 工具（.md 允许/脚本拦截），codex 无独立 `read` 工具，实现为「文件查看工具（`view_image`）与 shell 读取/搜索命令对解密目录全拦截」。已把 spec 场景更新为 codex 实际工具语义。
 4. **P3 记录在案（未改）**：`RedactingToolOutput` 不脱敏 MCP/ToolSearch 输出（MCP server 属外部信任边界）；shell 命令字符串匹配可被混淆绕过（缓解：沙箱网络隔离 + 权限层）。
+
+## 7. 续深 Review 记录（2026-07-31 v10）
+
+1. **P1 `guard_read` 与 `guard_shell` 语义不一致（已修复）**：`view_image` 此前只检查会话已注册的解密目录，指向 mem root 下未知/其他会话子路径时不拦截；`guard_shell` 同时检查运行时 root 与默认常量前缀。修复：`guard_read` 合并检查（注册目录 + 运行时 root + `MEM_ROOT` 常量前缀）；新增 3 个单测（未知子路径 Blocked、默认常量前缀 Blocked、外部路径 Allow），guard 12/12。
+2. **集成覆盖补全**：新增 `view_image_on_mem_root_is_blocked`（模型调 view_image 指向 mem root → 拦截）与 `skill_ttl_expiry_forces_redecryption_on_reminder`（1s 短 TTL 配置，TTL 过期后重提产生新 token）——集成 8/8。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

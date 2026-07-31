@@ -96,6 +96,43 @@ fn blocks_view_image_on_decrypted_directory() {
 }
 
 #[test]
+fn blocks_view_image_on_unknown_mem_root_subpath() {
+    let (runtime, _tmp) = loaded_runtime();
+    let root = runtime.mem_root().to_string_lossy();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::view_image(),
+        &json!({ "path": format!("{root}/whatever/image.png") }),
+    );
+    assert!(matches!(decision, GuardDecision::Blocked(_)));
+}
+
+#[test]
+fn blocks_view_image_on_default_mem_root_prefix() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::view_image(),
+        &json!({ "path": "/dev/shm/fm-agent-security/other/image.png" }),
+    );
+    assert!(matches!(decision, GuardDecision::Blocked(_)));
+}
+
+#[test]
+fn allows_view_image_outside_mem_root() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::view_image(),
+        &json!({ "path": "/tmp/workspace/image.png" }),
+    );
+    assert!(matches!(decision, GuardDecision::Allow));
+}
+
+#[test]
 fn unrelated_commands_pass_through() {
     let (runtime, _tmp) = loaded_runtime();
     let decision = before_tool_with_runtime(

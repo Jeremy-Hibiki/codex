@@ -2922,6 +2922,7 @@ dependencies = [
 name = "codex-encrypted-skills"
 version = "0.0.0"
 dependencies = [
+ "libc",
  "rand 0.9.3",
  "tempfile",
  "thiserror 2.0.18",

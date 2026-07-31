@@ -210,6 +210,31 @@ opencode → codex 工具映射（guard 迁移依据）：
 - **依赖瘦身（必要前置）**：zip crate 的默认 features 启用了 zstd/bzip2/lzma（C 依赖，触发 cc-rs 交叉编译失败）；改为 workspace 统一 `default-features = false` + 各使用方（encrypted-skills/core/core-skills/core-plugins）显式 `features = ["deflate"]`；Cargo.lock 移除 bzip2-sys/lzma-sys 等（-68 行）；
 - **本地回归**：encrypted-skills 81/81、core-skills 131/131、集成 10/10 全绿；core-plugins 359/360 的 1 个失败为**环境预存项**（测试断言技能列表，本机预装了 opencode-plugins 外部技能目录），与 zip 改动无关（startup_sync 全部 zip 测试通过）；
 - 剩余记录项收窄：真实 SDK 收敛 `test_zip`、两个时序敏感集成测试待基建扩展。
+
+## 15. 部署前提深度 Review 与修正（2026-07-31 v18）
+
+依据部署前提（Docker、每用户一容器、非 root 无 sudo、无 SSH 仅 HTTP API、断外网/局域网推理、持久化常驻）与项目汇报（V1 方案与 V2 设计思路）逐项审查：
+
+### 部署适配结论
+
+| 部署前提 | 审查结论 |
+|---|---|
+| 每用户一容器 | mem root 的 per-process 命名空间（`p<pid>/`）已隔离容器内多进程；每容器独立 `/dev/shm`，无跨容器共享 |
+| 非 root + 无 sudo | `/dev/shm` 容器默认 0777 可写 ✓；**bwrap user namespace 在容器内可能受限**——部署需验证；若沙箱不可用，guard 仍是主防线（命令混淆缓解依赖网络隔离，需容器级 `--network none` 或出口白名单） |
+| 无 SSH、仅 HTTP API | 明文只在 `/dev/shm` + 请求瞬间 + rollout token；API 可见面（rollout/workspace）无明文 ✓；唯一执行面是模型工具调用（guard 拦截）✓ |
+| 断外网 + 局域网推理 | 模型调用由 host 进程发起（不在 bwrap 内），沙箱 `network_access=false` 不影响推理服务 ✓；shell 外泄由 `--unshare-net`/容器网络策略阻断 |
+| 持久化常驻 | V1 的「缓存长期驻留」已被两级 TTL + turn 边界 sweep + thread/delete 清理解决 ✓；本轮补充两个持久化适配点（见下） |
+
+### 本轮修正（TDD）
+
+1. **P1 `/dev/shm` 容量门控（已实现）**：Docker 默认 `/dev/shm` 仅 64MB，多 skill 并发可能占满。新增 `available_bytes`（Linux statvfs）与 `EncryptedSkillRuntime::set_min_free_bytes`（默认 4MiB，可注入）：解密前检查剩余空间，不足则失败（`Internal`）。新增 2 个测试（可用空间报告、空间不足拒绝）。
+2. **P1 审计日志路径可配置（已实现）**：常驻容器重启后 `$TMPDIR` 审计丢失。`[encrypted_skills]` 新增 `audit_path`，Session 使用配置路径（默认仍为 temp dir）；config schema 已重生成。新增解析测试。
+3. **P1 部署要求（文档）**：**加密 skill 包（`.zip.enc`）所在目录不得挂载/暴露给 OpenChamber 容器**（用户有 SSH 且 workspace 双挂载）——当前为模拟加密（deflate zip），用户拿到包即可解压出明文；真实 AES 加密接入后此风险消除。skill 包应只位于执行容器私有路径（如 codex_home/skills）。
+4. **P2 记录在案**：bwrap 在容器内的可用性需部署实测；不可用时告警并依赖 guard + 容器网络策略。
+
+### 验证
+
+encrypted-skills 83/83（含容量门控测试）、config 229/229（含 audit_path 解析）、集成 10/10、Windows 交叉编译通过。
 | 11 | **Windows 未覆盖** | 集成测试排除 Windows；seatbelt 等价规则未做 | 平台支持要求（Linux/macOS/Windows）未满 | 后续补 Windows/seatbelt 沙箱与测试 |
 
 ## 4. 环境注记

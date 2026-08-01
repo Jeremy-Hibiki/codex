@@ -153,22 +153,38 @@ fn guard_export(
     tool_input: &Value,
 ) -> GuardDecision {
     let known = runtime.known_plaintexts(session_id);
-    if known.is_empty() {
-        return GuardDecision::Allow;
-    }
-    let known: Vec<&str> = known.iter().map(String::as_str).collect();
     let mut values = Vec::new();
     collect_string_values(tool_input, &mut values);
-    if export_guard::args_contain_plaintext(&values, &known) {
-        GuardDecision::Blocked {
-            message:
-                "Blocked by encrypted skill policy: tool arguments contain encrypted skill content"
-                    .to_string(),
-            reason: "export_plaintext",
+    if !known.is_empty() {
+        let known: Vec<&str> = known.iter().map(String::as_str).collect();
+        if export_guard::args_contain_plaintext(&values, &known) {
+            return GuardDecision::Blocked {
+                message:
+                    "Blocked by encrypted skill policy: tool arguments contain encrypted skill content"
+                        .to_string(),
+                reason: "export_plaintext",
+            };
         }
-    } else {
-        GuardDecision::Allow
     }
+    // Path probes through MCP/extension tools are blocked the same way shell
+    // read/search commands are: referencing the memory root or any decrypted
+    // directory is never a legitimate argument for a non-shell tool.
+    let mut guarded_paths: Vec<String> = runtime
+        .decrypted_dirs(session_id)
+        .into_iter()
+        .map(|dir| dir.to_string_lossy().into_owned())
+        .collect();
+    guarded_paths.push(runtime.mem_root().to_string_lossy().into_owned());
+    if values
+        .iter()
+        .any(|value| paths::command_references_dir(value, &guarded_paths))
+    {
+        return GuardDecision::Blocked {
+            message: BLOCK_MESSAGE.to_string(),
+            reason: "storage_probe",
+        };
+    }
+    GuardDecision::Allow
 }
 
 fn collect_string_values<'a>(value: &'a Value, out: &mut Vec<&'a str>) {

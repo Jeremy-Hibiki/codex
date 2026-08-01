@@ -404,15 +404,73 @@ fn unrelated_commands_pass_through() {
 }
 
 #[test]
-fn mcp_tools_pass_through() {
+fn allows_mcp_tool_without_storage_references() {
     let (runtime, _tmp) = loaded_runtime();
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
         &HookToolName::new("mcp__server__tool"),
-        &json!({ "command": "cat /dev/shm/fm-agent-security/whatever" }),
+        &json!({ "path": "/tmp/unrelated.txt" }),
     );
     assert!(matches!(decision, GuardDecision::Allow));
+}
+
+#[test]
+fn blocks_mcp_tool_probing_mem_root_path() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::new("mcp__server__tool"),
+        &json!({ "path": "/dev/shm/fm-agent-security/whatever" }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "MCP path probe of the memory root must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn blocks_extension_tool_probing_decrypted_dir() {
+    let (runtime, _tmp) = loaded_runtime();
+    let dirs = runtime.decrypted_dirs("t1");
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::new("some_extension_tool"),
+        &json!({ "directory": dirs[0].to_string_lossy() }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "extension tool probing a decrypted dir must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn blocked_path_probe_records_storage_probe_reason() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sink = Arc::new(GuardCollectingSink::default());
+    let runtime = EncryptedSkillRuntime::new_with_audit(
+        Arc::new(GuardTestSdk),
+        TtlConfig::default(),
+        tmp.path().join("mem-root"),
+        Some(sink.clone()),
+    );
+    runtime
+        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+        .unwrap();
+
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::new("mcp__server__tool"),
+        &json!({ "path": "/dev/shm/fm-agent-security/whatever" }),
+    );
+    assert!(matches!(decision, GuardDecision::Blocked { .. }));
+    assert!(sink.events().iter().any(|event| matches!(
+        event,
+        AuditEvent::Blocked { reason, .. } if reason == "storage_probe"
+    )));
 }
 
 #[test]

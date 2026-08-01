@@ -3,6 +3,8 @@
 use crate::paths::REDACTED_MARKER;
 
 pub const MIN_FRAGMENT_LEN: usize = 20;
+/// Minimum length of a quoted fragment considered for redaction.
+pub const MIN_QUOTED_FRAGMENT_LEN: usize = 12;
 
 /// True when `text` contains a known plaintext, a full trimmed line of it
 /// (>= 20 chars), or the 20-char prefix of such a line.
@@ -63,6 +65,7 @@ pub fn redact_known_plaintext(text: &str, known: &[&str]) -> String {
     if !short_lines.is_empty() {
         out = redact_complete_short_lines(&out, &short_lines);
     }
+    out = redact_quoted_fragments(&out, known);
     out
 }
 
@@ -88,6 +91,54 @@ fn redact_complete_short_lines(text: &str, short_lines: &[&str]) -> String {
         }
     }
     out
+}
+
+/// Redacts quoted fragments that quote a known plaintext line from the middle
+/// (for example 「long sensitive line」), covering the case where the model
+/// quotes a line segment that is neither a line start nor a complete line.
+/// Quote styles covered: `"…"`, `'…'`, `「…」`, `“…”`.
+fn redact_quoted_fragments(text: &str, known: &[&str]) -> String {
+    const PAIRS: [(char, char); 4] = [('"', '"'), ('\'', '\''), ('「', '」'), ('“', '”')];
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let open = chars[i];
+        if let Some((_, close)) = PAIRS.iter().find(|(opener, _)| *opener == open)
+            && let Some(offset) = chars[i + 1..].iter().position(|c| *c == *close) {
+                let end = i + 1 + offset;
+                let content: String = chars[i + 1..end].iter().collect();
+                if quoted_fragment_matches(&content, known) {
+                    out.push(open);
+                    out.push_str(REDACTED_MARKER);
+                    out.push(*close);
+                    i = end + 1;
+                    continue;
+                }
+            }
+        out.push(open);
+        i += 1;
+    }
+    out
+}
+
+fn quoted_fragment_matches(content: &str, known: &[&str]) -> bool {
+    if content.chars().count() < MIN_QUOTED_FRAGMENT_LEN {
+        return false;
+    }
+    for plaintext in known {
+        for line in plaintext.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let prefix: String = trimmed.chars().take(MIN_QUOTED_FRAGMENT_LEN).collect();
+            if content.contains(&prefix) || trimmed.contains(content) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 #[cfg(test)]

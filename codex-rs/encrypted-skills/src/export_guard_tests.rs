@@ -141,3 +141,37 @@ fn redact_short_line_is_idempotent() {
     let once = redact_known_plaintext("the key is:\napi_key=abc\n", &[plaintext]);
     assert_eq!(redact_known_plaintext(&once, &[plaintext]), once);
 }
+
+#[test]
+fn redact_quoted_mid_line_fragment() {
+    let plaintext = "first line\nthis is a long sensitive line inside the skill\nlast line";
+    assert_eq!(
+        redact_known_plaintext("模型回复「long sensitive line」", &[plaintext]),
+        "模型回复「[REDACTED]」"
+    );
+}
+
+#[test]
+fn redact_quoted_line_prefix_fragment() {
+    let plaintext = "first line\nthis is a long sensitive line inside the skill\nlast line";
+    assert_eq!(
+        redact_known_plaintext("quote \"this is a long sensi\" more", &[plaintext]),
+        "quote \"[REDACTED]\" more"
+    );
+}
+
+#[test]
+fn short_quoted_fragment_is_kept() {
+    let plaintext = "line one\napi_key=abc\nline three";
+    assert_eq!(
+        redact_known_plaintext("他说「abc」", &[plaintext]),
+        "他说「abc」"
+    );
+}
+
+#[test]
+fn redact_quoted_fragment_is_idempotent() {
+    let plaintext = "first line\nthis is a long sensitive line inside the skill\nlast line";
+    let once = redact_known_plaintext("模型回复「long sensitive line」", &[plaintext]);
+    assert_eq!(redact_known_plaintext(&once, &[plaintext]), once);
+}

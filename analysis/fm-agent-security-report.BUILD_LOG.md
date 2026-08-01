@@ -1,4 +1,4 @@
-# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v4）
+# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v5）
 
 ## 数据故事
 - 事实源：`FM_AGENT_SECURITY_IMPLEMENTATION_REPORT.md`（§1–§19）为主，OpenSpec change、测试结果与核心代码文件为辅；所有关键数字与报告一致（95/25/10/2146、600s/1800s、64 条/8MiB、4MiB、10MB）。
@@ -31,6 +31,15 @@
 - **进程异常分析（§4.6）**：明确 TTL 是进程内活动驱动的惰性清理——进程挂起时 sweep 不触发、明文驻留超时；进程被杀时内存状态消失但 /dev/shm 残留，由下次启动的 pid 存活清理与容器销毁兜底；部署清单新增 healthcheck + 自动重启项，残余风险表新增对应行。
 - **视觉优化**：hero 渐变 + 底部 accent 条、章节号徽章化、h2 装饰下划线、h3 左侧色条、表格圆角/表头着色/数字强调、卡片与 flow 步骤 hover 上浮、callout 图标前缀、tab 激活顶边高亮、回到顶部按钮、滚动条美化、打印样式（打印时展开全部 Tab）。
 
+## v5 更新（2026-08-01）
+- **强调体系升级**：关键信息不再只靠加粗——新增 `.hl`（accent 底色高亮）、`.hl.warn`（琥珀底）、`.hl.good`（olive 底）与 `.num`（大号等宽数字胶囊）：
+  - 摘要 4 条核心结论 → 整句 accent 高亮；
+  - 关键数字表 10 个数值 → 大号等宽数字胶囊（95/95、600s/1800s、64 条/8MiB 等）；
+  - 12 张决策/修复卡标题与 8 个流程步骤 → accent 高亮；
+  - 架构关键路径词（主 Agent 方案、单容器部署 CodeX、AHP Client、AHP 协议、无 SSH）与风险词（进程内活动驱动的惰性清理、进程挂起、进程被杀、超过 TTL 驻留、fail-closed）→ 语义色高亮；
+  - 列表项标题统一 accent 着色，表格内加粗保留深色（`li b` / `td b` 规则）。
+- 全部替换后 `<b>` 由 96 处降至 52 处（保留给次级强调）。
+
 ## 主题原子
 「加密信封 → 请求瞬间可见 → TTL 即消失」：封面用 SKILL 巨型背景字，架构图以明文路径（loader→runtime→/dev/shm→rehydrate→LLM）为唯一高亮链，其余链路全部 Token/脱敏灰化。
 
@@ -48,6 +57,7 @@
 ## QA 门禁（全过）
 - `check_report.py --allow-external`（CDN 为本次明确要求）：内联 JS 语法过（node --check）/ K 锚点 9 条无断链 / HTML 标签平衡。
 - Mermaid 渲染测试：临时副本把 CDN 换成本地 mermaid.min.js，逐个激活全部 7 个 Tab——7/7 时序图渲染成功（`aria-roledescription="sequence"` ×7，全部 `data-rendered`），0 console error。
+- v5 强调体系回归：7/7 时序图仍正常；check_report 三项全过（JS/K 锚点/HTML 平衡）。
 - chromium headless 双宽度（1680/1280）：页面渲染正常，stderr 仅环境 dbus 噪音，无页面 console/pageerror。
 - 横向溢出：宽表与 pre 均有 `overflow-x:auto`，nav 可横向滚动；SVG 等比缩放。
 - 残留表述检查：grep PPT/OpenChamber/NB2602/Hermes = 0（报告中已无这些来源名）。

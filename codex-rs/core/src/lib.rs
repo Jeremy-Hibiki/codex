@@ -11,6 +11,7 @@ mod audio_preparation;
 mod client;
 mod client_common;
 pub(crate) mod encrypted_skills_guard;
+pub(crate) mod encrypted_skills_periodic;
 mod realtime_context;
 mod realtime_conversation;
 mod realtime_prompt;

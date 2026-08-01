@@ -151,6 +151,7 @@ th b,td b{color:var(--ink)}
 <nav><div class="wrap">
   <span class="brand">加密 Skill · 汇报</span>
   <a href="#sec-0" class="on">§0 摘要</a>
+  <a href="#sec-0">§0 摘要</a>
   <a href="#sec-1">§1 背景与前提</a>
   <a href="#sec-2">§2 方案设计</a>
   <a href="#sec-3">§3 总体架构</a>
@@ -178,6 +179,30 @@ th b,td b{color:var(--ink)}
 </div></header>
 
 <main class="wrap">
+<section id="sec-0">
+  <span class="sec-no">§0</span>
+  <h2>摘要与关键数字</h2>
+  <div class="dek">四条核心结论，先给结论再展开。</div>
+  <div class="prose">
+    <p><span class="hl">结论一 · 主 Agent 方案的差异缺口已被补齐。</span>V1 靠子代理边界让主 Agent 永远不见明文；主 Agent 方案必须把明文注入 LLM 请求，因此补上「回复明文硬脱敏」：模型流入口对 Message / AgentMessage / Reasoning 脱敏，派生副本（TurnItem、task_complete、rollout）全部只在源头取到干净文本 [K1][K7]。</p>
+    <p><span class="hl">结论二 · 两级 TTL 满足常驻部署。</span>Skill 空闲 600s 卸载、Thread 空闲 1800s 清空；turn 边界与每次模型请求（重水合入口）双触发 sweep，活跃 token 由命中续费保护——单容器常驻零明文积聚 [K1][K8]。</p>
+    <p><span class="hl">结论三 · 多轮会话语义完整。</span>明文 Skill、加密 Skill 首次触发、TTL 内反复触发、TTL 过期重新触发、多个加密 Skill 并存、跨会话隔离六类场景全部有确定行为（§5 分 Tab 时序图）[K1][K5][K7]。</p>
+    <p><span class="hl">结论四 · 部署期 fail-closed。</span>未接真实 AES/Ukey 前保持 <code>sdk = "unavailable"</code>，加密 Skill 触发即告警不注入；全部明文只写 /dev/shm（0700、进程命名空间、容量门控、secure wipe），容器销毁即清零 [K1][K6]。</p>
+  </div>
+  <table>
+    <tr><th>维度</th><th>数值</th><th>说明</th><th>锚点</th></tr>
+    <tr><td>独立 crate 单测</td><td><span class="num">99 / 99</span></td><td>codex-encrypted-skills（10 模块）</td><td class="kref">[K1]</td></tr>
+    <tr><td>guard 单测</td><td><span class="num">28 / 28</span></td><td>工具拦截 + 回复/TurnItem 脱敏</td><td class="kref">[K1]</td></tr>
+    <tr><td>集成测试</td><td><span class="num">10 / 10</span></td><td>触发/重水合/拦截/TTL/rollout 零明文</td><td class="kref">[K8]</td></tr>
+    <tr><td>core lib 全量</td><td><span class="num">2152 过</span></td><td>2 个环境项（沙箱代理变量/token 估算）单独重跑全绿</td><td class="kref">[K8]</td></tr>
+    <tr><td>两级 TTL</td><td><span class="num">600s / 1800s</span></td><td>Skill 空闲 / Thread 空闲，可配置</td><td class="kref">[K1]</td></tr>
+    <tr><td>周期 TTL sweep</td><td><span class="num">30s</span></td><td>常驻进程空闲兜底；进程挂起仍需部署侧</td><td class="kref">[K1]</td></tr>
+    <tr><td>内容缓存上限</td><td><span class="num">64 条 / 8MiB</span></td><td>按会话 FIFO，明文不落盘</td><td class="kref">[K1]</td></tr>
+    <tr><td>审计日志</td><td><span class="num">JSONL · 10MB 轮转</span></td><td>解密/重水合/拦截/清理全事件</td><td class="kref">[K1]</td></tr>
+    <tr><td>/dev/shm 容量门控</td><td><span class="num">余量 ≥ 4MiB</span></td><td>解密前按包大小预检查</td><td class="kref">[K1]</td></tr>
+    <tr><td>多轮场景 Tab</td><td><span class="num">7 类</span></td><td>明文/加密首次/反复/TTL 过期/其他 Skill/跨会话/回复脱敏</td><td class="kref">[K1][K5][K7]</td></tr>
+  </table>
+</section>
 <section id="sec-1">
   <span class="sec-no">§1</span>
   <h2>背景与部署前提</h2>
@@ -254,6 +279,7 @@ th b,td b{color:var(--ink)}
       <li><b>Skill 层（默认 600s）</b>：空闲超时 → 卸载单个解密目录（secure wipe）+ 无引用时移除缓存条目；支持 per-turn 加载/卸载语义 [K1]。</li>
       <li><b>Thread 层（默认 1800s）</b>：线程空闲超时 → 清空该线程全部解密目录与内容缓存 [K1]。</li>
       <li><b>触发点</b>：turn 边界（<code>build_skills_and_plugins</code>）与每次模型请求（重水合入口）双触发；完全无请求时驻留到容器重启 [K1]。</li>
+      <li><b>周期兜底</b>：常驻进程后台每 30s 执行一次 sweep（<code>encrypted_skills_periodic</code>），覆盖「进程活着但长时间无请求」的空闲窗口；进程挂起仍由部署侧 healthcheck/restart 兜底 [K1]。</li>
       <li><b>线程结束</b>：<code>thread/delete</code> → <code>CodexThread::clear_encrypted_skills</code> → 立即 wipe + 审计 [K1]。</li>
       <li><b>共享缓存保护</b>：两个 Skill 内容相同时共享 Token，卸载一个不失效另一个（<code>token_ref_count</code> 守卫）[K1]。</li>
     </ul>
@@ -264,7 +290,7 @@ th b,td b{color:var(--ink)}
     <tr><th>工具（Codex hook 名）</th><th>策略</th><th>实现</th></tr>
     <tr><td><code>Bash</code>（shell_command / unified_exec exec_command）</td><td>读取/搜索命令引用解密目录或 mem root → Blocked；执行命令原目录 → 解密目录改写</td><td><code>guard_shell</code>：改写后二次检查，堵住 <code>cat /skills/foo/SKILL.md</code> 绕过 [K7]</td></tr>
     <tr><td><code>view_image</code></td><td>路径指向解密目录/mem root → Blocked</td><td><code>guard_read</code>：兼容默认与自定义 mem root [K7]</td></tr>
-    <tr><td><code>apply_patch</code> 及其余全部非 shell 工具（MCP、扩展、web/run 等）</td><td>参数含已知明文 → Blocked</td><td><code>guard_export</code> 默认分支；web_search（hook 名 webrun）同样覆盖 [K7]</td></tr>
+    <tr><td><code>apply_patch</code> 及其余全部非 shell 工具（MCP、扩展、web/run 等）</td><td>参数含已知明文 → Blocked；参数引用 mem root/解密目录（路径探测）→ Blocked</td><td><code>guard_export</code> 默认分支（reason：export_plaintext / storage_probe）；web_search（hook 名 webrun）同样覆盖 [K7]</td></tr>
     <tr><td>全部工具输出</td><td>解密路径串 → [REDACTED]</td><td><code>RedactingToolOutput</code> 包装 [K7]</td></tr>
   </table>
   <div class="callout">拦截点位于 <code>tools/registry.rs</code> 工具分发前置（pre_tool_use_payload），匹配的是 Codex 自身 hook 契约（HookToolName），不是 opencode 风格字符串；exec_command 的 <code>cmd</code> 参数改写经 <code>with_updated_hook_input</code> 正确回写 [K7]。</div>
@@ -292,8 +318,8 @@ th b,td b{color:var(--ink)}
   <h3>2.4 设计取舍（已记录）</h3>
   <div class="callout">客户端流同步脱敏：API/WS 端用户看到的是 <code>[REDACTED]</code> 而非模型复述原文；代价是合法引用被替换，符合「零明文驻留」目标。</div>
   <div class="callout warn">工具输出/函数参数中的明文不脱敏：skill 脚本可能合法输出密钥供多步流程使用；<code>apply_patch</code> 文件写出口与全部非 shell 工具参数已 Blocked。</div>
-  <div class="callout warn">MCP/扩展工具路径探测仍放行（外部信任边界）：参数含已知明文已拦；受限部署不启用带宿主文件访问能力的 MCP server。</div>
-  <div class="callout bad">短片段变形（&lt;20 字符嵌在句子中）仍可绕过脱敏：属纵深防御边界，主控制是网络隔离 + 参数拦截。</div>
+  <div class="callout warn">MCP/扩展工具路径探测已拦截（storage_probe）：参数引用 mem root/解密目录即 Blocked；受限部署仍建议不启用带宿主文件访问能力的 MCP server。</div>
+  <div class="callout warn">短片段变形：引号包裹片段（≥12 字符）已脱敏；裸嵌在句子中的变形仍属纵深防御边界，主控制是网络隔离 + 参数拦截。</div>
 
 </section>
 
@@ -493,14 +519,14 @@ th b,td b{color:var(--ink)}
 
   <h3>4.6 进程异常与明文驻留（TTL 失效边界）</h3>
   <div class="prose">
-    <p>TTL 是<span class="hl warn">进程内活动驱动的惰性清理</span>：sweep 只在 turn 边界与每次模型请求（重水合入口）触发，没有后台定时器。因此进程异常时存在明确边界：</p>
+    <p>TTL 是<span class="hl warn">进程内活动驱动的惰性清理</span>：sweep 在 turn 边界、每次模型请求（重水合入口）以及常驻进程的<b>后台周期任务（30s）</b>三处触发。进程异常时仍存在明确边界：</p>
     <ul>
-      <li><span class="hl warn">进程挂起（hang）</span>：事件循环不再推进，sweep 不会执行——解密内容会超过 TTL 驻留在 /dev/shm，直到进程恢复、被杀重启或容器销毁；</li>
+      <li><span class="hl warn">进程挂起（hang）</span>：事件循环不再推进，进程内 sweep（含周期任务）都不执行——解密内容会超过 TTL 驻留在 /dev/shm，直到进程恢复、被杀重启或容器销毁；</li>
       <li><span class="hl warn">进程被杀 / 崩溃（kill/crash）</span>：内存中的注册表与缓存随之消失，但 /dev/shm 下 <code>p&lt;pid&gt;</code> 目录仍残留；下次任何 CodeX 进程启动时 <code>init_mem_root_once</code> 按 pid 存活状态清理删除；容器销毁则 /dev/shm 整体清空；</li>
-      <li><b>结论</b>：TTL 本身不保证进程异常下的驻留上限，需要部署侧兜底。</li>
+      <li><b>结论</b>：TTL 覆盖「进程活着且活动或空闲」；进程挂起仍需部署侧 watchdog。</li>
     </ul>
   </div>
-  <div class="callout warn">部署缓解：容器 healthcheck + 自动重启（挂起超时杀进程重启，触发启动清理）；单容器无 SSH 下用户无法读取 /dev/shm，残留风险被访问面隔离；如需硬上限可加外部 watchdog 或进程退出时的清理钩子。</div>
+  <div class="callout warn">已实现：后台周期 sweep（30s，<code>encrypted_skills_periodic</code>）解决「空闲但无请求」的驻留；部署缓解：healthcheck + 自动重启覆盖挂起（挂起超时杀进程重启，触发启动清理）；单容器无 SSH 下用户无法读取 /dev/shm；启动 pid 清理覆盖崩溃残留。</div>
 
   <h3>4.7 Skill 从上下文卸载的策略（原版 / 明文 / 加密）</h3>
   <div class="prose">
@@ -796,8 +822,11 @@ sequenceDiagram
   <h3>6.2 关键修复与加固（深度 Review 轮次）</h3>
   <div class="grid2">
     <div class="card"><span class="hl">回复明文硬脱敏</span><p>durable 边界 → 短行完整行 → 模型流入口三级补盲；E2E 断言 rollout 只含 <code>[REDACTED]</code>。</p></div>
+    <div class="card"><span class="hl">引号片段脱敏增强</span><p>「long sensitive line」等中段引用（≥12 字符，引号包裹）→ <code>[REDACTED]</code>，覆盖截断引用绕过。</p></div>
     <div class="card"><span class="hl">原路径读/搜索绕过修复</span><p><code>cat /skills/foo/SKILL.md</code> 改写后二次检查，命中解密目录即 Blocked。</p></div>
+    <div class="card"><span class="hl">MCP/扩展路径探测拦截</span><p>非 shell 工具参数引用 mem root/解密目录即 Blocked（storage_probe），堵住 <code>list /dev/shm</code> 探测。</p></div>
     <div class="card"><span class="hl">网络/扩展工具明文导出拦截</span><p>非 shell/view_image 工具默认 guard_export（含 web/run、MCP、扩展工具）。</p></div>
+    <div class="card"><span class="hl">周期 TTL sweep</span><p>常驻进程后台每 30s 执行 sweep（2 个 paused-time 单测：空闲卸载、新鲜保留）；进程残留清理由 <code>init_mem_root</code> 单测覆盖。</p></div>
     <div class="card"><span class="hl">常驻部署适配</span><p>/dev/shm 容量门控、audit_path 持久化、请求级 sweep、初始化/审计失败告警。</p></div>
     <div class="card"><span class="hl">依赖与平台</span><p>zip 瘦身为 deflate-only，Windows 交叉编译通过。</p></div>
     <div class="card"><span class="hl">元数据字段编译修复</span><p>新增必填字段导致的 13 处构造点已补齐，workspace 全目标编译通过。</p></div>
@@ -869,12 +898,12 @@ network_access = false           # shell 断网；推理服务由 host 进程调
   <table>
     <tr><th>风险</th><th>缓解</th><th>状态</th></tr>
     <tr><td><code>write_stdin</code> 无 pre-tool payload，无法拦截既有 shell 会话输入</td><td>路径随机化 + 输出脱敏；模型无法获知 <code>fm_skill_security_&lt;hex&gt;</code> 地址</td><td><span class="tag warn">已记录</span></td></tr>
-    <tr><td>MCP/扩展工具路径探测（如 list /dev/shm）</td><td>参数明文已拦；受限部署不启用带文件访问能力的 MCP server</td><td><span class="tag warn">已记录</span></td></tr>
+    <tr><td>MCP/扩展工具路径探测（如 list /dev/shm）</td><td>参数引用 mem root/解密目录即 Blocked（storage_probe）；受限部署仍建议不启用带文件访问能力的 MCP server</td><td><span class="tag good">已修复</span></td></tr>
     <tr><td>工具输出/函数参数中的明文（多步流程合法使用）</td><td>apply_patch 与非 shell 工具参数 Blocked；shell 为唯一运行时通道</td><td><span class="tag warn">设计取舍</span></td></tr>
-    <tr><td>短片段变形（&lt;20 字符嵌入句子）</td><td>完整短行已脱敏；嵌入句子的变形属纵深防御边界</td><td><span class="tag warn">已记录</span></td></tr>
+    <tr><td>短片段变形（&lt;20 字符裸嵌入句子）</td><td>引号包裹片段（≥12 字符）已脱敏；裸嵌入句子的变形属纵深防御边界</td><td><span class="tag warn">部分缓解</span></td></tr>
     <tr><td>真实 AES/Ukey 未接入</td><td>当前为 deflate 模拟加密；部署期 fail-closed</td><td><span class="tag bad">待 Ukey</span></td></tr>
     <tr><td>bwrap 容器内可用性未实测</td><td>部署清单第 2 项验证；不可用则 guard + 网络策略</td><td><span class="tag warn">待部署实测</span></td></tr>
-    <tr><td>进程挂起时 TTL 不触发（明文驻留超时）</td><td>healthcheck + 自动重启；容器销毁清空 /dev/shm；启动 pid 清理兜底</td><td><span class="tag warn">部署侧兜底</span></td></tr>
+    <tr><td>进程挂起时 TTL 不触发（明文驻留超时）</td><td>后台周期 sweep（30s）已实现；healthcheck + 自动重启 + 容器销毁兜底</td><td><span class="tag warn">已实现 + 部署兜底</span></td></tr>
   </table>
 </section>
 </main>
@@ -893,7 +922,7 @@ network_access = false           # shell 断网；推理服务由 host 进程调
     <tr><td>K8</td><td>测试结果（crate 95/95 · guard 25/25 · 集成 10/10 · core lib 2146）</td><td>本地运行验证，含 RUST_MIN_STACK 环境注记</td></tr>
     <tr><td>K9</td><td><code>html-report</code> 方法论 Skill（个人技能目录）</td><td>本报告所依据的单页报告方法论；不属于本分支产物</td></tr>
   </table>
-  <p style="font-size:.8rem;color:var(--ink-soft);margin-top:18px">时序图由 Mermaid（CDN 引入，需联网加载）渲染。部署口径：单容器 CodeX，前端 AHP Client 经 AHP 协议（HTTP/WebSocket）交互，无 SSH。离线打开时图表不渲染，其余内容不受影响。</p>
+  <p style="font-size:.8rem;color:var(--ink-soft);margin-top:18px">时序图由 Mermaid（CDN 引入，需联网加载）渲染；离线版见 <code>fm-agent-security-report.offline.html</code>（内嵌 Mermaid，无需联网）。部署口径：单容器 CodeX，前端 AHP Client 经 AHP 协议（HTTP/WebSocket）交互，无 SSH。</p>
 </div></footer>
 
 <button id="topbtn" aria-label="回到顶部">↑</button>

@@ -1,4 +1,4 @@
-# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v7）
+# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v8）
 
 ## 数据故事
 - 事实源：`FM_AGENT_SECURITY_IMPLEMENTATION_REPORT.md`（§1–§19）为主，OpenSpec change、测试结果与核心代码文件为辅；所有关键数字与报告一致（95/25/10/2146、600s/1800s、64 条/8MiB、4MiB、10MB）。
@@ -65,7 +65,31 @@
   - 原版：原文注入长期驻留上下文至压缩，无 TTL/Token；
   - 明文：同原版，零行为影响；
   - 加密：上下文只留 Token（不因 TTL 移除），明文按两级 TTL 从存储层卸载；过期 Token 变 stale，重新提及恢复。
-  - 关键区分 callout：卸载发生在存储层，Token 在上下文长期保留。
+- 关键区分 callout：卸载发生在存储层，Token 在上下文长期保留。
+
+## v8 更新（2026-08-01 · 残存问题修复轮）
+
+### 实现修复（全部 TDD，分笔提交）
+- **P0 周期 TTL sweep**（`6f27cee9fe`）：新增 `encrypted_skills_periodic`——常驻进程后台每 30s 执行 sweep，覆盖「进程活着但无请求」空闲窗口；2 个 paused-time 单测（空闲卸载 / 新鲜保留）；进程挂起仍由部署侧 healthcheck/restart 兜底（§4.6 同步更新）。
+- **P1 MCP/扩展路径探测拦截**（`b3689de01f`）：guard_export 默认分支增加路径引用检查——非 shell 工具参数引用 mem root/解密目录即 Blocked（audit reason `storage_probe`）；guard 单测 25 → 28（原 `mcp_tools_pass_through` 改为无存储引用的放行用例）。
+- **P2a 引号片段脱敏**（`50d0cecdb1`）：`redact_quoted_fragments` 覆盖「long sensitive line」这类中段引用（引号包裹、≥12 字符、保留引号）；crate 单测 95 → 99。
+- **P2b 离线版报告**（`d25890a5a0` + 本轮再生成）：`fm-agent-security-report.offline.html` 内嵌 Mermaid（base64 + eval，剥离 `"use strict";` 规避间接 eval 全局 var 不挂载问题；`type="text/plain"` 防误执行），无需联网 7/7 渲染。
+- **测试补强**：进程被杀残留清理已有等价单测（`init_mem_root_removes_dead_process_namespaces_and_keeps_live` / `removes_stale_decrypted_dirs_only`），在 §6.2 引用。
+
+### 报告更新
+- **恢复 §0 摘要与关键数字**（v6 重构时误删，本轮从历史版本恢复并更新数字：crate 99/99、guard 28/28、周期 sweep 30s、core lib 2152 过）；
+- §2 决策展开 ④ 增加周期兜底条目；⑤ guard 矩阵更新 storage_probe；
+- §2.4 设计取舍 callout 更新（路径探测已拦截、短片段部分缓解）；
+- §4.6 进程异常更新为「三处触发 + 部署侧兜底」；
+- §6.2 加固清单 +3 卡（引号片段、路径探测、周期 sweep）；
+- §7.4 残余风险表状态更新（MCP 路径探测=已修复；短片段=部分缓解；进程挂起=已实现+部署兜底）；
+- footer 增加离线版指引。
+
+### 验证
+- check_report（在线 --allow-external / 离线全项）全过；
+- 在线与离线双版本 Mermaid 渲染 7/7、0 console error；
+- core lib 全量 2152 过（2 个环境项：沙箱代理变量、token 估算，单独重跑全绿；/tmp/.git 杂散目录已移开归因）；
+- encrypted-skills 99/99、guard 28/28、core-skills 131/131、集成 10/10（上一轮基线）。
 
 ## 主题原子
 「加密信封 → 请求瞬间可见 → TTL 即消失」：封面用 SKILL 巨型背景字，架构图以明文路径（loader→runtime→/dev/shm→rehydrate→LLM）为唯一高亮链，其余链路全部 Token/脱敏灰化。

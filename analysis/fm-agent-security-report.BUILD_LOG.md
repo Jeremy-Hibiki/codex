@@ -1,4 +1,4 @@
-# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v5）
+# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v6）
 
 ## 数据故事
 - 事实源：`FM_AGENT_SECURITY_IMPLEMENTATION_REPORT.md`（§1–§19）为主，OpenSpec change、测试结果与核心代码文件为辅；所有关键数字与报告一致（95/25/10/2146、600s/1800s、64 条/8MiB、4MiB、10MB）。
@@ -40,6 +40,20 @@
   - 列表项标题统一 accent 着色，表格内加粗保留深色（`li b` / `td b` 规则）。
 - 全部替换后 `<b>` 由 96 处降至 52 处（保留给次级强调）。
 
+## v6 更新（2026-08-01）
+- **风格换新（DeepSeek 蓝白系）**：主色由陶土色换为 DeepSeek 蓝（#4D6BFE）；背景 #F7F8FA、卡片白、表头浅蓝、成功/警示/危险三色语义；hero 浅蓝渐变 + 蓝色装饰条；Mermaid 主题同步蓝色；正文保留衬线体。
+- **4.1 卡片布局重做**：原 flex 换行 + 绝对定位箭头（换行后箭头错位）改为 **grid 卡片**（自适应列宽、无箭头、hover 上浮、hot 步骤浅蓝渐变），修复样式崩坏。
+- **章节结构重组（§1–§7）**：
+  - §1 背景与部署前提（1.1 V1→主 Agent 演进与威胁模型；1.2 部署形态：单容器 + AHP；1.3 设计目标）
+  - §2 方案设计（2.1 六项核心决策；2.2 决策展开；2.3 V2 差异；2.4 设计取舍）
+  - §3 总体架构（3.1 架构图；3.2 组件职责；3.3 明文生命周期；3.4 存储布局）
+  - §4 核心流程（4.1 主流程；4.2 步骤细节与失败路径；4.3 TTL 状态机；4.4 特殊路径；4.5 审计事件；4.6 进程异常）
+  - §5 多轮会话场景（7 Tabs，不变）
+  - §6 实现与验证（原 §3 顺延：模块/加固/配置/文档）
+  - §7 部署与运维（原 §6 顺延：AHP 拓扑/配置/清单/残余风险）
+  - nav、chips、h3 编号、正文章节引用全部同步重排。
+- **footer 删除「生成方式」**：仅保留 CDN 渲染说明、部署口径与离线提示。
+
 ## 主题原子
 「加密信封 → 请求瞬间可见 → TTL 即消失」：封面用 SKILL 巨型背景字，架构图以明文路径（loader→runtime→/dev/shm→rehydrate→LLM）为唯一高亮链，其余链路全部 Token/脱敏灰化。
 
@@ -58,6 +72,7 @@
 - `check_report.py --allow-external`（CDN 为本次明确要求）：内联 JS 语法过（node --check）/ K 锚点 9 条无断链 / HTML 标签平衡。
 - Mermaid 渲染测试：临时副本把 CDN 换成本地 mermaid.min.js，逐个激活全部 7 个 Tab——7/7 时序图渲染成功（`aria-roledescription="sequence"` ×7，全部 `data-rendered`），0 console error。
 - v5 强调体系回归：7/7 时序图仍正常；check_report 三项全过（JS/K 锚点/HTML 平衡）。
+- v6 回归：结构重排后 check_report 三项全过（修复 §1 组装时一处重复 `</div>`）；7/7 时序图渲染正常；1680/1280 双宽度截图正常。
 - chromium headless 双宽度（1680/1280）：页面渲染正常，stderr 仅环境 dbus 噪音，无页面 console/pageerror。
 - 横向溢出：宽表与 pre 均有 `overflow-x:auto`，nav 可横向滚动；SVG 等比缩放。
 - 残留表述检查：grep PPT/OpenChamber/NB2602/Hermes = 0（报告中已无这些来源名）。

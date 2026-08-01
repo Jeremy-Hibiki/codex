@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fm-agent-security · 加密 Skill 主 Agent 方案 · 单页汇报</title>
+<style>
+:root{
+  --bg:#FAF7F2; --ink:#2E2A26; --ink-soft:#6B625A; --line:#E5DDD2;
+  --accent:#C4715B; --accent-soft:#F0DDD5; --olive:#7A8B6F; --olive-soft:#E4E9DD;
+  --good:#5F7A5A; --warn:#A5663F; --bad:#9C4F3E; --code-bg:#F3EEE6; --card:#FFFFFF;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;line-height:1.8;font-size:16px}
+.mono,code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+code{background:var(--code-bg);padding:.12em .4em;border-radius:4px;font-size:.88em}
+pre{background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:16px;overflow-x:auto;font-size:.8rem;line-height:1.6}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+nav{position:sticky;top:0;z-index:50;background:rgba(250,247,242,.94);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;gap:4px;align-items:center;overflow-x:auto;padding:8px 24px;font-size:.8rem}
+nav .brand{font-weight:700;color:var(--accent);margin-right:10px;white-space:nowrap;letter-spacing:.08em}
+nav a{color:var(--ink-soft);text-decoration:none;padding:4px 10px;border-radius:999px;white-space:nowrap}
+nav a:hover{color:var(--accent);background:var(--accent-soft)}
+nav a.on{color:var(--accent);background:var(--accent-soft);font-weight:600}
+.hero{padding:88px 0 64px;border-bottom:1px solid var(--line);position:relative;overflow:hidden}
+.hero::before{content:"SKILL";position:absolute;right:-40px;top:-60px;font-size:300px;font-weight:800;color:rgba(196,113,91,.055);font-family:ui-monospace,Menlo,monospace;letter-spacing:-.06em;pointer-events:none}
+.hero .kicker{color:var(--accent);font-size:.8rem;letter-spacing:.24em;font-weight:600;margin-bottom:18px;text-transform:uppercase}
+.hero h1{font-size:clamp(34px,5vw,56px);line-height:1.2;max-width:880px;letter-spacing:.01em}
+.hero h1 em{font-style:normal;color:var(--accent)}
+.hero .lede{font-size:1.06rem;color:var(--ink-soft);max-width:820px;margin-top:20px}
+.meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:30px}
+.chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:7px 16px;font-size:.83rem;color:var(--ink-soft);cursor:pointer;transition:border-color .15s,color .15s}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.chip.hot{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);font-weight:600}
+.cover-note{margin-top:22px;font-size:.8rem;color:var(--ink-soft);letter-spacing:.05em}
+section{padding:64px 0;border-bottom:1px solid var(--line)}
+.sec-no{color:var(--accent);font-size:.78rem;letter-spacing:.18em;font-weight:600;display:block;margin-bottom:8px}
+h2{font-size:1.75rem;margin-bottom:8px;letter-spacing:.01em}
+.dek{color:var(--ink-soft);max-width:820px;margin-bottom:30px;font-size:.98rem}
+.prose p{margin:.7em 0;max-width:880px}
+.prose ul,.prose ol{margin:.6em 0 .6em 1.5em;max-width:880px}
+.prose li{margin:.3em 0}
+h3{font-size:1.15rem;margin:28px 0 10px;color:var(--ink)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 22px;margin:14px 0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin:16px 0}
+.grid2 .card{margin:0}
+table{border-collapse:collapse;width:100%;margin:16px 0;font-size:.9rem;background:var(--card)}
+th,td{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+th{font-weight:600;color:var(--ink-soft);letter-spacing:.04em;background:var(--bg)}
+tr:hover td{background:#FDFAF5}
+.tag{display:inline-block;font-size:.72rem;font-weight:600;letter-spacing:.06em;padding:2px 9px;border-radius:999px;margin-right:6px}
+.tag.good{background:var(--olive-soft);color:var(--good)}
+.tag.warn{background:var(--accent-soft);color:var(--warn)}
+.tag.bad{background:#F6E3E0;color:var(--bad)}
+.callout{border-left:4px solid var(--accent);background:var(--card);border-radius:0 8px 8px 0;padding:14px 18px;margin:16px 0;font-size:.92rem}
+.callout.good{border-color:var(--good)}
+.callout.warn{border-color:var(--warn)}
+.callout.bad{border-color:var(--bad)}
+details.drill{border:1px solid var(--line);border-radius:8px;background:var(--card);padding:10px 16px;margin:10px 0}
+details.drill summary{cursor:pointer;font-weight:600;color:var(--accent);font-size:.92rem}
+details.drill p,details.drill ul{margin:.5em 0;font-size:.9rem;color:var(--ink)}
+details.drill .k{color:var(--olive);font-family:ui-monospace,Menlo,monospace;font-size:.82rem}
+footer{padding:48px 0 80px}
+footer h2{font-size:1.35rem}
+.kref{color:var(--olive);font-family:ui-monospace,Menlo,monospace;font-size:.82rem;white-space:nowrap}
+.flow{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin:18px 0}
+.flow .step{flex:1 1 130px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:.85rem;position:relative}
+.flow .step b{display:block;color:var(--accent);font-size:.78rem;letter-spacing:.08em;margin-bottom:4px}
+.flow .step::after{content:"→";position:absolute;right:-14px;top:50%;transform:translateY(-50%);color:var(--accent);font-weight:700}
+.flow .step:last-child::after{content:""}
+.flow .step.hot{border-color:var(--accent);background:var(--accent-soft)}
+svg{max-width:100%;height:auto;display:block;margin:16px 0}
+.arch-cap{font-size:.8rem;color:var(--ink-soft);text-align:center;margin-top:6px}
+@media (prefers-reduced-motion: reduce){
+  html{scroll-behavior:auto}
+  *{transition:none!important;animation:none!important}
+}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <span class="brand">加密 Skill · 汇报</span>
+  <a href="#sec-0" class="on">§0 摘要</a>
+  <a href="#sec-1">§1 方案设计</a>
+  <a href="#sec-2">§2 总体架构</a>
+  <a href="#sec-3">§3 实现情况</a>
+  <a href="#sec-4">§4 关键流程</a>
+  <a href="#sec-5">§5 部署与安全</a>
+  <a href="#sec-sources">来源</a>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <p class="kicker">Agent 数据安全 · 单页汇报 · 2026-08-01</p>
+  <h1>加密 Skill：<em>触发即解密，TTL 即卸载，明文只在请求瞬间</em></h1>
+  <p class="lede">部署前提：<b>单容器部署 CodeX</b>，以 HTTP / WebSocket 对外提供服务，<b>不给用户 SSH 远程连接机会</b>，每用户一容器、非 root 运行、断外网（局域网推理服务）、持久化常驻。在此前提下把 V1 的 SubAgent 隔离方案迁移到「主 Agent 方案」：SKILL.md 加密包按触发解密到 /dev/shm，上下文只留 Token，请求时重水合，两级 TTL 自动卸载，工具拦截 + 回复硬脱敏封死全部明文落盘通道。</p>
+  <div class="meta">
+    <button class="chip hot" data-goto="#sec-0">核心结论</button>
+    <button class="chip" data-goto="#sec-1">方案设计</button>
+    <button class="chip" data-goto="#sec-2">总体架构</button>
+    <button class="chip" data-goto="#sec-3">实现情况</button>
+    <button class="chip" data-goto="#sec-4">关键流程</button>
+    <button class="chip" data-goto="#sec-5">部署清单</button>
+  </div>
+  <p class="cover-note">证据分级：代码/测试结果一手 [K1][K8] &gt; 分析报告 [K1] &gt; 汇报 PPT 与参考插件 [K3][K4]</p>
+</div></header>
+
+<main class="wrap">
+
+<section id="sec-0">
+  <span class="sec-no">§0</span>
+  <h2>摘要与关键数字</h2>
+  <div class="dek">三条核心结论，先给结论再展开。</div>
+  <div class="prose">
+    <p><b>结论一 · 主 Agent 方案的差异缺口已被补齐。</b>V1 靠子代理边界让主 Agent 永远不见明文；主 Agent 方案必须把明文注入 LLM 请求，因此补上「回复明文硬脱敏」：模型流入口对 Message / AgentMessage / Reasoning 脱敏，派生副本（TurnItem、task_complete、rollout）全部只在源头取到干净文本 [K1][K7]。</p>
+    <p><b>结论二 · 两级 TTL 满足常驻部署。</b>Skill 空闲 600s 卸载、Thread 空闲 1800s 清空；turn 边界与每次模型请求（重水合入口）双触发 sweep，活跃 token 由命中续费保护——单容器常驻零明文积聚 [K1][K8]。</p>
+    <p><b>结论三 · 部署期 fail-closed。</b>未接真实 AES/Ukey 前保持 <code>sdk = "unavailable"</code>，加密 Skill 触发即告警不注入；全部明文只写 /dev/shm（0700、进程命名空间、容量门控、secure wipe），容器销毁即清零 [K1][K6]。</p>
+  </div>
+  <table>
+    <tr><th>维度</th><th>数值</th><th>说明</th><th>锚点</th></tr>
+    <tr><td>独立 crate 单测</td><td><b>95 / 95</b></td><td>codex-encrypted-skills（10 模块）</td><td class="kref">[K1]</td></tr>
+    <tr><td>guard 单测</td><td><b>25 / 25</b></td><td>工具拦截 + 回复/TurnItem 脱敏</td><td class="kref">[K1]</td></tr>
+    <tr><td>集成测试</td><td><b>10 / 10</b></td><td>触发/重水合/拦截/TTL/rollout 零明文</td><td class="kref">[K8]</td></tr>
+    <tr><td>core lib 全量</td><td><b>2146 过</b></td><td>3 个并行偶发/环境项单独重跑全绿</td><td class="kref">[K8]</td></tr>
+    <tr><td>两级 TTL</td><td><b>600s / 1800s</b></td><td>Skill 空闲 / Thread 空闲，可配置</td><td class="kref">[K1]</td></tr>
+    <tr><td>内容缓存上限</td><td><b>64 条 / 8MiB</b></td><td>按会话 FIFO，明文不落盘</td><td class="kref">[K1]</td></tr>
+    <tr><td>审计日志</td><td><b>JSONL · 10MB 轮转</b></td><td>解密/重水合/拦截/清理全事件</td><td class="kref">[K1]</td></tr>
+    <tr><td>/dev/shm 容量门控</td><td><b>余量 ≥ 4MiB</b></td><td>解密前按包大小预检查</td><td class="kref">[K1]</td></tr>
+    <tr><td>配置项</td><td><b>4 项</b></td><td>sdk / skill_idle_ttl_secs / thread_idle_ttl_secs / audit_path</td><td class="kref">[K1]</td></tr>
+  </table>
+</section>
+
+<section id="sec-1">
+  <span class="sec-no">§1</span>
+  <h2>方案设计</h2>
+  <div class="dek">从 V1（SubAgent 隔离）迁移到主 Agent 方案：触发识别、Token 化注入、请求时重水合、两级 TTL、工具拦截、回复硬脱敏六项核心决策，逐项展开实现要点与边界情况。</div>
+
+  <h3>1.1 背景与演进</h3>
+  <div class="prose">
+    <p>参考项目（opencode fm-agent-security 插件）以「executor 子代理」为唯一解密执行域：主 Agent 永远只见 Token 与脱敏摘要，明文全程不进 transcript [K4]。本项目按需求改为<b>主 Agent 方案</b>——加密 Skill 由主 Agent 自身触发执行，因此威胁模型从「主 Agent 不可见」变为「明文短暂可见、但任何持久化副本必须为零」[K1]。</p>
+    <p>部署形态同步更新：不再采用 OpenCode + OpenChamber 双容器交付，而是<b>单容器部署 CodeX</b>，对外只暴露 HTTP / WebSocket 接口给前端，用户没有 SSH 通道；/dev/shm、skill 包、审计日志全部留在容器内不可见 [K3][K1]。</p>
+  </div>
+
+  <h3>1.2 六项核心设计决策</h3>
+  <div class="grid2">
+    <div class="card"><b>① 触发识别与解密</b><p>SKILL.md frontmatter 声明 <code>metadata.encrypted</code> 与 <code>metadata.encryption</code>（version/key_id/algorithm/package）；loader 命中后调 <code>load_or_register</code>，TTL 内幂等复用，不重复解密 [K5]。</p></div>
+    <div class="card"><b>② Token 化注入</b><p>context 只注入哨兵 <code>[SENSITIVE_SKILL_TOKEN:{session_id}:{hex}]</code>；rollout/历史零明文；fork 时过滤含 Token 的消息 [K5]。</p></div>
+    <div class="card"><b>③ 请求时重水合</b><p><code>rehydrate_framed</code> 在请求发送前替换 Token：信任层级框架 + 原目录 base anchor + 跨会话门禁；明文仅存在于该请求瞬间 [K1]。</p></div>
+    <div class="card"><b>④ 两级 TTL 生命周期</b><p>Skill 层空闲卸载单目录；Thread 层空闲清空全部；<code>thread/delete</code> 立即清理；请求级 sweep 防常驻积聚 [K1]。</p></div>
+    <div class="card"><b>⑤ 工具拦截 guard</b><p>Bash/exec_command 读/搜索 Blocked、执行路径改写；view_image 拦截；其余全部工具参数含已知明文 Blocked [K7]。</p></div>
+    <div class="card"><b>⑥ 回复明文硬脱敏</b><p>模型流入口先脱敏，Message/AgentMessage/Reasoning 全覆盖；TurnItem、task_complete、rollout 同一源头干净 [K7]。</p></div>
+  </div>
+
+  <h3>1.3 决策展开</h3>
+
+  <h4>① 触发识别与解密</h4>
+  <div class="prose">
+    <ul>
+      <li><b>识别</b>：loader 解析 frontmatter <code>metadata.encrypted: true</code>；<code>SkillMetadata.encrypted / encryption</code> 字段承载（app-server v2 同步为可选字段）[K5]。</li>
+      <li><b>解密入口</b>：<code>build_skill_injections</code> 加密分支 → <code>load_encrypted_skill</code> → <code>EncryptedSkillRuntime::load_or_register(session, skill, &lt;name&gt;.zip.enc)</code> [K5]。</li>
+      <li><b>幂等</b>：注册表命中且未过期 → 直接复用 Token，SDK 解密零调用；内容级去重（相同明文共享一个 hex Token）[K1]。</li>
+      <li><b>fail-closed</b>：SDK 未配置（<code>UnavailableSdk</code>）或解密失败 → warning + 指标，Skill 不注入，明文永不 fallback [K5][K6]。</li>
+      <li><b>容量门控</b>：解密前按加密包文件大小 + 4MiB 余量预检查；解密后按 entries 总量复检，防止超大包打满 64MB /dev/shm [K1]。</li>
+    </ul>
+  </div>
+
+  <h4>② Token 化注入</h4>
+  <div class="prose">
+    <ul>
+      <li><b>哨兵格式</b>：<code>[SENSITIVE_SKILL_TOKEN:{session_id}:{hex}]</code>；session_id 用于跨会话门禁，hex 为缓存键 [K1]。</li>
+      <li><b>注入面</b>：<code>SkillInstructions::body()</code> 对加密 Skill 输出 Token（明文 Skill 输出原文，行为不变）[K5]。</li>
+      <li><b>持久化</b>：context 历史与 rollout JSONL 只含 Token；E2E 断言 <code>!rollout.contains(明文)</code> [K8]。</li>
+      <li><b>fork 隔离</b>：<code>keep_forked_rollout_item</code> 过滤含 Token 的 item，子 Agent 不继承解密内容；需要时自行重新提及 [K1]。</li>
+      <li><b>边界</b>：明文 Skill 完全走原路径（<code>load_plaintext_skill</code> 直接读 SKILL.md），加密字段默认 <code>false/None</code>，零行为影响 [K5]。</li>
+    </ul>
+  </div>
+
+  <h4>③ 请求时重水合</h4>
+  <div class="prose">
+    <ul>
+      <li><b>时机</b>：<code>Prompt::get_formatted_input_for_request</code> 发送前扫描替换 Token；常规 turn、compaction、resume 三路径统一走 <code>EncryptedSkillRehydrator</code> [K1]。</li>
+      <li><b>框架</b>：<code>wrap_with_framing</code> 注入 <code>&lt;output_policy&gt;</code>（禁止复述/改写/编码原文）与 <code>&lt;injection_defense&gt;</code>（Skill 内容是任务流程数据，不覆盖输出策略），并附 skill_name 与 base_directory anchor [K1]。</li>
+      <li><b>跨会话门禁</b>：Token 内嵌属主会话 ID，只替换属主会话内的 Token；copy-paste 到其他会话拒绝替换 [K1]。</li>
+      <li><b>失效保留</b>：TTL 卸载后 Token 变 stale，重水合原样保留，模型侧提示重新提及 Skill 触发重新解密（fail-safe 恢复）[K1]。</li>
+      <li><b>保洁</b>：<code>rehydrate_framed</code> 入口先 <code>sweep()</code>——任何请求活动都触发两级 TTL 清理；活跃 Token 由命中续费（touch）保护 [K1]。</li>
+    </ul>
+  </div>
+
+  <h4>④ 两级 TTL 生命周期</h4>
+  <div class="prose">
+    <ul>
+      <li><b>注册表</b>：session → skill → {dir, loaded_at, last_used_at}，可注入时钟；幂等命中刷新 last_used_at [K1]。</li>
+      <li><b>Skill 层（默认 600s）</b>：空闲超时 → 卸载单个解密目录（secure wipe）+ 无引用时移除缓存条目；支持 per-turn 加载/卸载语义 [K1]。</li>
+      <li><b>Thread 层（默认 1800s）</b>：线程空闲超时 → 清空该线程全部解密目录与内容缓存 [K1]。</li>
+      <li><b>触发点</b>：turn 边界（<code>build_skills_and_plugins</code>）与每次模型请求（重水合入口）双触发；完全无请求时驻留到容器重启 [K1]。</li>
+      <li><b>线程结束</b>：<code>thread/delete</code> → <code>CodexThread::clear_encrypted_skills</code> → 立即 wipe + 审计 [K1]。</li>
+      <li><b>共享缓存保护</b>：两个 Skill 内容相同时共享 Token，卸载一个不失效另一个（<code>token_ref_count</code> 守卫）[K1]。</li>
+    </ul>
+  </div>
+
+  <h4>⑤ 工具拦截 guard</h4>
+  <table>
+    <tr><th>工具（Codex hook 名）</th><th>策略</th><th>实现</th></tr>
+    <tr><td><code>Bash</code>（shell_command / unified_exec exec_command）</td><td>读取/搜索命令引用解密目录或 mem root → Blocked；执行命令原目录 → 解密目录改写</td><td><code>guard_shell</code>：改写后二次检查，堵住 <code>cat /skills/foo/SKILL.md</code> 绕过 [K7]</td></tr>
+    <tr><td><code>view_image</code></td><td>路径指向解密目录/mem root → Blocked</td><td><code>guard_read</code>：兼容默认与自定义 mem root [K7]</td></tr>
+    <tr><td><code>apply_patch</code> 及其余全部非 shell 工具（MCP、扩展、web/run 等）</td><td>参数含已知明文 → Blocked</td><td><code>guard_export</code> 默认分支；web_search（hook 名 webrun）同样覆盖 [K7]</td></tr>
+    <tr><td>全部工具输出</td><td>解密路径串 → [REDACTED]</td><td><code>RedactingToolOutput</code> 包装 [K7]</td></tr>
+  </table>
+  <div class="callout">拦截点位于 <code>tools/registry.rs</code> 工具分发前置（pre_tool_use_payload），匹配的是 Codex 自身 hook 契约（HookToolName），不是 opencode 风格字符串；exec_command 的 <code>cmd</code> 参数改写经 <code>with_updated_hook_input</code> 正确回写 [K7]。</div>
+
+  <h4>⑥ 回复明文硬脱敏</h4>
+  <div class="prose">
+    <ul>
+      <li><b>问题</b>：主 Agent 方案把明文注入 LLM 请求，<code>&lt;output_policy&gt;</code> 只是软约束——模型回复可能复述/引用明文，导致 assistant 消息落盘 [K1]。</li>
+      <li><b>入口</b>：<code>handle_output_item_done</code> 模型流入口先脱敏（Message / AgentMessage / Reasoning）[K7]。</li>
+      <li><b>四条落盘副本全覆盖</b>：ResponseItem、TurnItem（ItemStarted/ItemCompleted）、TaskCompleteEvent.last_agent_message、rollout——全部从源头取干净文本；<code>emit_turn_item_*</code> 保留二次兜底 [K7]。</li>
+      <li><b>匹配语义</b>：完整明文、≥20 字符行、20 字符前缀、以及 <b>作为完整行出现的短行</b>（如 <code>api_key=abc</code>）→ <code>[REDACTED]</code>；嵌在句子中的短片段不误伤 [K1]。</li>
+      <li><b>E2E</b>：mock 回复引用 <code>REAL_SKILL_CONTENT_MARKER</code>，断言 rollout 只含 <code>[REDACTED]</code> [K8]。</li>
+    </ul>
+  </div>
+
+  <h3>1.4 与汇报 V2 设计差异</h3>
+  <table>
+    <tr><th>汇报 V2 设想</th><th>本项目实现</th><th>结论</th></tr>
+    <tr><td>会话复用、一次解密多次复用</td><td>TTL 内幂等复用（cache-hit 不重解密）</td><td><span class="tag good">等价</span></td></tr>
+    <tr><td>TTL 卸载、每次委托续费</td><td>两级 TTL + 重水合命中续费（touch）</td><td><span class="tag good">等价且更细</span></td></tr>
+    <tr><td>内容缓存 SQLite 持久化</td><td><b>有意保持内存缓存 + 64 条/8MiB 硬上限</b></td><td><span class="tag warn">安全取舍</span>：明文不落盘优先；常驻不重启内存足够 [K1]</td></tr>
+    <tr><td>硬件 Key 真实集成（PKCS#11/Ukey）</td><td><code>EnvelopeSdk</code> trait 预留，部署期 fail-closed</td><td><span class="tag warn">待 Ukey 接入</span></td></tr>
+  </table>
+
+  <h3>1.5 设计取舍（已记录）</h3>
+  <div class="callout">客户端流同步脱敏：API/WS 端用户看到的是 <code>[REDACTED]</code> 而非模型复述原文；代价是合法引用被替换，符合「零明文驻留」目标。</div>
+  <div class="callout warn">工具输出/函数参数中的明文不脱敏：skill 脚本可能合法输出密钥供多步流程使用；<code>apply_patch</code> 文件写出口与全部非 shell 工具参数已 Blocked。</div>
+  <div class="callout warn">MCP/扩展工具路径探测仍放行（外部信任边界）：参数含已知明文已拦；受限部署不启用带宿主文件访问能力的 MCP server。</div>
+  <div class="callout bad">短片段变形（&lt;20 字符嵌在句子中）仍可绕过脱敏：属纵深防御边界，主控制是网络隔离 + 参数拦截。</div>
+</section>
+
+<section id="sec-2">
+  <span class="sec-no">§2</span>
+  <h2>总体架构</h2>
+  <div class="dek">一个独立 crate + 三条薄接线：加载注入、请求重水合、工具分发前置拦截；明文只存在于 /dev/shm 与请求瞬间。</div>
+
+  <svg viewBox="0 0 1000 600" role="img" aria-label="加密 Skill 总体架构图">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#C4715B"/>
+      </marker>
+      <style>
+        .box{fill:#FFFFFF;stroke:#E5DDD2;stroke-width:1.5}
+        .box.hot{fill:#F0DDD5;stroke:#C4715B}
+        .box.olive{fill:#E4E9DD;stroke:#7A8B6F}
+        .t{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;fill:#2E2A26}
+        .t.s{font-size:10.5px;fill:#6B625A}
+        .t.title{font-size:13px;font-weight:700}
+        .line{stroke:#C4715B;stroke-width:1.6;fill:none;marker-end:url(#arrow)}
+      </style>
+    </defs>
+
+    <rect x="30" y="40" width="210" height="70" rx="8" class="box"/>
+    <text x="135" y="65" text-anchor="middle" class="t title">SKILL.md frontmatter</text>
+    <text x="135" y="85" text-anchor="middle" class="t s">metadata.encrypted: true</text>
+    <text x="135" y="100" text-anchor="middle" class="t s">&lt;name&gt;.zip.enc</text>
+
+    <rect x="330" y="40" width="220" height="70" rx="8" class="box"/>
+    <text x="440" y="65" text-anchor="middle" class="t title">core-skills loader</text>
+    <text x="440" y="85" text-anchor="middle" class="t s">build_skill_injections</text>
+    <text x="440" y="100" text-anchor="middle" class="t s">命中加密 → 解密 + Token</text>
+
+    <rect x="640" y="30" width="330" height="160" rx="10" class="box hot"/>
+    <text x="805" y="55" text-anchor="middle" class="t title">EncryptedSkillRuntime</text>
+    <text x="700" y="80" class="t s">· registry：两级 TTL 注册表</text>
+    <text x="700" y="100" class="t s">· cache：明文缓存 64 条/8MiB</text>
+    <text x="700" y="120" class="t s">· sdk：EnvelopeSdk（Ukey 预留）</text>
+    <text x="700" y="140" class="t s">· audit：JSONL 10MB 轮转</text>
+    <text x="700" y="160" class="t s">· mem_root：/dev/shm 0700</text>
+    <text x="700" y="180" class="t s">· 容量门控 ≥4MiB 余量</text>
+
+    <rect x="640" y="240" width="330" height="70" rx="8" class="box olive"/>
+    <text x="805" y="265" text-anchor="middle" class="t title">/dev/shm/fm-agent-security</text>
+    <text x="805" y="285" text-anchor="middle" class="t s">p&lt;pid&gt;/fm_skill_security_&lt;hex&gt; · 0700</text>
+    <text x="805" y="300" text-anchor="middle" class="t s">secure wipe / 容器销毁即清零</text>
+
+    <rect x="330" y="170" width="220" height="70" rx="8" class="box"/>
+    <text x="440" y="195" text-anchor="middle" class="t title">模型上下文</text>
+    <text x="440" y="215" text-anchor="middle" class="t s">[SENSITIVE_SKILL_TOKEN:…]</text>
+    <text x="440" y="230" text-anchor="middle" class="t s">rollout / 历史零明文</text>
+
+    <rect x="330" y="300" width="220" height="80" rx="8" class="box hot"/>
+    <text x="440" y="325" text-anchor="middle" class="t title">请求时 rehydrate_framed</text>
+    <text x="440" y="345" text-anchor="middle" class="t s">sweep → 重水合 → touch 续费</text>
+    <text x="440" y="365" text-anchor="middle" class="t s">信任层级框架 + base anchor</text>
+
+    <rect x="330" y="430" width="220" height="70" rx="8" class="box olive"/>
+    <text x="440" y="455" text-anchor="middle" class="t title">LLM（局域网推理服务）</text>
+    <text x="440" y="475" text-anchor="middle" class="t s">明文仅存在于该请求瞬间</text>
+    <text x="440" y="490" text-anchor="middle" class="t s">输出策略 + 反注入框架</text>
+
+    <rect x="30" y="230" width="230" height="120" rx="8" class="box"/>
+    <text x="145" y="255" text-anchor="middle" class="t title">encrypted_skills_guard</text>
+    <text x="145" y="275" text-anchor="middle" class="t s">Bash/exec：读/搜索 Blocked</text>
+    <text x="145" y="293" text-anchor="middle" class="t s">执行：原路径→解密目录改写</text>
+    <text x="145" y="311" text-anchor="middle" class="t s">view_image：目录内 Blocked</text>
+    <text x="145" y="329" text-anchor="middle" class="t s">其余工具：明文参数 Blocked</text>
+    <text x="145" y="347" text-anchor="middle" class="t s">输出：路径统一 [REDACTED]</text>
+
+    <rect x="30" y="420" width="230" height="90" rx="8" class="box hot"/>
+    <text x="145" y="445" text-anchor="middle" class="t title">模型流入口脱敏</text>
+    <text x="145" y="465" text-anchor="middle" class="t s">Message / AgentMessage / Reasoning</text>
+    <text x="145" y="483" text-anchor="middle" class="t s">TurnItem · task_complete · rollout</text>
+    <text x="145" y="501" text-anchor="middle" class="t s">同一源头取干净文本</text>
+
+    <rect x="330" y="540" width="220" height="50" rx="8" class="box"/>
+    <text x="440" y="565" text-anchor="middle" class="t title">rollout / 状态历史</text>
+    <text x="440" y="582" text-anchor="middle" class="t s">Token + [REDACTED]，无明文</text>
+
+    <rect x="640" y="400" width="330" height="70" rx="8" class="box"/>
+    <text x="805" y="425" text-anchor="middle" class="t title">TTL sweep / thread delete</text>
+    <text x="805" y="445" text-anchor="middle" class="t s">Skill 空闲 600s → 单目录卸载</text>
+    <text x="805" y="460" text-anchor="middle" class="t s">Thread 空闲 1800s / 删除 → 全清</text>
+
+    <path d="M240,75 L330,75" class="line"/>
+    <path d="M550,75 L640,75" class="line"/>
+    <path d="M805,190 L805,240" class="line"/>
+    <path d="M440,110 L440,170" class="line"/>
+    <path d="M440,240 L440,300" class="line"/>
+    <path d="M440,380 L440,430" class="line"/>
+    <path d="M260,290 L330,290" class="line"/>
+    <path d="M145,350 L145,420" class="line"/>
+    <path d="M440,500 L440,540" class="line"/>
+    <path d="M805,310 L805,400" class="line"/>
+  </svg>
+  <p class="arch-cap">图：加密 Skill 主 Agent 方案总体架构（明文路径仅为 loader→runtime→/dev/shm→rehydrate→LLM 一段，其余全部 Token/脱敏）</p>
+
+  <h3>2.1 组件职责</h3>
+  <table>
+    <tr><th>组件</th><th>职责</th><th>关键约束</th></tr>
+    <tr><td><code>codex-encrypted-skills</code></td><td>解密编排、Token/重水合纯函数、两级 TTL、路径改写、脱敏、审计</td><td>不依赖 core；明文不落盘</td></tr>
+    <tr><td>core-skills loader</td><td>frontmatter 解析 + <code>build_skill_injections</code> 加密分支</td><td>解密失败只告警不注入（fail-closed）</td></tr>
+    <tr><td>client_common 重水合</td><td>常规 turn / compaction / resume 三路径替换 Token</td><td>跨会话门禁、sweep 前置</td></tr>
+    <tr><td>tools/registry + guard</td><td>工具分发前置拦截 + 输出脱敏包装</td><td>Codex 自身 hook 契约（Bash/apply_patch/view_image）</td></tr>
+    <tr><td>stream_events_utils</td><td>模型流入口回复脱敏</td><td>覆盖 TurnItem/task_complete 派生副本</td></tr>
+    <tr><td>session / codex_thread</td><td>TTL sweep、thread/delete 清理、fork 过滤</td><td>生命周期与明文驻留解耦</td></tr>
+  </table>
+
+  <h3>2.2 明文生命周期</h3>
+  <table>
+    <tr><th>阶段</th><th>明文是否存在</th><th>位置</th><th>时长</th></tr>
+    <tr><td>解密产物</td><td><span class="tag bad">是</span></td><td>/dev/shm（0700）+ 内存 cache</td><td>TTL 窗口（600s/1800s）</td></tr>
+    <tr><td>模型请求体</td><td><span class="tag bad">是</span></td><td>重水合后的 request（局域网推理服务）</td><td>请求瞬间</td></tr>
+    <tr><td>模型上下文</td><td><span class="tag bad">是</span></td><td>LLM 会话窗口</td><td>该 turn 内</td></tr>
+    <tr><td>rollout / 状态历史</td><td><span class="tag good">否</span></td><td>Token + [REDACTED]</td><td>—</td></tr>
+    <tr><td>API/WS 输出流</td><td><span class="tag good">否</span></td><td>脱敏后文本</td><td>—</td></tr>
+    <tr><td>审计日志</td><td><span class="tag good">否</span></td><td>事件元数据（无明文）</td><td>—</td></tr>
+  </table>
+
+  <h3>2.3 存储布局与安全基元</h3>
+  <div class="prose">
+    <ul>
+      <li><b>目录布局</b>：<code>/dev/shm/fm-agent-security/p&lt;pid&gt;/fm_skill_security_&lt;hex&gt;/</code>——进程命名空间隔离容器内多进程；每会话独立 hex 目录，权限 0700 [K1]。</li>
+      <li><b>Zip-Slip 拒绝</b>：解压时校验条目相对路径，禁止越出根目录 [K1]。</li>
+      <li><b>secure wipe</b>：随机覆写后删除，卸载/清理不残留明文块 [K1]。</li>
+      <li><b>启动清理</b>：<code>init_mem_root_once</code> 清除非存活 pid 的命名空间与遗留扁平目录（崩溃残留）[K1]。</li>
+      <li><b>容量</b>：<code>available_bytes</code>（statvfs）+ 默认 4MiB 余量；解密前后双检查 [K1]。</li>
+    </ul>
+  </div>
+</section>
+
+<section id="sec-3">
+  <span class="sec-no">§3</span>
+  <h2>实现情况</h2>
+  <div class="dek">全部按 TDD（红→绿→重构）分单元提交；只改 Skill 加解密相关模块，其余模块未动。</div>
+
+  <h3>3.1 独立 crate 模块</h3>
+  <table>
+    <tr><th>模块</th><th>职责</th><th>单测</th></tr>
+    <tr><td><code>token.rs</code></td><td>哨兵 Token 序列化/解析（session_id + hex）</td><td>7</td></tr>
+    <tr><td><code>sdk.rs</code></td><td>EnvelopeSdk trait、UnavailableSdk（fail-closed）、TestZip、SdkKind 选择</td><td>3</td></tr>
+    <tr><td><code>mem_root.rs</code></td><td>/dev/shm 布局、Zip-Slip 拒绝、0700、残留清理、secure wipe、容量探测</td><td>10</td></tr>
+    <tr><td><code>cache.rs</code></td><td>每会话明文缓存（去重、64 条/8MiB、FIFO、drop_session）</td><td>7</td></tr>
+    <tr><td><code>registry.rs</code></td><td>两级 TTL 注册表（可注入时钟）、幂等命中、token_ref_count</td><td>9</td></tr>
+    <tr><td><code>rehydrate.rs</code></td><td>请求时重水合、信任层级框架、跨会话门禁、失效保留</td><td>9</td></tr>
+    <tr><td><code>paths.rs</code></td><td>路径改写（最长优先）、脱敏、读取/搜索/执行命令分类</td><td>10</td></tr>
+    <tr><td><code>export_guard.rs</code></td><td>出站明文检测与回复脱敏（整段/整行/前缀/完整短行、幂等）</td><td>13</td></tr>
+    <tr><td><code>audit.rs</code></td><td>审计事件类型与 JSONL 序列化、10MB 轮转</td><td>4</td></tr>
+    <tr><td><code>runtime.rs</code></td><td>解密编排、幂等复用、TTL sweep、重水合、路径改写、脱敏、审计</td><td>23</td></tr>
+  </table>
+  <p class="prose" style="font-size:.9rem;color:var(--ink-soft)">合计 95 单测全绿；core-skills 131/131、guard 25/25、集成 10/10、config 229/229、app-server-protocol 277、core lib 2146 过（3 个并行偶发/环境项单独重跑全绿）[K1][K8]。</p>
+
+  <h3>3.2 关键修复与加固（深度 Review 轮次）</h3>
+  <div class="grid2">
+    <div class="card"><b>回复明文硬脱敏</b><p>durable 边界 → 短行完整行 → 模型流入口三级补盲；E2E 断言 rollout 只含 <code>[REDACTED]</code>。</p></div>
+    <div class="card"><b>原路径读/搜索绕过修复</b><p><code>cat /skills/foo/SKILL.md</code> 改写后二次检查，命中解密目录即 Blocked。</p></div>
+    <div class="card"><b>网络/扩展工具明文导出拦截</b><p>非 shell/view_image 工具默认 guard_export（含 web/run、MCP、扩展工具）。</p></div>
+    <div class="card"><b>常驻部署适配</b><p>/dev/shm 容量门控、audit_path 持久化、请求级 sweep、初始化/审计失败告警。</p></div>
+    <div class="card"><b>依赖与平台</b><p>zip 瘦身为 deflate-only，Windows 交叉编译通过。</p></div>
+    <div class="card"><b>元数据字段编译修复</b><p>新增必填字段导致的 13 处构造点已补齐，workspace 全目标编译通过。</p></div>
+  </div>
+
+  <h3>3.3 配置与 schema</h3>
+  <table>
+    <tr><th>配置项（[encrypted_skills]）</th><th>默认</th><th>说明</th></tr>
+    <tr><td><code>sdk</code></td><td><code>unavailable</code></td><td>真实 SDK 接入前 fail-closed；TestZip 仅测试</td></tr>
+    <tr><td><code>skill_idle_ttl_secs</code></td><td>600</td><td>Skill 层空闲 TTL</td></tr>
+    <tr><td><code>thread_idle_ttl_secs</code></td><td>1800</td><td>Thread 层空闲 TTL</td></tr>
+    <tr><td><code>audit_path</code></td><td>temp dir</td><td>持久卷路径，容器重启保留审计</td></tr>
+  </table>
+  <div class="prose"><p>app-server v2 的 SkillMetadata 同步增加可选字段 <code>encrypted / encryption</code>（serde default），schema 已重生成 [K1]。</p></div>
+
+  <h3>3.4 文档与工程产物</h3>
+  <div class="prose">
+    <ul>
+      <li>实现报告：<code>analysis/FM_AGENT_SECURITY_IMPLEMENTATION_REPORT.md</code>（§1–§19，含部署清单与深审结论）[K1]</li>
+      <li>OpenSpec change：<code>openspec/changes/encrypt-agent-security-skills/</code>（proposal/design/specs/tasks，strict 校验通过）[K2]</li>
+      <li>单页方法论 Skill：<code>html-report</code>（个人技能目录，本分支不跟踪）[K9]</li>
+    </ul>
+  </div>
+</section>
+
+<section id="sec-4">
+  <span class="sec-no">§4</span>
+  <h2>关键流程</h2>
+  <div class="dek">从「模型提及 Skill」到「明文消失」的完整生命周期：主流程、两级 TTL 状态、特殊路径与审计事件。</div>
+
+  <h3>4.1 主流程（触发 → 解密 → 注入 → 执行 → 卸载）</h3>
+  <div class="flow">
+    <div class="step hot"><b>① 触发</b>模型提及 Skill，loader 命中 frontmatter encrypted 标记</div>
+    <div class="step"><b>② 解密</b>容量门控 → SDK 解密 → 写 /dev/shm（0700）→ 缓存明文</div>
+    <div class="step"><b>③ 注入</b>context 写入哨兵 Token，rollout 零明文</div>
+    <div class="step"><b>④ 重水合</b>请求发送前 sweep + Token→明文框架（仅请求瞬间）</div>
+    <div class="step"><b>⑤ 执行</b>工具调用过 guard：路径改写/拦截/导出明文拦截</div>
+    <div class="step"><b>⑥ 脱敏</b>回复流入口脱敏，TurnItem/rollout 同源干净</div>
+    <div class="step"><b>⑦ 卸载</b>Skill 空闲 600s 卸载；Thread 空闲 1800s 清空</div>
+    <div class="step hot"><b>⑧ 清理</b>thread/delete 立即 secure wipe + 审计事件</div>
+  </div>
+
+  <h3>4.2 每步细节与失败路径</h3>
+  <table>
+    <tr><th>步骤</th><th>输入 → 输出</th><th>失败/边界路径</th></tr>
+    <tr><td>① 触发</td><td>模型消息含 Skill 提及 → 加密分支命中</td><td>SDK 未配置/解密失败 → warning + 指标，不注入</td></tr>
+    <tr><td>② 解密</td><td><code>&lt;name&gt;.zip.enc</code> → entries → /dev/shm 目录</td><td>容量不足 → Internal 错误拒绝；Zip-Slip 条目 → InvalidEntry</td></tr>
+    <tr><td>③ 注入</td><td>Token → SkillInstructions::body()</td><td>明文 Skill 走原路径，行为不变</td></tr>
+    <tr><td>④ 重水合</td><td>Token → 框架化明文（请求 body）</td><td>stale Token → 原样保留，提示重新提及</td></tr>
+    <tr><td>⑤ 执行</td><td>工具调用 → Allow/Updated/Blocked</td><td>原路径读/搜索 → Blocked；明文参数 → Blocked；路径改写 → Updated</td></tr>
+    <tr><td>⑥ 脱敏</td><td>模型回复 → [REDACTED] 文本</td><td>短片段嵌入句子 → 保留（纵深边界）</td></tr>
+    <tr><td>⑦ 卸载</td><td>TTL 超时 → wipe + 缓存移除</td><td>共享 Token：token_ref_count &gt; 0 不删缓存</td></tr>
+    <tr><td>⑧ 清理</td><td>thread/delete → 全清 + 审计</td><td>容器重启 → /dev/shm 自动清空</td></tr>
+  </table>
+
+  <h3>4.3 两级 TTL 状态机</h3>
+  <div class="card">
+    <p><b>Skill 状态</b>：<code>loaded/fresh</code>（TTL 内，幂等命中）→ 空闲超时 → <code>stale</code>（Token 保留、明文已卸载）→ 重新提及 → <code>reloaded</code>（重新解密）。</p>
+    <p><b>Thread 状态</b>：<code>active</code>（turn/请求活动续费）→ 空闲超时 → <code>cleared</code>（全部目录/缓存清除）→ 下次提及重建。</p>
+    <p><b>触发时机</b>：turn 边界（<code>build_skills_and_plugins</code>）与每次模型请求（<code>rehydrate_framed</code> 入口）双触发；完全无请求时驻留到容器重启，/dev/shm 随容器销毁自动清空 [K1]。</p>
+  </div>
+
+  <h3>4.4 特殊路径</h3>
+  <div class="prose">
+    <ul>
+      <li><b>compaction（上下文压缩）</b>：压缩请求同样重水合 Token；摘要从<b>已脱敏的历史</b>提取，<code>RolloutItem::Compacted</code> 无明文（结构保证，优于 V1 的 prompt 软约束）[K1]。</li>
+      <li><b>resume / stale token</b>：会话恢复后 Token 仍指向已卸载内容 → 原样保留，模型重新提及触发重新解密（fail-safe）[K1][K8]。</li>
+      <li><b>fork 隔离</b>：<code>keep_forked_rollout_item</code> 丢弃含 Token 的 item；子代理重新提及自行解密 [K1]。</li>
+      <li><b>进程重启</b>：per-process 命名空间 + pid 存活清理；pid 复用极端场景由容量门控与审计轮转兜底 [K1]。</li>
+    </ul>
+  </div>
+
+  <h3>4.5 审计事件</h3>
+  <table>
+    <tr><th>事件</th><th>触发</th><th>关键字段</th></tr>
+    <tr><td><code>decryption</code></td><td>首次解密 / TTL 内命中</td><td>session_id、skill_name、cache_hit</td></tr>
+    <tr><td><code>tokenization</code></td><td>Token 生成</td><td>session_id、skill_name</td></tr>
+    <tr><td><code>rehydration</code></td><td>请求时重水合命中</td><td>session_id、token_count</td></tr>
+    <tr><td><code>blocked</code></td><td>工具拦截</td><td>tool、reason（direct_read/search_probe/file_view/export_plaintext）</td></tr>
+    <tr><td><code>cleanup</code></td><td>TTL 卸载 / thread 结束</td><td>dirs_removed、reason（skill_ttl_sweep/thread_ttl_sweep/thread_end）</td></tr>
+  </table>
+
+  <details class="drill"><summary>钻取：幂等与去重</summary>
+    <p>同一会话内相同明文只存一份 Token（cache 去重）；两个 Skill 内容相同时共享缓存，但各自注册表条目独立，卸载一个不失效另一个（token_ref_count 保护）。<span class="k">[K1]</span></p>
+  </details>
+  <details class="drill"><summary>钻取：跨会话门禁</summary>
+    <p>Token 内嵌属主会话 ID；重水合只替换属主会话内的 Token，跨会话 copy-paste 拒绝替换，防止一个会话读到另一个会话的明文。<span class="k">[K1]</span></p>
+  </details>
+</section>
+
+<section id="sec-5">
+  <span class="sec-no">§5</span>
+  <h2>部署与安全</h2>
+  <div class="dek">部署前提逐项落地的结论、推荐配置与验证清单；残余风险明示。</div>
+
+  <h3>5.1 单容器部署拓扑（当前方案）</h3>
+  <table>
+    <tr><th>层</th><th>形态</th><th>安全边界</th></tr>
+    <tr><td>CodeX 执行容器（单容器）</td><td>每用户一容器；非 root 运行；持久化常驻</td><td>不开 SSH；对外只暴露 HTTP / WebSocket（app-server 网关）</td></tr>
+    <tr><td>前端访问</td><td>Hermes Studio / WebUI 经 HTTP/WS 接入</td><td>用户无 shell 通道；/dev/shm、skill 包、审计日志对用户不可见</td></tr>
+    <tr><td>推理服务</td><td>局域网内（host 或同网段）</td><td>模型 API 由 CodeX 进程发起，不经沙箱 shell；白名单可达</td></tr>
+    <tr><td>Workspace</td><td>挂载进容器的工作目录</td><td>加密 skill 包位于容器私有路径（codex_home/skills），不混入 workspace</td></tr>
+  </table>
+
+  <h3>5.2 推荐配置</h3>
+  <pre># config.toml（单容器 CodeX）
+[encrypted_skills]
+sdk = "unavailable"              # 真实 SDK 接入前 fail-closed
+skill_idle_ttl_secs = 600        # Skill 层空闲 TTL
+thread_idle_ttl_secs = 1800      # Thread 层空闲 TTL
+audit_path = "/data/codex/audit/encrypted-skills-audit.log"  # 持久卷，非 root 可写
+
+[sandbox_workspace_write]
+writable_roots = ["./", "/dev/shm/fm-agent-security"]
+network_access = false           # shell 断网；推理服务由 host 进程调用</pre>
+
+  <h3>5.3 部署验证清单</h3>
+  <div class="prose">
+    <ol>
+      <li><b>单容器边界</b>：确认容器未开 SSH、无 shell 转发；HTTP/WS 为唯一入口；/dev/shm 与 skill 包对用户不可见</li>
+      <li><b>bwrap 可用性</b>：容器内实测 <code>bwrap --ro-bind / / /bin/true</code>；不可用则 guard-only + 容器网络收紧 [K1]</li>
+      <li><b>/dev/shm</b>：建议 ≥256MB，容量门控余量可调（set_min_free_bytes）</li>
+      <li><b>skill 包位置</b>：只放容器私有路径（codex_home/skills），不混入 workspace</li>
+      <li><b>审计持久化</b>：audit_path 指向非 root 可写持久卷，验证 10MB 轮转与重启保留</li>
+      <li><b>网络策略</b>：容器 <code>--network none</code> 或出口白名单；局域网推理服务经白名单可达</li>
+      <li><b>TTL 保洁</b>：turn 边界 + 每次请求双触发；无请求时驻留至容器重启（/dev/shm 自动清空）</li>
+      <li><b>容器 ACL</b>：/dev/shm 非隔离边界，同 uid 进程可读 → 必须容器级 ACL + 网络收口</li>
+      <li><b>真实加密</b>：Ukey/AES 接入前保持 unavailable；接入后 sdk 切换并回归全矩阵</li>
+    </ol>
+  </div>
+
+  <h3>5.4 残余风险</h3>
+  <table>
+    <tr><th>风险</th><th>缓解</th><th>状态</th></tr>
+    <tr><td><code>write_stdin</code> 无 pre-tool payload，无法拦截既有 shell 会话输入</td><td>路径随机化 + 输出脱敏；模型无法获知 <code>fm_skill_security_&lt;hex&gt;</code> 地址</td><td><span class="tag warn">已记录</span></td></tr>
+    <tr><td>MCP/扩展工具路径探测（如 list /dev/shm）</td><td>参数明文已拦；受限部署不启用带文件访问能力的 MCP server</td><td><span class="tag warn">已记录</span></td></tr>
+    <tr><td>工具输出/函数参数中的明文（多步流程合法使用）</td><td>apply_patch 与非 shell 工具参数 Blocked；shell 为唯一运行时通道</td><td><span class="tag warn">设计取舍</span></td></tr>
+    <tr><td>短片段变形（&lt;20 字符嵌入句子）</td><td>完整短行已脱敏；嵌入句子的变形属纵深防御边界</td><td><span class="tag warn">已记录</span></td></tr>
+    <tr><td>真实 AES/Ukey 未接入</td><td>当前为 deflate 模拟加密；部署期 fail-closed</td><td><span class="tag bad">待 Ukey</span></td></tr>
+    <tr><td>bwrap 容器内可用性未实测</td><td>部署清单第 2 项验证；不可用则 guard + 网络策略</td><td><span class="tag warn">待部署实测</span></td></tr>
+  </table>
+</section>
+
+</main>
+
+<footer id="sec-sources"><div class="wrap">
+  <h2>Sources</h2>
+  <table>
+    <tr><th>#</th><th>来源</th><th>说明</th></tr>
+    <tr><td>K1</td><td><code>analysis/FM_AGENT_SECURITY_IMPLEMENTATION_REPORT.md</code></td><td>实现报告 §1–§19：模块、测试矩阵、部署清单、深审结论</td></tr>
+    <tr><td>K2</td><td><code>openspec/changes/encrypt-agent-security-skills/</code></td><td>OpenSpec proposal/design/specs/tasks，strict 校验通过</td></tr>
+    <tr><td>K3</td><td><code>analysis/NB2602-智能体-项目汇报-20260727.html</code></td><td>项目部署口径与 V1/V2 Skill 加解密方案（部署形态已更新为单容器）</td></tr>
+    <tr><td>K4</td><td>opencode fm-agent-security 插件（参考实现）</td><td>V1 SubAgent 隔离方案：hooks/token/重水合/出站拦截</td></tr>
+    <tr><td>K5</td><td><code>codex-rs/core-skills/src/loader.rs · injection.rs · skill_instructions.rs</code></td><td>frontmatter 加密标记、build_skill_injections 解密分支、Token 化 body</td></tr>
+    <tr><td>K6</td><td><code>codex-rs/encrypted-skills/src/</code></td><td>sdk/mem_root/cache/registry/rehydrate/runtime 等 10 模块</td></tr>
+    <tr><td>K7</td><td><code>codex-rs/core/src/encrypted_skills_guard.rs · stream_events_utils.rs · session/mod.rs</code></td><td>工具拦截、回复脱敏、TurnItem/task_complete 覆盖</td></tr>
+    <tr><td>K8</td><td>测试结果（crate 95/95 · guard 25/25 · 集成 10/10 · core lib 2146）</td><td>本地运行验证，含 RUST_MIN_STACK 环境注记</td></tr>
+    <tr><td>K9</td><td><code>html-report</code> 方法论 Skill（个人技能目录）</td><td>本报告所依据的单页报告方法论；不属于本分支产物</td></tr>
+  </table>
+  <p style="font-size:.8rem;color:var(--ink-soft);margin-top:18px">生成方式：按 html-report Skill 方法论（事实源 → 数据故事 → 信息架构 → 图表选型 → QA 门禁）单文件直写；本页无外部依赖，可 file:// 直接打开。部署口径：单容器 CodeX + HTTP/WebSocket + 无 SSH（2026-08-01 更新）。</p>
+</div></footer>
+
+<script>
+(function(){
+  "use strict";
+  var REDUCE = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.querySelectorAll("[data-goto]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var target = document.querySelector(btn.dataset.goto);
+      if (target) target.scrollIntoView({behavior: REDUCE ? "auto" : "smooth"});
+    });
+  });
+  var links = Array.prototype.slice.call(document.querySelectorAll("nav a"));
+  var sections = links.map(function(a){ return document.querySelector(a.getAttribute("href")); });
+  if ("IntersectionObserver" in window) {
+    var spy = new IntersectionObserver(function(entries){
+      entries.forEach(function(entry){
+        if (!entry.isIntersecting) return;
+        var id = entry.target.id;
+        links.forEach(function(a){
+          a.classList.toggle("on", a.getAttribute("href") === "#" + id);
+        });
+      });
+    }, {rootMargin: "-30% 0px -60% 0px", threshold: 0});
+    sections.forEach(function(s){ if (s) spy.observe(s); });
+  }
+})();
+</script>
+</body>
+</html>

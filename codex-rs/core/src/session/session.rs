@@ -1217,6 +1217,13 @@ impl Session {
                 tool_search_handler_cache: Default::default(),
                 turn_environments: Arc::clone(&turn_environments),
             };
+            // 常驻进程兜底：后台周期 TTL sweep，覆盖“进程活着但长时间无请求”
+            // 的空闲窗口；进程挂起仍需部署侧 healthcheck/restart 兜底。
+            crate::encrypted_skills_periodic::spawn_periodic_sweep(
+                services.runtime_handle.clone(),
+                Arc::clone(&services.encrypted_skills_runtime),
+                crate::encrypted_skills_periodic::PERIODIC_SWEEP_INTERVAL,
+            );
             let (mcp_prewarm_tx, mcp_prewarm_rx) = async_channel::bounded(1);
             let sess = Arc::new(Session {
                 thread_id,

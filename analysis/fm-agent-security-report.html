@@ -501,6 +501,33 @@ th b,td b{color:var(--ink)}
     </ul>
   </div>
   <div class="callout warn">部署缓解：容器 healthcheck + 自动重启（挂起超时杀进程重启，触发启动清理）；单容器无 SSH 下用户无法读取 /dev/shm，残留风险被访问面隔离；如需硬上限可加外部 watchdog 或进程退出时的清理钩子。</div>
+
+  <h3>4.7 Skill 从上下文卸载的策略（原版 / 明文 / 加密）</h3>
+  <div class="prose">
+    <p>三种形态的 Skill 在「上下文驻留」与「存储卸载」上的语义完全不同，多轮会话行为据此确定：</p>
+  </div>
+  <table>
+    <tr><th>形态</th><th>上下文（context）</th><th>存储（/dev/shm、缓存）</th><th>多轮行为</th></tr>
+    <tr>
+      <td><b>原版（未启用加密的 Codex 普通 Skill）</b></td>
+      <td>SKILL.md 原文注入后长期保留，直到上下文压缩/截断；无 Token、无 TTL</td>
+      <td>不涉及解密存储</td>
+      <td>每次提及重复注入原文；旧副本随压缩移除，无显式卸载语义</td>
+    </tr>
+    <tr>
+      <td><b>明文 Skill（加密功能启用但未标记 encrypted）</b></td>
+      <td>同原版：<code>load_plaintext_skill</code> 直接注入原文，长期保留至压缩</td>
+      <td>不写 /dev/shm、不进 TTL 注册表</td>
+      <td>与启用加密功能前完全一致，零行为影响</td>
+    </tr>
+    <tr>
+      <td><b>加密 Skill</b></td>
+      <td>只注入哨兵 Token，<b>Token 本身不因 TTL 从上下文移除</b>；明文只在重水合请求瞬间出现</td>
+      <td>明文按两级 TTL 卸载：Skill 600s 卸载单目录，Thread 1800s 清空全部；secure wipe</td>
+      <td>TTL 内反复提及复用同一 Token；过期后 Token 变 stale（不再重水合），重新提及触发重新解密并生成新 Token</td>
+    </tr>
+  </table>
+  <div class="callout">关键区分：加密 Skill 的「卸载」发生在<b>存储层</b>（/dev/shm 与内容缓存），上下文层的 Token 长期保留；TTL 过期只让 Token 失去重水合能力（stale），不删除历史消息。重新提及后新 Token 注入，旧 Token 保留但不再替换。</div>
 </section>
 
 <section id="sec-5">
@@ -525,7 +552,8 @@ th b,td b{color:var(--ink)}
       <ul>
         <li>frontmatter 无 <code>metadata.encrypted</code> → <code>is_encrypted() = false</code>，走 <code>load_plaintext_skill</code>；</li>
         <li>不产生 Token、不写 /dev/shm、不触发 TTL 注册表；</li>
-        <li>无容量门控与审计事件（不属加密路径）。</li>
+        <li>无容量门控与审计事件（不属加密路径）；</li>
+        <li><b>上下文卸载策略</b>：与未启用加密的 Codex 完全一致——原文注入后长期驻留上下文直到压缩/截断；多轮中每次提及重复注入，无 TTL、无 Token。</li>
       </ul>
     </div>
     <pre class="mermaid">
@@ -534,13 +562,19 @@ sequenceDiagram
     participant L as core-skills loader
     participant F as 磁盘 SKILL.md
     participant M as LLM
+    Note over C: 第一轮：提及明文 Skill
     C->>L: 提及明文 Skill
     L->>F: 直接读取 SKILL.md 原文
     F-->>L: 原文内容
     L-->>C: 注入原文（无 Token、无解密）
     C->>M: 请求携带明文 Skill 指令
     M-->>C: 执行结果
-    Note over L,F: 明文 Skill 完全走原有路径，行为不变
+    Note over C: 第二轮：再次提及同一明文 Skill
+    C->>L: 再次提及（无 TTL、无缓存）
+    L->>F: 再次读取原文
+    F-->>L: 原文
+    L-->>C: 再次注入原文（上下文保留至压缩）
+    Note over L,F: 明文 Skill 无卸载语义，原文长期驻留上下文
     </pre>
   </div>
 
@@ -551,7 +585,8 @@ sequenceDiagram
       <ul>
         <li>注册表未命中 → 真实解密一次；目录 <code>fm_skill_security_&lt;hex&gt;</code> 权限 0700；</li>
         <li>rollout/历史只记录 Token；明文只存在于请求 body 与 LLM 上下文；</li>
-        <li>Skill 层 TTL 600s 从此刻开始计时。</li>
+        <li>Skill 层 TTL 600s 从此刻开始计时；</li>
+        <li><b>上下文卸载策略</b>：本轮只注入 Token；明文按 TTL 从存储层卸载（600s），Token 保留在上下文但过期后不再重水合。</li>
       </ul>
     </div>
     <pre class="mermaid">
@@ -562,6 +597,7 @@ sequenceDiagram
     participant S as EnvelopeSdk
     participant D as /dev/shm
     participant M as LLM
+    Note over C: 第一轮（此前未触发，注册表为空）
     C->>L: 提及加密 Skill（frontmatter encrypted）
     L->>R: load_or_register(session, skill)
     R->>R: 容量门控 + 注册表未命中
@@ -578,11 +614,12 @@ sequenceDiagram
   <div class="tab-pane" id="tab-encrypt-repeat">
     <h4>反复触发同一加密 Skill（TTL 内幂等）</h4>
     <div class="prose">
-      <p>同一线程内反复提及同一 Skill 时，TTL 窗口内命中注册表，<b>SDK 零调用、不重复解密</b>，复用同一 Token；重水合命中即续费 [K1]。关键点：</p>
+      <p>时序从<b>第一轮触发</b>开始：首次解密并注入 Token A；第二轮再次提及同一 Skill 时，TTL 窗口内命中注册表，<b>SDK 零调用、不重复解密</b>，复用同一 Token；重水合命中即续费 [K1]。关键点：</p>
       <ul>
         <li>内容级去重：相同明文共享一个 hex Token；</li>
         <li>每次请求重水合都 <code>touch</code> 刷新 last_used_at，TTL 顺延；</li>
-        <li>审计记录 cache_hit=true 的解密事件（幂等命中）。</li>
+        <li>审计记录 cache_hit=true 的解密事件（幂等命中）；</li>
+        <li><b>上下文卸载策略</b>：两轮中上下文始终只有 Token A；存储层 TTL 内不卸载，重水合命中续费。</li>
       </ul>
     </div>
     <pre class="mermaid">
@@ -592,12 +629,21 @@ sequenceDiagram
     participant R as EncryptedSkillRuntime
     participant S as EnvelopeSdk
     participant M as LLM
+    Note over C: 第一轮：先触发 Skill A
+    C->>L: 首次提及 Skill A
+    L->>R: load_or_register（未命中）
+    R->>S: 解密一次
+    S-->>R: 包条目
+    R-->>L: Token A
+    L-->>C: 上下文注入 Token A
+    C->>M: 请求重水合 → 明文
+    Note over C: 第二轮：再次触发同一 Skill
     C->>L: 再次提及同一加密 Skill
     L->>R: load_or_register 命中（TTL 内）
-    R-->>L: 复用同一 Token
+    R-->>L: 复用 Token A
     Note over S: SDK 零调用，不重复解密
-    L-->>C: 注入同一 Token
-    C->>M: rehydrate_framed → 明文（touch 续费）
+    L-->>C: 上下文仍只有 Token A
+    C->>M: 重水合命中 → 明文（touch 续费）
     Note over R: last_used_at 刷新，TTL 顺延
     </pre>
   </div>
@@ -605,11 +651,12 @@ sequenceDiagram
   <div class="tab-pane" id="tab-encrypt-expired">
     <h4>TTL 过期后重新触发</h4>
     <div class="prose">
-      <p>Skill 空闲超过 600s 后，sweep 卸载解密目录并移除缓存条目；旧 Token 变 stale。再次提及走完整解密链路，生成新 hex 目录与新 Token [K1]。关键点：</p>
+      <p>时序从<b>第一轮触发</b>开始：解密并注入 Token A；空闲超过 600s 后 sweep 卸载解密目录并移除缓存条目，旧 Token 变 stale；<b>第二轮重新提及</b>走完整解密链路，生成新 hex 目录与新 Token [K1]。关键点：</p>
       <ul>
         <li>卸载 = secure wipe（随机覆写后删除），不残留明文块；</li>
         <li>共享 Token 场景：仅当 token_ref_count 归零才移除缓存，不影响其他 Skill；</li>
-        <li>stale Token 在重水合中原样保留，模型重新提及即恢复（fail-safe）。</li>
+        <li>stale Token 在重水合中原样保留，模型重新提及即恢复（fail-safe）；</li>
+        <li><b>上下文卸载策略</b>：Token A 不因 TTL 从上下文移除，但失去重水合能力（stale）；第二轮注入新 Token B 后，旧 Token A 保留在历史中不再替换。</li>
       </ul>
     </div>
     <pre class="mermaid">
@@ -618,13 +665,22 @@ sequenceDiagram
     participant D as /dev/shm
     participant C as 模型上下文
     participant L as loader
-    Note over R: 空闲超时（600s）
+    participant S as EnvelopeSdk
+    Note over C: 第一轮：先触发 Skill A
+    C->>L: 首次提及 Skill A
+    L->>R: 解密 → Token A
+    R->>D: 目录 A（0700）
+    L-->>C: 上下文注入 Token A
+    Note over R,D: 空闲 600s，TTL 过期
     R->>D: sweep → secure wipe 单目录
     R->>R: 缓存条目移除（无共享引用）
-    C->>L: 重新提及加密 Skill
+    Note over C: 第二轮：重新提及同一 Skill
+    C->>L: 再次提及 Skill A（Token A 已 stale）
     L->>R: load_or_register 未命中
-    R->>R: 重新解密（新 hex 目录）
-    R-->>L: 新 Token（旧 Token stale）
+    R->>S: 重新解密（新 hex）
+    R->>D: 新目录 B
+    R-->>L: 新 Token B
+    L-->>C: 注入 Token B（旧 Token A 保留但不再替换）
     Note over C: 重新提及触发重新解密，fail-safe 恢复
     </pre>
   </div>
@@ -632,11 +688,12 @@ sequenceDiagram
   <div class="tab-pane" id="tab-encrypt-other">
     <h4>触发其他加密 Skill（同线程并存）</h4>
     <div class="prose">
-      <p>同一线程内触发另一个加密 Skill 时，注册表新增独立条目、独立解密目录与独立 Token，与既有 Skill 互不影响 [K1]。关键点：</p>
+      <p>时序从<b>第一轮触发 Skill A</b>开始：注入 Token A；<b>第二轮触发另一个加密 Skill B</b>时，注册表新增独立条目、独立解密目录与独立 Token，与既有 Skill 互不影响 [K1]。关键点：</p>
       <ul>
         <li>各 Skill 的 TTL、目录、Token 完全独立；卸载一个不影响另一个；</li>
         <li>若两个包内容相同，缓存层去重共享一个 Token（token_ref_count 保护）；</li>
-        <li>多 Skill 并存受缓存上限（64 条/8MiB）约束，FIFO 淘汰最旧。</li>
+        <li>多 Skill 并存受缓存上限（64 条/8MiB）约束，FIFO 淘汰最旧；</li>
+        <li><b>上下文卸载策略</b>：A、B 各自按 TTL 独立卸载存储层明文；上下文中的 Token A/B 均保留，各自按过期/重新提及恢复。</li>
       </ul>
     </div>
     <pre class="mermaid">
@@ -645,11 +702,18 @@ sequenceDiagram
     participant L as loader
     participant R as EncryptedSkillRuntime
     participant D as /dev/shm
-    C->>L: 提及另一个加密 Skill B
+    Note over C: 第一轮：先触发 Skill A
+    C->>L: 提及 Skill A
+    L->>R: 解密 A → Token A
+    R->>D: 目录 A
+    L-->>C: 上下文注入 Token A
+    Note over C: 第二轮：触发另一个加密 Skill B
+    C->>L: 提及 Skill B
     L->>R: load_or_register(session, B)
     R->>R: 注册表新增独立条目
     R->>D: 新目录 fm_skill_security_hexB
-    R-->>L: 新 Token（与 A 互不影响）
+    R-->>L: Token B（与 A 互不影响）
+    L-->>C: 上下文 Token A + Token B 并存
     Note over R: A、B 各自 TTL/目录/Token 独立
     Note over R: 内容相同则共享缓存去重
     </pre>

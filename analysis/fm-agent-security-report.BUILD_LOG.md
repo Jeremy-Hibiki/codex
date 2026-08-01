@@ -1,4 +1,4 @@
-# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v6）
+# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v7）
 
 ## 数据故事
 - 事实源：`FM_AGENT_SECURITY_IMPLEMENTATION_REPORT.md`（§1–§19）为主，OpenSpec change、测试结果与核心代码文件为辅；所有关键数字与报告一致（95/25/10/2146、600s/1800s、64 条/8MiB、4MiB、10MB）。
@@ -54,6 +54,19 @@
   - nav、chips、h3 编号、正文章节引用全部同步重排。
 - **footer 删除「生成方式」**：仅保留 CDN 渲染说明、部署口径与离线提示。
 
+## v7 更新（2026-08-01）
+- **多轮时序图改造（§5）**：所有「再次触发」场景从<b>第一轮触发</b>开始画——
+  - ① 明文 Skill：第一轮注入原文 → 第二轮再次读取/注入原文（上下文保留至压缩）；
+  - ② 加密首次：标注「此前未触发，注册表为空」；
+  - ③ 反复触发：第一轮解密 → Token A；第二轮命中复用（SDK 零调用），上下文始终只有 Token A；
+  - ④ TTL 过期：第一轮解密 → Token A → 空闲 600s wipe → 第二轮重新解密 → 新 Token B（旧 Token A stale 保留不替换）；
+  - ⑤ 其他 Skill：第一轮 Skill A → Token A；第二轮 Skill B → 独立 Token B，上下文 A+B 并存。
+- **新增 §4.7 Skill 从上下文卸载的策略**（原版 / 明文 / 加密三行对比表）：
+  - 原版：原文注入长期驻留上下文至压缩，无 TTL/Token；
+  - 明文：同原版，零行为影响；
+  - 加密：上下文只留 Token（不因 TTL 移除），明文按两级 TTL 从存储层卸载；过期 Token 变 stale，重新提及恢复。
+  - 关键区分 callout：卸载发生在存储层，Token 在上下文长期保留。
+
 ## 主题原子
 「加密信封 → 请求瞬间可见 → TTL 即消失」：封面用 SKILL 巨型背景字，架构图以明文路径（loader→runtime→/dev/shm→rehydrate→LLM）为唯一高亮链，其余链路全部 Token/脱敏灰化。
 
@@ -73,6 +86,7 @@
 - Mermaid 渲染测试：临时副本把 CDN 换成本地 mermaid.min.js，逐个激活全部 7 个 Tab——7/7 时序图渲染成功（`aria-roledescription="sequence"` ×7，全部 `data-rendered`），0 console error。
 - v5 强调体系回归：7/7 时序图仍正常；check_report 三项全过（JS/K 锚点/HTML 平衡）。
 - v6 回归：结构重排后 check_report 三项全过（修复 §1 组装时一处重复 `</div>`）；7/7 时序图渲染正常；1680/1280 双宽度截图正常。
+- v7 回归：5 个多轮时序图重写后 7/7 全部渲染成功（含更长 diagram），0 console error；check_report 三项全过。
 - chromium headless 双宽度（1680/1280）：页面渲染正常，stderr 仅环境 dbus 噪音，无页面 console/pageerror。
 - 横向溢出：宽表与 pre 均有 `overflow-x:auto`，nav 可横向滚动；SVG 等比缩放。
 - 残留表述检查：grep PPT/OpenChamber/NB2602/Hermes = 0（报告中已无这些来源名）。

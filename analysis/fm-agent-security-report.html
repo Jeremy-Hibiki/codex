@@ -84,6 +84,48 @@ svg{max-width:100%;height:auto;display:block;margin:16px 0}
 .tab-pane .prose p{max-width:880px}
 pre.mermaid{background:transparent;border:none;text-align:center;font-family:ui-monospace,Menlo,Consolas,monospace}
 pre.mermaid svg{max-width:100%;height:auto;margin:0 auto}
+/* visual polish */
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px;border:2px solid var(--bg)}
+::-webkit-scrollbar-thumb:hover{background:var(--accent-soft)}
+.hero{background:linear-gradient(180deg,#FFFDF8 0%,var(--bg) 78%)}
+.hero::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:4px;background:linear-gradient(90deg,var(--accent) 0%,var(--olive) 55%,transparent 100%)}
+.hero h1 em{background:linear-gradient(transparent 64%,var(--accent-soft) 64%)}
+.hero .lede{font-size:1.1rem}
+.chip{transition:transform .15s ease, border-color .15s ease, color .15s ease}
+.chip:hover{transform:translateY(-1px)}
+.sec-no{display:inline-block;padding:4px 16px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-weight:800;letter-spacing:.14em;margin-bottom:12px}
+h2{position:relative}
+h2::after{content:"";display:block;width:58px;height:3px;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--olive));margin-top:10px}
+h3{display:inline-block;border-left:4px solid var(--accent);padding-left:12px;background:linear-gradient(90deg,var(--accent-soft),transparent);padding-top:4px;padding-bottom:4px;padding-right:16px;border-radius:0 6px 6px 0}
+h4{color:var(--ink-soft);border-bottom:1px dashed var(--line);padding-bottom:4px}
+table{border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(46,42,38,.05)}
+th{background:var(--accent-soft);color:var(--ink);font-weight:700}
+td b{color:var(--accent)}
+.card,.grid2 .card{transition:transform .18s ease, box-shadow .18s ease}
+.card:hover,.grid2 .card:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(46,42,38,.09)}
+.callout::before{content:"◆";color:var(--accent);margin-right:8px;font-size:.8em}
+.callout.good::before{content:"✓"}
+.callout.warn::before{content:"!"}
+.callout.bad::before{content:"✕"}
+.tab-btn{transition:background .15s ease,color .15s ease,transform .15s ease}
+.tab-btn:hover{background:var(--accent-soft);transform:translateY(-1px)}
+.tab-btn.active{box-shadow:inset 0 3px 0 var(--accent)}
+.tab-pane{box-shadow:0 6px 18px rgba(46,42,38,.06)}
+.flow .step{transition:transform .15s ease, box-shadow .15s ease}
+.flow .step:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(46,42,38,.08)}
+pre{box-shadow:0 1px 5px rgba(46,42,38,.05)}
+footer{background:linear-gradient(180deg,var(--bg),#F4EDE3 120%)}
+#topbtn{position:fixed;right:22px;bottom:22px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--accent);font-size:1.15rem;cursor:pointer;box-shadow:0 6px 18px rgba(46,42,38,.14);opacity:0;pointer-events:none;transition:opacity .2s ease, transform .2s ease;z-index:60}
+#topbtn.show{opacity:1;pointer-events:auto}
+#topbtn:hover{transform:translateY(-2px);background:var(--accent-soft)}
+@media print{
+  nav,.chip,#topbtn,.tab-btn{display:none!important}
+  .tab-pane{display:block!important;page-break-inside:avoid}
+  section{page-break-inside:avoid}
+  body{background:#fff}
+}
 @media (prefers-reduced-motion: reduce){
   html{scroll-behavior:auto}
   *{transition:none!important;animation:none!important}
@@ -107,7 +149,7 @@ pre.mermaid svg{max-width:100%;height:auto;margin:0 auto}
 <header class="hero"><div class="wrap">
   <p class="kicker">Agent 数据安全 · 单页汇报 · 2026-08-01</p>
   <h1>加密 Skill：<em>触发即解密，TTL 即卸载，明文只在请求瞬间</em></h1>
-  <p class="lede">部署前提：<b>单容器部署 CodeX</b>，以 HTTP / WebSocket 对外提供服务，<b>不给用户 SSH 远程连接机会</b>，每用户一容器、非 root 运行、断外网（局域网推理服务）、持久化常驻。在此前提下把 V1 的 SubAgent 隔离方案迁移到「主 Agent 方案」：SKILL.md 加密包按触发解密到 /dev/shm，上下文只留 Token，请求时重水合，两级 TTL 自动卸载，工具拦截 + 回复硬脱敏封死全部明文落盘通道。</p>
+  <p class="lede">部署前提：<b>单容器部署 CodeX</b>，前端 <b>AHP Client</b> 通过 <b>AHP 协议（HTTP / WebSocket）</b>与 CodeX 交互，<b>不给用户 SSH 远程连接机会</b>，每用户一容器、非 root 运行、断外网（局域网推理服务）、持久化常驻。在此前提下把 V1 的 SubAgent 隔离方案迁移到「主 Agent 方案」：SKILL.md 加密包按触发解密到 /dev/shm，上下文只留 Token，请求时重水合，两级 TTL 自动卸载，工具拦截 + 回复硬脱敏封死全部明文落盘通道。</p>
   <div class="meta">
     <button class="chip hot" data-goto="#sec-0">核心结论</button>
     <button class="chip" data-goto="#sec-1">方案设计</button>
@@ -117,7 +159,7 @@ pre.mermaid svg{max-width:100%;height:auto;margin:0 auto}
     <button class="chip" data-goto="#sec-5">多轮场景</button>
     <button class="chip" data-goto="#sec-6">部署清单</button>
   </div>
-  <p class="cover-note">证据分级：代码/测试结果一手 [K1][K8] &gt; 分析报告 [K1] &gt; 汇报 PPT 与参考插件 [K3][K4]</p>
+  <p class="cover-note">证据分级：代码/测试结果一手 [K1][K8] &gt; 分析报告 [K1] &gt; V1 参考实现 [K4]</p>
 </div></header>
 
 <main class="wrap">
@@ -154,7 +196,7 @@ pre.mermaid svg{max-width:100%;height:auto;margin:0 auto}
   <h3>1.1 背景与演进</h3>
   <div class="prose">
     <p>参考项目（opencode fm-agent-security 插件）以「executor 子代理」为唯一解密执行域：主 Agent 永远只见 Token 与脱敏摘要，明文全程不进 transcript [K4]。本项目按需求改为<b>主 Agent 方案</b>——加密 Skill 由主 Agent 自身触发执行，因此威胁模型从「主 Agent 不可见」变为「明文短暂可见、但任何持久化副本必须为零」[K1]。</p>
-    <p>部署形态同步更新：不再采用 OpenCode + OpenChamber 双容器交付，而是<b>单容器部署 CodeX</b>，对外只暴露 HTTP / WebSocket 接口给前端，用户没有 SSH 通道；/dev/shm、skill 包、审计日志全部留在容器内不可见 [K3][K1]。</p>
+    <p>部署形态：<b>单容器部署 CodeX</b>，前端 AHP Client 通过 <b>AHP 协议（HTTP / WebSocket）</b>与 CodeX 交互（thread/turn 提交与事件流），用户没有 SSH 通道；/dev/shm、skill 包、审计日志全部留在容器内不可见 [K3][K1]。</p>
   </div>
 
   <h3>1.2 六项核心设计决策</h3>
@@ -235,9 +277,9 @@ pre.mermaid svg{max-width:100%;height:auto;margin:0 auto}
     </ul>
   </div>
 
-  <h3>1.4 与汇报 V2 设计差异</h3>
+  <h3>1.4 与 V2 设计设想的差异</h3>
   <table>
-    <tr><th>汇报 V2 设想</th><th>本项目实现</th><th>结论</th></tr>
+    <tr><th>V2 设计设想</th><th>本项目实现</th><th>结论</th></tr>
     <tr><td>会话复用、一次解密多次复用</td><td>TTL 内幂等复用（cache-hit 不重解密）</td><td><span class="tag good">等价</span></td></tr>
     <tr><td>TTL 卸载、每次委托续费</td><td>两级 TTL + 重水合命中续费（touch）</td><td><span class="tag good">等价且更细</span></td></tr>
     <tr><td>内容缓存 SQLite 持久化</td><td><b>有意保持内存缓存 + 64 条/8MiB 硬上限</b></td><td><span class="tag warn">安全取舍</span>：明文不落盘优先；常驻不重启内存足够 [K1]</td></tr>
@@ -495,6 +537,17 @@ pre.mermaid svg{max-width:100%;height:auto;margin:0 auto}
   <details class="drill"><summary>钻取：跨会话门禁</summary>
     <p>Token 内嵌属主会话 ID；重水合只替换属主会话内的 Token，跨会话 copy-paste 拒绝替换，防止一个会话读到另一个会话的明文。<span class="k">[K1]</span></p>
   </details>
+
+  <h3>4.6 进程异常与明文驻留（TTL 失效边界）</h3>
+  <div class="prose">
+    <p>TTL 是<b>进程内活动驱动的惰性清理</b>：sweep 只在 turn 边界与每次模型请求（重水合入口）触发，没有后台定时器。因此进程异常时存在明确边界：</p>
+    <ul>
+      <li><b>进程挂起（hang）</b>：事件循环不再推进，sweep 不会执行——解密内容会超过 TTL 驻留在 /dev/shm，直到进程恢复、被杀重启或容器销毁；</li>
+      <li><b>进程被杀 / 崩溃（kill/crash）</b>：内存中的注册表与缓存随之消失，但 /dev/shm 下 <code>p&lt;pid&gt;</code> 目录仍残留；下次任何 CodeX 进程启动时 <code>init_mem_root_once</code> 按 pid 存活状态清理删除；容器销毁则 /dev/shm 整体清空；</li>
+      <li><b>结论</b>：TTL 本身不保证进程异常下的驻留上限，需要部署侧兜底。</li>
+    </ul>
+  </div>
+  <div class="callout warn">部署缓解：容器 healthcheck + 自动重启（挂起超时杀进程重启，触发启动清理）；单容器无 SSH 下用户无法读取 /dev/shm，残留风险被访问面隔离；如需硬上限可加外部 watchdog 或进程退出时的清理钩子。</div>
 </section>
 
 <section id="sec-5">
@@ -711,7 +764,7 @@ sequenceDiagram
   <table>
     <tr><th>层</th><th>形态</th><th>安全边界</th></tr>
     <tr><td>CodeX 执行容器（单容器）</td><td>每用户一容器；非 root 运行；持久化常驻</td><td>不开 SSH；对外只暴露 HTTP / WebSocket（app-server 网关）</td></tr>
-    <tr><td>前端访问</td><td>Hermes Studio / WebUI 经 HTTP/WS 接入</td><td>用户无 shell 通道；/dev/shm、skill 包、审计日志对用户不可见</td></tr>
+    <tr><td>AHP Client（前端）</td><td>用户唯一交互入口，经 AHP 协议（HTTP/WebSocket）访问 CodeX（thread/turn 提交与事件流）</td><td>用户无 shell 通道；/dev/shm、skill 包、审计日志对用户不可见</td></tr>
     <tr><td>推理服务</td><td>局域网内（host 或同网段）</td><td>模型 API 由 CodeX 进程发起，不经沙箱 shell；白名单可达</td></tr>
     <tr><td>Workspace</td><td>挂载进容器的工作目录</td><td>加密 skill 包位于容器私有路径（codex_home/skills），不混入 workspace</td></tr>
   </table>
@@ -732,6 +785,7 @@ network_access = false           # shell 断网；推理服务由 host 进程调
   <div class="prose">
     <ol>
       <li><b>单容器边界</b>：确认容器未开 SSH、无 shell 转发；HTTP/WS 为唯一入口；/dev/shm 与 skill 包对用户不可见</li>
+      <li><b>进程健康</b>：容器 healthcheck + 自动重启；挂起超时杀进程重启，触发启动清理（TTL 失效边界兜底）</li>
       <li><b>bwrap 可用性</b>：容器内实测 <code>bwrap --ro-bind / / /bin/true</code>；不可用则 guard-only + 容器网络收紧 [K1]</li>
       <li><b>/dev/shm</b>：建议 ≥256MB，容量门控余量可调（set_min_free_bytes）</li>
       <li><b>skill 包位置</b>：只放容器私有路径（codex_home/skills），不混入 workspace</li>
@@ -752,6 +806,7 @@ network_access = false           # shell 断网；推理服务由 host 进程调
     <tr><td>短片段变形（&lt;20 字符嵌入句子）</td><td>完整短行已脱敏；嵌入句子的变形属纵深防御边界</td><td><span class="tag warn">已记录</span></td></tr>
     <tr><td>真实 AES/Ukey 未接入</td><td>当前为 deflate 模拟加密；部署期 fail-closed</td><td><span class="tag bad">待 Ukey</span></td></tr>
     <tr><td>bwrap 容器内可用性未实测</td><td>部署清单第 2 项验证；不可用则 guard + 网络策略</td><td><span class="tag warn">待部署实测</span></td></tr>
+    <tr><td>进程挂起时 TTL 不触发（明文驻留超时）</td><td>healthcheck + 自动重启；容器销毁清空 /dev/shm；启动 pid 清理兜底</td><td><span class="tag warn">部署侧兜底</span></td></tr>
   </table>
 </section>
 
@@ -763,7 +818,7 @@ network_access = false           # shell 断网；推理服务由 host 进程调
     <tr><th>#</th><th>来源</th><th>说明</th></tr>
     <tr><td>K1</td><td><code>analysis/FM_AGENT_SECURITY_IMPLEMENTATION_REPORT.md</code></td><td>实现报告 §1–§19：模块、测试矩阵、部署清单、深审结论</td></tr>
     <tr><td>K2</td><td><code>openspec/changes/encrypt-agent-security-skills/</code></td><td>OpenSpec proposal/design/specs/tasks，strict 校验通过</td></tr>
-    <tr><td>K3</td><td><code>analysis/NB2602-智能体-项目汇报-20260727.html</code></td><td>项目部署口径与 V1/V2 Skill 加解密方案（部署形态已更新为单容器）</td></tr>
+    <tr><td>K3</td><td>AHP 协议（CodeX app-server 接口）</td><td>前端 AHP Client 经 HTTP/WebSocket 与 CodeX 交互（thread/turn 提交与事件流）</td></tr>
     <tr><td>K4</td><td>opencode fm-agent-security 插件（参考实现）</td><td>V1 SubAgent 隔离方案：hooks/token/重水合/出站拦截</td></tr>
     <tr><td>K5</td><td><code>codex-rs/core-skills/src/loader.rs · injection.rs · skill_instructions.rs</code></td><td>frontmatter 加密标记、build_skill_injections 解密分支、Token 化 body</td></tr>
     <tr><td>K6</td><td><code>codex-rs/encrypted-skills/src/</code></td><td>sdk/mem_root/cache/registry/rehydrate/runtime 等 10 模块</td></tr>
@@ -771,8 +826,10 @@ network_access = false           # shell 断网；推理服务由 host 进程调
     <tr><td>K8</td><td>测试结果（crate 95/95 · guard 25/25 · 集成 10/10 · core lib 2146）</td><td>本地运行验证，含 RUST_MIN_STACK 环境注记</td></tr>
     <tr><td>K9</td><td><code>html-report</code> 方法论 Skill（个人技能目录）</td><td>本报告所依据的单页报告方法论；不属于本分支产物</td></tr>
   </table>
-  <p style="font-size:.8rem;color:var(--ink-soft);margin-top:18px">生成方式：按 html-report Skill 方法论单文件直写；时序图由 Mermaid（CDN 引入，需联网加载）渲染。部署口径：单容器 CodeX + HTTP/WebSocket + 无 SSH（2026-08-01 更新）。离线打开时图表不渲染，其余内容不受影响。</p>
+  <p style="font-size:.8rem;color:var(--ink-soft);margin-top:18px">生成方式：按 html-report Skill 方法论单文件直写；时序图由 Mermaid（CDN 引入，需联网加载）渲染。部署口径：单容器 CodeX，前端 AHP Client 经 AHP 协议（HTTP/WebSocket）交互，无 SSH（2026-08-01 更新）。离线打开时图表不渲染，其余内容不受影响。</p>
 </div></footer>
+
+<button id="topbtn" aria-label="回到顶部">↑</button>
 
 <script>
 (function(){
@@ -839,6 +896,17 @@ network_access = false           # shell 断网；推理服务由 host 进程调
       }
     });
     activateTab("plain");
+  }
+  var topbtn = document.getElementById("topbtn");
+  if (topbtn) {
+    var onScroll = function(){
+      topbtn.classList.toggle("show", (window.scrollY || document.documentElement.scrollTop) > 600);
+    };
+    window.addEventListener("scroll", onScroll, {passive: true});
+    onScroll();
+    topbtn.addEventListener("click", function(){
+      window.scrollTo({top: 0, behavior: REDUCE ? "auto" : "smooth"});
+    });
   }
 })();
 </script>

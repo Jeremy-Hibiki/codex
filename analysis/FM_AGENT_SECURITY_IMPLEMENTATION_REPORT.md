@@ -296,6 +296,15 @@ TTL sweep 原只在 **turn 边界**（`build_skills_and_plugins`）执行——�
 
 ## 19. 深度 Review 轮二：模型回复明文硬脱敏（2026-07-31 v22）
 
+## 19.1 元数据必填字段的编译期修正（2026-08-01 v23）
+
+`SkillMetadata`/`EnvironmentSkillMetadata`（core 模型）与 v2 协议 `SkillMetadata` 新增 `encrypted: bool` + `encryption: Option<SkillEncryption>` 后，Rust 结构体字面量必须显式给出新字段，全 workspace 共 13 处旧构造点报 E0063（ext/skills 5、tui 7、thread-manager-sample Config 1）。已全部修复：
+
+- **明文默认语义**：`encrypted: false, encryption: None` 即「明文常规 Skill」，加载/执行走原有 `load_plaintext_skill` 路径（直接读 SKILL.md），`is_encrypted()` 为 false 时不进入加解密分支——明文 Skill 行为零变化；
+- **wire 层缺省**：v2 协议字段已带 `#[serde(default)]`，JSON 缺省即明文；只有 Rust 字面量需要显式；
+- **为何不用 `..Default::default()`**：`SkillMetadata` 含 `AbsolutePathBuf`、`EnvironmentSkillMetadata` 含 `PathUri`，均无 `Default`（需手写占位路径，语义差）；且展开语法会静默重置漏写的旧字段（隐患）。显式两字段是当前最小且清晰的修复；
+- 验证：`cargo check --workspace --all-targets` 全绿；codex-skills-extension 15/15、codex-tui bottom_pane 758/758、composer_submission 40/40。
+
 ### 发现的问题（P1）
 
 主 Agent 方案与 V1 executor 隔离的关键差异：`SKILL.md` 明文（带信任框架）直接注入 LLM 请求，`<output_policy>` 只是软约束。模型回复可能复述/引用明文，导致 **assistant 消息落盘到 rollout/内存历史，形成明文驻留**——违反「明文不允许长时间驻留」要求。V1 子代理边界天然避免，主 Agent 方案缺硬拦截。

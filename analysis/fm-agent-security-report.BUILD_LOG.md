@@ -1,4 +1,4 @@
-# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v9）
+# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v10）
 
 ## 数据故事
 - 事实源：`FM_AGENT_SECURITY_IMPLEMENTATION_REPORT.md`（§1–§19）为主，OpenSpec change、测试结果与核心代码文件为辅；所有关键数字与报告一致（95/25/10/2146、600s/1800s、64 条/8MiB、4MiB、10MB）。
@@ -111,6 +111,27 @@
 - §2.4 取舍 callout（文本临时可见、rollout/API 流零明文、脚本源码不可见）；
 - §4.2 步骤表 ⑤、§6.2 加固卡（文本/脚本分级访问）、§7.4 残余风险（工具输出明文=已收口）；
 - 在线/离线双版本同步，check_report 全过。
+
+## v10 更新（2026-08-02 · 目标类型模型，不再依赖命令名）
+
+### 需求
+- 用户指出 fd/rg/tree/lsd/eza 等现代命令不在命令名名单里——命令名黑名单模式无法覆盖新命令。
+
+### 实现（`89334af690`）
+- **guard 模型升级**：从「命令名黑名单（READ/SEARCH_COMMANDS）」改为「**脚本文件目标 + 执行白名单**」：
+  - 只有解释器执行语义（runner 后的第一个非 flag 参数为脚本文件，如 `bash run.sh`）放行；
+  - 任何非执行语义的命令，只要参数引用解密目录内的脚本文件（cat/bat/cp/tar/归档/编码等，无论命令名）→ Blocked（script_source）；
+  - 列目录（ls/lsd/eza/tree/fd）与文本读取（cat/bat/head）自动放行，无需逐个登记；
+  - `bash -c 'cat run.sh'` 等包装不再被当作“执行”放行（`is_script_execution` 只认 runner 后第一个非 flag 参数），且文件目标解析支持去引号。
+- paths 单测 17（含引号执行、bash -c 判定）；guard 单测 36 → **41**（cp/tar 复制、bash -c 包装、lsd/eza/tree/fd 列名、bat 文本/脚本）；crate 103/103；集成 11/11；core lib 全量 **2164 过**（3 个并行偶发/环境项单独重跑全绿）。
+
+### 剩余边界（已记录）
+- `fd -x cat`、`xargs cat`、变量拼接、命令替换等运行时生成的路径仍在字符串层之外——治本靠 bwrap/私有挂载或“脚本 stdin 执行”架构（见报告 §7.4 与部署清单）。
+
+### 报告更新
+- §0 数字（guard 41/41、crate 103/103、core lib 2164）；
+- §2.2 ⑤ guard 矩阵改“目标类型 + 执行白名单”描述（含 lsd/eza/tree/fd）；
+- §6.2 加固卡同步；在线/离线双版本 check_report 全过。
 
 ## 主题原子
 「加密信封 → 请求瞬间可见 → TTL 即消失」：封面用 SKILL 巨型背景字，架构图以明文路径（loader→runtime→/dev/shm→rehydrate→LLM）为唯一高亮链，其余链路全部 Token/脱敏灰化。

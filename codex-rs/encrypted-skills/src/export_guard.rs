@@ -105,17 +105,18 @@ fn redact_quoted_fragments(text: &str, known: &[&str]) -> String {
     while i < chars.len() {
         let open = chars[i];
         if let Some((_, close)) = PAIRS.iter().find(|(opener, _)| *opener == open)
-            && let Some(offset) = chars[i + 1..].iter().position(|c| *c == *close) {
-                let end = i + 1 + offset;
-                let content: String = chars[i + 1..end].iter().collect();
-                if quoted_fragment_matches(&content, known) {
-                    out.push(open);
-                    out.push_str(REDACTED_MARKER);
-                    out.push(*close);
-                    i = end + 1;
-                    continue;
-                }
+            && let Some(offset) = chars[i + 1..].iter().position(|c| *c == *close)
+        {
+            let end = i + 1 + offset;
+            let content: String = chars[i + 1..end].iter().collect();
+            if quoted_fragment_matches(&content, known) {
+                out.push(open);
+                out.push_str(REDACTED_MARKER);
+                out.push(*close);
+                i = end + 1;
+                continue;
             }
+        }
         out.push(open);
         i += 1;
     }

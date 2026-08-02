@@ -360,6 +360,54 @@ async fn exec_command_direct_script_read_is_blocked_by_the_same_guard() -> Resul
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn text_read_of_skill_md_is_allowed_but_rollout_stays_clean() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let test = build_test_with_encrypted_skill(&server).await?;
+    let skill_md = format!(
+        "{}/.agents/skills/{SKILL_NAME}/SKILL.md",
+        test.config.cwd.as_path().display()
+    );
+    let mock = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_function_call(
+                "call-1",
+                "shell_command",
+                &serde_json::to_string(&serde_json::json!({
+                    "command": format!("cat {skill_md}")
+                }))?,
+            ),
+            ev_assistant_message("msg-1", "done"),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+
+    submit_single_turn(&test, "please use $secret-skill").await?;
+
+    let rollout_path = test
+        .session_configured
+        .rollout_path
+        .as_ref()
+        .expect("rollout path");
+    let rollout = std::fs::read_to_string(rollout_path)?;
+    assert!(
+        rollout.contains("[REDACTED]"),
+        "tool output plaintext must be redacted in rollout, got: {rollout}"
+    );
+    assert!(
+        !rollout.contains("REAL_SKILL_CONTENT_MARKER"),
+        "rollout must not contain skill plaintext from a text read, got: {rollout}"
+    );
+    let _ = mock;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn view_image_on_mem_root_is_blocked() -> Result<()> {
     skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
     skip_if_no_network!(Ok(()));

@@ -13,6 +13,8 @@ use codex_protocol::items::AgentMessageContent;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::ContentItem;
+use codex_protocol::models::FunctionCallOutputBody;
+use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ReasoningItemContent;
 use codex_protocol::models::ReasoningItemReasoningSummary;
 use codex_protocol::models::ResponseItem;
@@ -463,6 +465,74 @@ fn redacts_turn_item_reasoning_text() {
     };
     assert_eq!(reasoning.summary_text, vec!["summary: [REDACTED]"]);
     assert_eq!(reasoning.raw_content, vec!["raw: [REDACTED]"]);
+}
+
+#[test]
+fn redacts_tool_output_text_plaintext_for_durable_surfaces() {
+    let (runtime, _tmp) = loaded_runtime();
+    let item = ResponseItem::FunctionCallOutput {
+        id: None,
+        call_id: "call-1".to_string(),
+        output: FunctionCallOutputPayload {
+            body: FunctionCallOutputBody::Text("the skill says: # Guarded content".to_string()),
+            ..Default::default()
+        },
+        internal_chat_message_metadata_passthrough: None,
+    };
+
+    let redacted = redact_tool_output_plaintext_for_persistence(&runtime, "t1", item);
+
+    let ResponseItem::FunctionCallOutput { output, .. } = redacted else {
+        panic!("expected function call output");
+    };
+    assert_eq!(
+        output.body,
+        FunctionCallOutputBody::Text("the skill says: [REDACTED]".to_string())
+    );
+}
+
+#[test]
+fn redacts_tool_output_content_items_for_durable_surfaces() {
+    let (runtime, _tmp) = loaded_runtime();
+    let item = ResponseItem::CustomToolCallOutput {
+        id: None,
+        call_id: "call-1".to_string(),
+        name: None,
+        output: FunctionCallOutputPayload {
+            body: FunctionCallOutputBody::ContentItems(vec![
+                codex_protocol::models::FunctionCallOutputContentItem::InputText {
+                    text: "notes: # Guarded content".to_string(),
+                },
+                codex_protocol::models::FunctionCallOutputContentItem::InputText {
+                    text: "safe note".to_string(),
+                },
+            ]),
+            ..Default::default()
+        },
+        internal_chat_message_metadata_passthrough: None,
+    };
+
+    let redacted = redact_tool_output_plaintext_for_persistence(&runtime, "t1", item);
+
+    let ResponseItem::CustomToolCallOutput { output, .. } = redacted else {
+        panic!("expected custom tool output");
+    };
+    let FunctionCallOutputBody::ContentItems(items) = &output.body else {
+        panic!("expected content items");
+    };
+    assert_eq!(items.len(), 2);
+    let codex_protocol::models::FunctionCallOutputContentItem::InputText { text: first } =
+        &items[0]
+    else {
+        panic!("expected input text");
+    };
+    let codex_protocol::models::FunctionCallOutputContentItem::InputText { text: second } =
+        &items[1]
+    else {
+        panic!("expected input text");
+    };
+    assert_eq!(first, "notes: [REDACTED]");
+    assert_eq!(second, "safe note");
 }
 
 #[test]

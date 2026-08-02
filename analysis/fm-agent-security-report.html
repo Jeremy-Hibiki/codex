@@ -191,10 +191,10 @@ th b,td b{color:var(--ink)}
   </div>
   <table>
     <tr><th>维度</th><th>数值</th><th>说明</th><th>锚点</th></tr>
-    <tr><td>独立 crate 单测</td><td><span class="num">99 / 99</span></td><td>codex-encrypted-skills（10 模块）</td><td class="kref">[K1]</td></tr>
-    <tr><td>guard 单测</td><td><span class="num">36 / 36</span></td><td>工具拦截 + 回复/TurnItem 脱敏</td><td class="kref">[K1]</td></tr>
+    <tr><td>独立 crate 单测</td><td><span class="num">103 / 103</span></td><td>codex-encrypted-skills（10 模块）</td><td class="kref">[K1]</td></tr>
+    <tr><td>guard 单测</td><td><span class="num">41 / 41</span></td><td>工具拦截 + 回复/TurnItem 脱敏</td><td class="kref">[K1]</td></tr>
     <tr><td>集成测试</td><td><span class="num">11 / 11</span></td><td>触发/重水合/拦截/TTL/文本读取/rollout 零明文</td><td class="kref">[K8]</td></tr>
-    <tr><td>core lib 全量</td><td><span class="num">2160 过</span></td><td>2 个环境项（沙箱代理变量/token 估算）单独重跑全绿</td><td class="kref">[K8]</td></tr>
+    <tr><td>core lib 全量</td><td><span class="num">2164 过</span></td><td>3 个并行偶发/环境项（沙箱代理变量/token 估算/多代理超时）单独重跑全绿</td><td class="kref">[K8]</td></tr>
     <tr><td>两级 TTL</td><td><span class="num">600s / 1800s</span></td><td>Skill 空闲 / Thread 空闲，可配置</td><td class="kref">[K1]</td></tr>
     <tr><td>周期 TTL sweep</td><td><span class="num">30s</span></td><td>常驻进程空闲兜底；进程挂起仍需部署侧</td><td class="kref">[K1]</td></tr>
     <tr><td>内容缓存上限</td><td><span class="num">64 条 / 8MiB</span></td><td>按会话 FIFO，明文不落盘</td><td class="kref">[K1]</td></tr>
@@ -288,7 +288,7 @@ th b,td b{color:var(--ink)}
   <h4>⑤ 工具拦截 guard</h4>
   <table>
     <tr><th>工具（Codex hook 名）</th><th>策略</th><th>实现</th></tr>
-    <tr><td><code>Bash</code>（shell_command / unified_exec exec_command）</td><td>ls/find 列名放行；文本（md/txt）读取放行；脚本文件读取/grep 脚本 → Blocked；递归 grep/rg 注入脚本排除；执行命令原目录 → 解密目录改写</td><td><code>guard_shell</code>：按文件类型分级（reason：script_source），grep 注入 <code>--exclude</code> [K7]</td></tr>
+    <tr><td><code>Bash</code>（shell_command / unified_exec exec_command）</td><td>按“脚本文件目标 + 执行白名单”分级，不再依赖命令名：列目录（ls/lsd/eza/tree/fd）与文本读取（cat/bat/head）放行；任何非执行语义引用脚本文件（cat/bat/cp/tar/归档/编码等）→ Blocked；递归 grep/rg 注入脚本排除；执行命令原目录 → 解密目录改写</td><td><code>guard_shell</code>：reason script_source；grep 注入 <code>--exclude</code>；<code>bash -c 'cat run.sh'</code> 等包装同样拦截 [K7]</td></tr>
     <tr><td><code>view_image</code></td><td>路径指向解密目录/mem root → Blocked</td><td><code>guard_read</code>：兼容默认与自定义 mem root [K7]</td></tr>
     <tr><td><code>apply_patch</code> 及其余全部非 shell 工具（MCP、扩展、web/run 等）</td><td>参数含已知明文 → Blocked；参数引用 mem root/解密目录（路径探测）→ Blocked</td><td><code>guard_export</code> 默认分支（reason：export_plaintext / storage_probe）；web_search（hook 名 webrun）同样覆盖 [K7]</td></tr>
     <tr><td>全部工具输出</td><td>解密路径 → 原目录路径（不暴露 /dev/shm）；已知明文在 rollout/API 流 → [REDACTED]</td><td><code>RedactingToolOutput</code> + 持久化层脱敏 [K7]</td></tr>
@@ -823,7 +823,7 @@ sequenceDiagram
   <div class="grid2">
     <div class="card"><span class="hl">回复明文硬脱敏</span><p>durable 边界 → 短行完整行 → 模型流入口三级补盲；E2E 断言 rollout 只含 <code>[REDACTED]</code>。</p></div>
     <div class="card"><span class="hl">引号片段脱敏增强</span><p>「long sensitive line」等中段引用（≥12 字符，引号包裹）→ <code>[REDACTED]</code>，覆盖截断引用绕过。</p></div>
-    <div class="card"><span class="hl">文本/脚本分级访问</span><p>ls/find/grep 与文本（md/txt）读取放行；脚本源码 Blocked（script_source）；递归 grep 注入脚本排除；文本明文只在模型上下文可见，rollout/API 流落盘即 [REDACTED]。</p></div>
+    <div class="card"><span class="hl">文本/脚本分级访问</span><p>按目标文件类型而非命令名：ls/find/lsd/eza/tree/fd 与文本读取放行；任何非执行引用脚本文件（cat/bat/cp/tar/编码）Blocked；递归 grep 注入脚本排除；文本明文只在模型上下文可见，rollout/API 流落盘即 [REDACTED]。</p></div>
     <div class="card"><span class="hl">MCP/扩展路径探测拦截</span><p>非 shell 工具参数引用 mem root/解密目录即 Blocked（storage_probe），堵住 <code>list /dev/shm</code> 探测。</p></div>
     <div class="card"><span class="hl">网络/扩展工具明文导出拦截</span><p>非 shell/view_image 工具默认 guard_export（含 web/run、MCP、扩展工具）。</p></div>
     <div class="card"><span class="hl">周期 TTL sweep</span><p>常驻进程后台每 30s 执行 sweep（2 个 paused-time 单测：空闲卸载、新鲜保留）；进程残留清理由 <code>init_mem_root</code> 单测覆盖。</p></div>

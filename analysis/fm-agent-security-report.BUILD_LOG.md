@@ -1,4 +1,4 @@
-# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v8）
+# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v9）
 
 ## 数据故事
 - 事实源：`FM_AGENT_SECURITY_IMPLEMENTATION_REPORT.md`（§1–§19）为主，OpenSpec change、测试结果与核心代码文件为辅；所有关键数字与报告一致（95/25/10/2146、600s/1800s、64 条/8MiB、4MiB、10MB）。
@@ -90,6 +90,27 @@
 - 在线与离线双版本 Mermaid 渲染 7/7、0 console error；
 - core lib 全量 2152 过（2 个环境项：沙箱代理变量、token 估算，单独重跑全绿；/tmp/.git 杂散目录已移开归因）；
 - encrypted-skills 99/99、guard 28/28、core-skills 131/131、集成 10/10（上一轮基线）。
+
+## v9 更新（2026-08-02 · 文本/脚本分级访问策略）
+
+### 需求（用户确认）
+- 允许 `ls`/`find` 列目录与文件名；`grep` 允许；所有解密后的文本内容（md/txt 等）可临时给 agent 看到；
+- 只有**脚本内容**禁止看到（参考 OpenCode 插件从结果摘除脚本类结果）；
+- 之前 glob/grep 是独立工具、无需从 bash 解析限制——Codex 中统一在 guard 做命令级分级。
+
+### 实现（`34ec4b0d0b` + `1426ea67cc`）
+- `paths.rs`：新增 `file_targets`（跳过 flag/重定向）、`is_script_file`、`command_targets_script`、`is_recursive_search`、`inject_script_exclusions`（grep/rg 追加 `--exclude='*.sh'` 等）；paths 单测 15 → 17。
+- `guard_shell` 重写：脚本执行仍放行（改写）；读取/搜索命令按文件类型分级——脚本目标 Blocked（reason `script_source`）、文本放行；递归 grep/rg 命中解密目录注入脚本排除；ls/find 放行；原路径绕过修复保留（脚本场景）。
+- `runtime.unrewrite_paths`：工具输出中解密目录路径改写回原目录路径（agent 可复用原路径执行，/dev/shm 不暴露）；未知 mem root 子路径仍 [REDACTED] 兜底。
+- **持久化层脱敏**（`1426ea67cc`）：`redact_tool_output_plaintext_for_persistence` 对 FunctionCallOutput/CustomToolCallOutput 文本在 rollout 与 API/WS 流落盘前替换已知明文为 [REDACTED]；**内存历史保留原文**（模型多轮可见，符合“临时给 agent 看到”）。新 E2E `text_read_of_skill_md_is_allowed_but_rollout_stays_clean`：cat SKILL.md 放行执行，rollout 无明文。
+- guard 单测 28 → 36；集成 10 → 11；core lib 全量 2160 过（2 个环境项）。
+
+### 报告更新
+- §0 数字（guard 36/36、集成 11/11、core lib 2160）；
+- §2.2 ⑤ guard 矩阵（Bash 分级策略、输出反改写 + 落盘脱敏）；
+- §2.4 取舍 callout（文本临时可见、rollout/API 流零明文、脚本源码不可见）；
+- §4.2 步骤表 ⑤、§6.2 加固卡（文本/脚本分级访问）、§7.4 残余风险（工具输出明文=已收口）；
+- 在线/离线双版本同步，check_report 全过。
 
 ## 主题原子
 「加密信封 → 请求瞬间可见 → TTL 即消失」：封面用 SKILL 巨型背景字，架构图以明文路径（loader→runtime→/dev/shm→rehydrate→LLM）为唯一高亮链，其余链路全部 Token/脱敏灰化。

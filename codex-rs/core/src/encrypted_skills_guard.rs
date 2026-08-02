@@ -92,20 +92,19 @@ fn guard_shell(
     if paths::is_script_execution(command) {
         return updated_command(tool_input, rewritten);
     }
-    if paths::is_read_command(command) || paths::is_search_command(command) {
-        // 脚本内容禁止看到：任何脚本文件目标 → Blocked（文本/md/txt 放行）。
-        if paths::command_targets_script(&rewritten) {
-            return GuardDecision::Blocked {
-                message: BLOCK_MESSAGE.to_string(),
-                reason: "script_source",
-            };
-        }
-        // 递归 grep/rg 命中解密目录时注入脚本扩展名排除，避免搜索结果带出脚本源码。
-        if paths::command_references_dir(&rewritten, &guarded_paths)
-            && paths::is_recursive_search(&rewritten)
-        {
-            return updated_command(tool_input, paths::inject_script_exclusions(&rewritten));
-        }
+    // 脚本内容禁止看到：任何非执行语义的命令引用解密目录内的脚本文件
+    // （读取/复制/打包/归档/编码等，无论命令名）→ Blocked。
+    if paths::command_targets_script(&rewritten) {
+        return GuardDecision::Blocked {
+            message: BLOCK_MESSAGE.to_string(),
+            reason: "script_source",
+        };
+    }
+    // 递归 grep/rg 命中解密目录时注入脚本扩展名排除，避免搜索结果带出脚本源码。
+    if paths::command_references_dir(&rewritten, &guarded_paths)
+        && paths::is_recursive_search(&rewritten)
+    {
+        return updated_command(tool_input, paths::inject_script_exclusions(&rewritten));
     }
     updated_command(tool_input, rewritten)
 }

@@ -233,6 +233,112 @@ fn blocks_cat_script_in_decrypted_dir() {
 }
 
 #[test]
+fn blocks_copy_of_script_file() {
+    let (runtime, _tmp) = loaded_runtime();
+    let dirs = runtime.decrypted_dirs("t1");
+    let command = format!(
+        "cp {}/scripts/run.sh /tmp/leak.sh",
+        dirs[0].to_string_lossy()
+    );
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": command }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "copying a script file out must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn blocks_archive_of_script_file() {
+    let (runtime, _tmp) = loaded_runtime();
+    let dirs = runtime.decrypted_dirs("t1");
+    let command = format!("tar cf - {}/scripts/run.sh", dirs[0].to_string_lossy());
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": command }),
+    );
+    assert!(matches!(decision, GuardDecision::Blocked { .. }));
+}
+
+#[test]
+fn blocks_bash_c_inner_script_read() {
+    let (runtime, _tmp) = loaded_runtime();
+    let dirs = runtime.decrypted_dirs("t1");
+    let command = format!("bash -c 'cat {}/scripts/run.sh'", dirs[0].to_string_lossy());
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": command }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "bash -c wrapping a script read must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn allows_modern_listing_commands() {
+    let (runtime, _tmp) = loaded_runtime();
+    let dirs = runtime.decrypted_dirs("t1");
+    for command in [
+        format!("lsd {}", dirs[0].to_string_lossy()),
+        format!("eza {}", dirs[0].to_string_lossy()),
+        format!("tree {}", dirs[0].to_string_lossy()),
+        format!("fd . {}", dirs[0].to_string_lossy()),
+    ] {
+        let decision = before_tool_with_runtime(
+            &runtime,
+            "t1",
+            &HookToolName::bash(),
+            &json!({ "command": command }),
+        );
+        assert!(
+            matches!(decision, GuardDecision::Allow | GuardDecision::Updated(_)),
+            "modern listing command must be allowed: {command}"
+        );
+    }
+}
+
+#[test]
+fn allows_modern_text_reader_and_blocks_script() {
+    let (runtime, _tmp) = loaded_runtime();
+    let dirs = runtime.decrypted_dirs("t1");
+    let text = format!("bat {}/notes.md", dirs[0].to_string_lossy());
+    let text_decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": text }),
+    );
+    assert!(
+        matches!(
+            text_decision,
+            GuardDecision::Allow | GuardDecision::Updated(_)
+        ),
+        "bat on a text file must be allowed: {text_decision:?}"
+    );
+
+    let script = format!("bat {}/scripts/run.sh", dirs[0].to_string_lossy());
+    let script_decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": script }),
+    );
+    assert!(
+        matches!(script_decision, GuardDecision::Blocked { .. }),
+        "bat on a script file must be blocked: {script_decision:?}"
+    );
+}
+
+#[test]
 fn rewrites_original_skill_path_in_execution_commands() {
     let (runtime, _tmp) = loaded_runtime();
     let decision = before_tool_with_runtime(

@@ -100,6 +100,8 @@ fn script_execution_detected() {
     assert!(is_script_execution("bash /x/scripts/build.sh"));
     assert!(!is_script_execution("cat /x/scripts/run.py"));
     assert!(!is_script_execution("python -m pytest"));
+    assert!(!is_script_execution("bash -c 'cat /x/scripts/build.sh'"));
+    assert!(is_script_execution("bash \"/x/scripts/build.sh\""));
 }
 
 #[test]

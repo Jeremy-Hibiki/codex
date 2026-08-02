@@ -77,7 +77,8 @@ pub fn is_search_command(cmd: &str) -> bool {
 }
 
 /// True when the command runs a script (runner + non-flag token ending in a
-/// script extension).
+/// script extension). Only the runner's first non-flag argument counts, so
+/// `bash -c 'cat script.sh'` is not treated as script execution.
 pub fn is_script_execution(cmd: &str) -> bool {
     let tokens: Vec<&str> = cmd.split_whitespace().collect();
     let Some(first) = tokens.first() else {
@@ -87,13 +88,11 @@ pub fn is_script_execution(cmd: &str) -> bool {
     if !RUNNERS.contains(&runner.as_str()) {
         return false;
     }
-    tokens.iter().skip(1).any(|token| {
-        if token.starts_with('-') {
-            return false;
-        }
-        let lower = token.to_ascii_lowercase();
-        SCRIPT_EXTENSIONS.iter().any(|ext| lower.ends_with(ext))
-    })
+    tokens
+        .iter()
+        .skip(1)
+        .find(|token| !token.starts_with('-'))
+        .is_some_and(|target| is_script_file(unquote(target)))
 }
 
 /// True when `path` ends in a script extension.
@@ -135,9 +134,13 @@ pub fn file_targets(cmd: &str) -> Vec<&str> {
         {
             continue;
         }
-        out.push(*token);
+        out.push(unquote(token));
     }
     out
+}
+
+fn unquote(token: &str) -> &str {
+    token.trim_matches(|c| c == '\'' || c == '"')
 }
 
 /// True when a read/search command targets at least one script file.

@@ -813,23 +813,32 @@ sequenceDiagram
   <h2>实现情况</h2>
   <div class="dek">全部按 TDD（红→绿→重构）分单元提交；只改 Skill 加解密相关模块，其余模块未动。</div>
 
-  <h3>6.1 独立 crate 模块</h3>
+  <h3>6.1 实现状态一览（重点）</h3>
+  <table>
+    <tr><th>维度</th><th>状态</th></tr>
+    <tr><td><b>核心能力</b></td><td>触发解密 / Token 注入 / 请求时重水合 / 两级 TTL（含 30s 周期 sweep）/ 文本-脚本分级访问 / 持久化层脱敏 / 审计——<b>全部落地</b>，明文只存在于 /dev/shm 与请求瞬间</td></tr>
+    <tr><td><b>质量</b></td><td>crate 103/103 · guard 41/41 · core-skills 131/131 · 集成 11/11 · core lib 2164 过（3 个并行偶发/环境项单独重跑全绿）</td></tr>
+    <tr><td><b>部署形态</b></td><td>单容器 CodeX + AHP Client/AHP 协议 + 无 SSH；fail-closed（sdk=unavailable）待 Ukey 接入</td></tr>
+    <tr><td><b>可交付物</b></td><td>npm 安装包（见 6.6）· 本单页报告 · OpenSpec change · 实现报告</td></tr>
+  </table>
+
+  <h3>6.2 独立 crate 模块</h3>
   <table>
     <tr><th>模块</th><th>职责</th><th>单测</th></tr>
     <tr><td><code>token.rs</code></td><td>哨兵 Token 序列化/解析（session_id + hex）</td><td>7</td></tr>
     <tr><td><code>sdk.rs</code></td><td>EnvelopeSdk trait、UnavailableSdk（fail-closed）、TestZip、SdkKind 选择</td><td>3</td></tr>
     <tr><td><code>mem_root.rs</code></td><td>/dev/shm 布局、Zip-Slip 拒绝、0700、残留清理、secure wipe、容量探测</td><td>10</td></tr>
     <tr><td><code>cache.rs</code></td><td>每会话明文缓存（去重、64 条/8MiB、FIFO、drop_session）</td><td>7</td></tr>
-    <tr><td><code>registry.rs</code></td><td>两级 TTL 注册表（可注入时钟）、幂等命中、token_ref_count</td><td>9</td></tr>
+    <tr><td><code>registry.rs</code></td><td>两级 TTL 注册表（可注入时钟）、幂等命中、token_ref_count</td><td>8</td></tr>
     <tr><td><code>rehydrate.rs</code></td><td>请求时重水合、信任层级框架、跨会话门禁、失效保留</td><td>9</td></tr>
-    <tr><td><code>paths.rs</code></td><td>路径改写（最长优先）、脱敏、读取/搜索/执行命令分类</td><td>10</td></tr>
-    <tr><td><code>export_guard.rs</code></td><td>出站明文检测与回复脱敏（整段/整行/前缀/完整短行、幂等）</td><td>13</td></tr>
-    <tr><td><code>audit.rs</code></td><td>审计事件类型与 JSONL 序列化、10MB 轮转</td><td>4</td></tr>
-    <tr><td><code>runtime.rs</code></td><td>解密编排、幂等复用、TTL sweep、重水合、路径改写、脱敏、审计</td><td>23</td></tr>
+    <tr><td><code>paths.rs</code></td><td>路径改写（最长优先）、脱敏、文件目标解析、命令分类与脚本排除注入</td><td>16</td></tr>
+    <tr><td><code>export_guard.rs</code></td><td>出站明文检测与回复脱敏（整段/整行/前缀/完整短行/引号片段、幂等）</td><td>19</td></tr>
+    <tr><td><code>audit.rs</code></td><td>审计事件类型与 JSONL 序列化、10MB 轮转</td><td>6</td></tr>
+    <tr><td><code>runtime.rs</code></td><td>解密编排、幂等复用、TTL sweep、重水合、路径改写/反改写、脱敏、审计</td><td>18</td></tr>
   </table>
-  <p class="prose" style="font-size:.9rem;color:var(--ink-soft)">合计 95 单测全绿；core-skills 131/131、guard 25/25、集成 10/10、config 229/229、app-server-protocol 277、core lib 2146 过（3 个并行偶发/环境项单独重跑全绿）[K1][K8]。</p>
+  <p class="prose" style="font-size:.9rem;color:var(--ink-soft)">合计 <b>103</b> 单测全绿；core-skills 131/131、guard 41/41、集成 11/11、config 229/229、app-server-protocol 277、core lib 2164 过（3 个并行偶发/环境项单独重跑全绿）[K1][K8]。</p>
 
-  <h3>6.2 关键修复与加固（深度 Review 轮次）</h3>
+  <h3>6.3 关键修复与加固（深度 Review 轮次）</h3>
   <div class="grid2">
     <div class="card"><span class="hl">回复明文硬脱敏</span><p>durable 边界 → 短行完整行 → 模型流入口三级补盲；E2E 断言 rollout 只含 <code>[REDACTED]</code>。</p></div>
     <div class="card"><span class="hl">引号片段脱敏增强</span><p>「long sensitive line」等中段引用（≥12 字符，引号包裹）→ <code>[REDACTED]</code>，覆盖截断引用绕过。</p></div>
@@ -842,7 +851,7 @@ sequenceDiagram
     <div class="card"><span class="hl">元数据字段编译修复</span><p>新增必填字段导致的 13 处构造点已补齐，workspace 全目标编译通过。</p></div>
   </div>
 
-  <h3>6.3 配置与 schema</h3>
+  <h3>6.4 配置与 schema</h3>
   <table>
     <tr><th>配置项（[encrypted_skills]）</th><th>默认</th><th>说明</th></tr>
     <tr><td><code>sdk</code></td><td><code>unavailable</code></td><td>真实 SDK 接入前 fail-closed；TestZip 仅测试</td></tr>
@@ -852,7 +861,7 @@ sequenceDiagram
   </table>
   <div class="prose"><p>app-server v2 的 SkillMetadata 同步增加可选字段 <code>encrypted / encryption</code>（serde default），schema 已重生成 [K1]。</p></div>
 
-  <h3>6.4 文档与工程产物</h3>
+  <h3>6.5 文档与工程产物</h3>
   <div class="prose">
     <ul>
       <li>实现报告：<code>analysis/FM_AGENT_SECURITY_IMPLEMENTATION_REPORT.md</code>（§1–§19，含部署清单与深审结论）[K1]</li>
@@ -860,6 +869,46 @@ sequenceDiagram
       <li>单页方法论 Skill：<code>html-report</code>（个人技能目录，本分支不跟踪）[K9]</li>
     </ul>
   </div>
+
+  <h3>6.6 npm 安装包（本地构建）</h3>
+  <div class="prose">
+    <p>基于当前分支构建的 <code>@openai/codex</code> 安装包（linux-x64）：</p>
+    <ul>
+      <li><b>构建</b>：<code>cargo build --release -p codex-cli --bin codex</code>（约 10.5 分钟）→ <code>codex-rs/target/release/codex</code>（strip 后约 397MB）；</li>
+      <li><b>打包</b>：按官方 <code>codex-cli/scripts/build_npm_package.py</code> 布局，把 <code>bin/codex.js</code> 与 <code>vendor/x86_64-unknown-linux-musl/bin/codex</code> 组织为本地 <code>@openai/codex</code> 包并 <code>npm pack</code> → <b><code>dist/npm/openai-codex-0.0.0-dev.tgz</code></b>（约 130MB，dist/ 已 gitignore，不入库）；</li>
+      <li><b>安装</b>：<code>npm install -g ./dist/npm/openai-codex-0.0.0-dev.tgz</code>；已验证：<code>npm install --prefix &lt;tmp&gt; &lt;tgz&gt;</code> 后 <code>.bin/codex --version</code> 输出 <code>codex-cli 0.0.0</code>；</li>
+      <li><b>说明</b>：本地二进制为 glibc 动态链接，置于官方 musl 名义目录（<code>bin/codex.js</code> 的 vendor 回退路径），适用于本容器/glibc 环境；正式发布需按官方 release 流程构建 musl 与多平台产物。</li>
+    </ul>
+  </div>
+
+  <h3>6.7 Codex 插件体系与源码修改说明</h3>
+  <div class="prose">
+    <p><b>Codex 插件体系</b>分三层：</p>
+    <ul>
+      <li><b>Extensions（codex-extension-api）</b>：ExtensionRegistry + contributors（config / turn_input / context / turn_item / thread_lifecycle），承载 web-search、skills 展示、image-generation、connectors 等外围能力；可注册工具、上下文片段与生命周期事件，但<b>不能改写核心请求形成与历史持久化</b>；</li>
+      <li><b>Hooks（hooks.toml）</b>：pre_tool_use / post_tool_use / session 事件，进程外、按工具名/字符串匹配，可拦截与改写工具入参，但<b>拿不到解密运行时状态</b>（注册表、路径映射、明文缓存、TTL）；</li>
+      <li><b>core-plugins</b>：skills/plugins 的分发与列举，不参与单次请求的解密/注入。</li>
+    </ul>
+    <p><b>为什么插件无法实现需求</b>：</p>
+    <ul>
+      <li>注入与重水合发生在 <code>build_skill_injections</code> 与 <code>Prompt::get_formatted_input_for_request</code>（core 内部关键路径），扩展 contributor 无法在“模型请求形成”边界做 Token→明文替换；</li>
+      <li>工具拦截需要按“脚本文件目标 + 执行白名单”分级并做路径改写，依赖会话注册表；hooks 无此状态且只能字符串匹配；</li>
+      <li>明文驻留面覆盖 ResponseItem / TurnItem / task_complete / compaction / rollout 多处持久化副本，分布在 session 与流处理内部，插件无法在每个落盘点做结构保证；</li>
+      <li>需要新增协议/元数据字段（<code>SkillMetadata.encrypted/encryption</code>、app-server v2）与配置（<code>[encrypted_skills]</code>），扩展 API 没有这些类型。</li>
+    </ul>
+    <p><b>为什么修改源码</b>：需求本质是在“模型请求形成”与“历史持久化”两个核心边界做结构保证，这些边界不是扩展点；因此采用<b>独立 crate + 有限薄接线</b>，把侵入控制在最小（核心仅接线点，加解密逻辑全部在 <code>codex-encrypted-skills</code> 内）。</p>
+    <p><b>修改了哪些源码</b>（按 crate）：</p>
+  </div>
+  <table>
+    <tr><th>Crate / 目录</th><th>文件</th><th>改动</th></tr>
+    <tr><td><code>codex-rs/encrypted-skills</code>（新增）</td><td>token / sdk / mem_root / cache / registry / rehydrate / paths / export_guard / audit / runtime</td><td>加解密核心：SDK 封装、Token、两级 TTL、路径改写/反改写、脱敏、审计、周期 sweep</td></tr>
+    <tr><td><code>codex-rs/core-skills</code></td><td>loader.rs · injection.rs · skill_instructions.rs · environment.rs</td><td>frontmatter 加密标记解析、加密分支解密、Token 化 body</td></tr>
+    <tr><td><code>codex-rs/skills</code></td><td>model.rs</td><td>SkillMetadata / EnvironmentSkillMetadata 增加 encrypted/encryption 字段</td></tr>
+    <tr><td><code>codex-rs/core</code></td><td>client_common.rs · session/mod.rs · session/session.rs · session/turn.rs · stream_events_utils.rs · encrypted_skills_guard.rs · encrypted_skills_periodic.rs · tools/registry.rs · codex_thread.rs · agent/control/spawn.rs · config/mod.rs · lib.rs</td><td>请求重水合、持久化脱敏、runtime 构建与周期 sweep、工具拦截/输出脱敏、fork 过滤、配置接线</td></tr>
+    <tr><td><code>codex-rs/config</code></td><td>config_toml.rs · core/config.schema.json</td><td>[encrypted_skills] 配置项与 schema</td></tr>
+    <tr><td><code>codex-rs/app-server-protocol</code></td><td>v2/plugin.rs</td><td>SkillMetadata 可选加密字段</td></tr>
+    <tr><td>示例/测试/工具</td><td>thread-manager-sample · ext/skills · tui · core/tests/suite/encrypted_skills.rs · Cargo.toml/Cargo.lock</td><td>构造点补齐、集成测试、zip deflate-only 依赖瘦身</td></tr>
+  </table>
 </section>
 
 <section id="sec-7">

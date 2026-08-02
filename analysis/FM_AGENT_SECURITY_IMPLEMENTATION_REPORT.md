@@ -375,3 +375,43 @@ TTL sweep 原只在 **turn 边界**（`build_skills_and_plugins`）执行——�
 - `just bazel-lock-update` 因 GitHub 下载 v8 源码握手失败无法本地执行；workspace crate 不影响 Bazel 模块锁，CI 会校验。
 - 本环境 `/tmp` 存在杂散 `.git` 目录，会导致 2 个既有 loader 测试失败（已移开验证归因），与本次改动无关。
 - OpenSpec change：`openspec/changes/encrypt-agent-security-skills/`（proposal / design / specs / tasks 全部完成，strict 校验通过）。
+
+## 20. npm 安装包（2026-08-02）
+
+- **构建**：`cargo build --release -p codex-cli --bin codex`（约 10.5 分钟）→ `codex-rs/target/release/codex`（strip 后约 397MB，`codex --version` = `codex-cli 0.0.0`）。
+- **打包**：按官方 `codex-cli/scripts/build_npm_package.py` 布局，将 `bin/codex.js` 与 `vendor/x86_64-unknown-linux-musl/bin/codex` 组织为本地 `@openai/codex` 包并 `npm pack` → `dist/npm/openai-codex-0.0.0-dev.tgz`（约 130MB；`dist/` 已 gitignore，不入库）。
+- **验证**：`npm install --prefix <tmp> <tgz>` 后 `.bin/codex --version` = `codex-cli 0.0.0`。
+- **说明**：本地二进制为 glibc 动态链接，置于官方 musl 名义目录（`bin/codex.js` 的 vendor 回退路径），适用于本容器/glibc 环境；正式发布需按官方 release 流程构建 musl 与多平台产物。
+
+## 21. Codex 插件体系与源码修改说明（2026-08-02）
+
+### Codex 插件体系
+
+| 层 | 机制 | 能力 | 边界 |
+|---|---|---|---|
+| Extensions | `codex-extension-api`：ExtensionRegistry + contributors（config/turn_input/context/turn_item/thread_lifecycle） | web-search、skills 展示、image-generation、connectors 等外围能力；注册工具、上下文片段、生命周期事件 | 不能改写核心请求形成与历史持久化 |
+| Hooks | `hooks.toml`：pre_tool_use / post_tool_use / session 事件 | 按工具名/字符串匹配拦截与改写工具入参 | 拿不到解密运行时状态（注册表、路径映射、明文缓存、TTL） |
+| core-plugins | skills/plugins 分发与列举 | 安装/列举 | 不参与单次请求解密/注入 |
+
+### 为什么插件无法实现需求
+
+1. **注入与重水合在核心路径**：`build_skill_injections`（core-skills 内部）与 `Prompt::get_formatted_input_for_request`（client_common 内部），扩展 contributor 无法在“模型请求形成”边界做 Token→明文替换；
+2. **工具拦截依赖会话注册表**：按“脚本文件目标 + 执行白名单”分级、路径改写、已知明文判断都需要 `EncryptedSkillRuntime` 状态；hooks 无此状态且只能字符串匹配；
+3. **明文驻留面在 core 内部**：ResponseItem / TurnItem / task_complete / compaction / rollout 多处持久化副本分布在 session 与流处理内部，插件无法在每个落盘点做结构保证；
+4. **需要新协议/配置类型**：`SkillMetadata.encrypted/encryption`、app-server v2 字段、`[encrypted_skills]` 配置，扩展 API 没有这些类型。
+
+### 为什么修改源码
+
+需求本质是在“模型请求形成”与“历史持久化”两个核心边界做**结构保证**（而非提示词/字符串级软约束），这两个边界不是 Codex 的扩展点。因此采用**独立 crate + 有限薄接线**：加解密逻辑全部收敛在 `codex-encrypted-skills`（不依赖 core），core 只保留注入、重水合、拦截、清理等少量接线点。
+
+### 修改了哪些源码
+
+| Crate / 目录 | 文件 | 改动 |
+|---|---|---|
+| `codex-rs/encrypted-skills`（新增） | token / sdk / mem_root / cache / registry / rehydrate / paths / export_guard / audit / runtime | 加解密核心：SDK、Token、两级 TTL、路径改写/反改写、脱敏、审计、周期 sweep |
+| `codex-rs/core-skills` | loader.rs · injection.rs · skill_instructions.rs · environment.rs | frontmatter 加密标记、加密分支解密、Token 化 body |
+| `codex-rs/skills` | model.rs | SkillMetadata / EnvironmentSkillMetadata 加密字段 |
+| `codex-rs/core` | client_common.rs · session/mod.rs · session/session.rs · session/turn.rs · stream_events_utils.rs · encrypted_skills_guard.rs · encrypted_skills_periodic.rs · tools/registry.rs · codex_thread.rs · agent/control/spawn.rs · config/mod.rs · lib.rs | 请求重水合、持久化脱敏、runtime 构建与周期 sweep、工具拦截/输出脱敏、fork 过滤、配置接线 |
+| `codex-rs/config` | config_toml.rs · core/config.schema.json | [encrypted_skills] 配置与 schema |
+| `codex-rs/app-server-protocol` | v2/plugin.rs | SkillMetadata 可选加密字段 |
+| 示例/测试/工具 | thread-manager-sample · ext/skills · tui · core/tests/suite/encrypted_skills.rs · Cargo.toml/Cargo.lock | 构造点补齐、集成测试、zip deflate-only |

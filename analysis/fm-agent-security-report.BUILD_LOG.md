@@ -1,4 +1,4 @@
-# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v10）
+# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v11）
 
 ## 数据故事
 - 事实源：`FM_AGENT_SECURITY_IMPLEMENTATION_REPORT.md`（§1–§19）为主，OpenSpec change、测试结果与核心代码文件为辅；所有关键数字与报告一致（95/25/10/2146、600s/1800s、64 条/8MiB、4MiB、10MB）。
@@ -132,6 +132,13 @@
 - §0 数字（guard 41/41、crate 103/103、core lib 2164）；
 - §2.2 ⑤ guard 矩阵改“目标类型 + 执行白名单”描述（含 lsd/eza/tree/fd）；
 - §6.2 加固卡同步；在线/离线双版本 check_report 全过。
+
+## v11 更新（2026-08-02 · npm 安装包 + 插件体系/源码修改说明）
+
+- **npm 安装包**：`cargo build --release -p codex-cli --bin codex`（10m34s）→ `codex-rs/target/release/codex`（strip 后 397MB）；按官方布局打包 → `dist/npm/openai-codex-0.0.0-dev.tgz`（130MB，dist/ gitignore 不入库）；`npm install` 后 `.bin/codex --version` = `codex-cli 0.0.0` 已验证。说明：glibc 二进制置于 musl 名义目录，正式发布需官方多平台流程。
+- **§6 重构（详略得当、突出重点）**：新增 6.1 实现状态一览（能力/质量/部署/交付四行重点表）；模块单测数字按实际更新（token 7 / sdk 3 / mem_root 10 / cache 7 / registry 8 / rehydrate 9 / paths 16 / export_guard 19 / audit 6 / runtime 18 = 103）；6.6 npm 安装包；6.7 Codex 插件体系与源码修改说明（Extensions/Hooks/core-plugins 三层、四点插件无法实现的原因、独立 crate+薄接线策略、按 crate 的修改面清单）。
+- **Markdown 实现报告**追加 §20（npm 安装包）与 §21（插件体系与源码修改说明）。
+- 在线/离线双版本 check_report 全过。
 
 ## 主题原子
 「加密信封 → 请求瞬间可见 → TTL 即消失」：封面用 SKILL 巨型背景字，架构图以明文路径（loader→runtime→/dev/shm→rehydrate→LLM）为唯一高亮链，其余链路全部 Token/脱敏灰化。

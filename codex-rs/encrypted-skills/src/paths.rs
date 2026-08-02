@@ -96,6 +96,79 @@ pub fn is_script_execution(cmd: &str) -> bool {
     })
 }
 
+/// True when `path` ends in a script extension.
+pub fn is_script_file(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    SCRIPT_EXTENSIONS.iter().any(|ext| lower.ends_with(ext))
+}
+
+/// Returns non-flag, non-redirection file-like tokens in a command, excluding
+/// the command name itself.
+pub fn file_targets(cmd: &str) -> Vec<&str> {
+    let tokens: Vec<&str> = cmd.split_whitespace().collect();
+    let mut out = Vec::new();
+    let mut skip_next = false;
+    for (index, token) in tokens.iter().enumerate() {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        match *token {
+            ">" | ">>" | "<" | "2>" | "2>>" | "1>" | "1>>" | "&>" | "&>>" => {
+                skip_next = true;
+                continue;
+            }
+            "|" | "||" | "&&" | ";" => continue,
+            _ => {}
+        }
+        if index == 0 || token.starts_with('-') {
+            continue;
+        }
+        // Embedded redirections like `2>/dev/null` carry no file target of
+        // interest for script detection.
+        if token.contains('>')
+            && (token.starts_with('>')
+                || token
+                    .as_bytes()
+                    .first()
+                    .is_some_and(|byte| byte.is_ascii_digit() || *byte == b'&'))
+        {
+            continue;
+        }
+        out.push(*token);
+    }
+    out
+}
+
+/// True when a read/search command targets at least one script file.
+pub fn command_targets_script(cmd: &str) -> bool {
+    file_targets(cmd)
+        .iter()
+        .any(|target| is_script_file(target))
+}
+
+/// True when the command is a recursive grep/rg search (rg recurses by
+/// default).
+pub fn is_recursive_search(cmd: &str) -> bool {
+    if command_basenames(cmd).any(|name| name == "rg") {
+        return true;
+    }
+    cmd.split_whitespace().any(|token| {
+        (token == "-r" || token == "-R" || token == "--recursive")
+            || ((token.starts_with("-r") || token.starts_with("-R")) && token.len() > 2)
+    })
+}
+
+/// Appends script-extension exclusions so a recursive grep/rg never emits
+/// script source lines.
+pub fn inject_script_exclusions(cmd: &str) -> String {
+    let exclusions: Vec<String> = SCRIPT_EXTENSIONS
+        .iter()
+        .map(|ext| format!("--exclude='*{ext}'"))
+        .collect();
+    format!("{cmd} {}", exclusions.join(" "))
+}
+
 /// True when a command mentions the memory root or any known decrypted dir.
 pub fn command_references_dir(cmd: &str, decrypted_dirs: &[String]) -> bool {
     if cmd.contains(MEM_ROOT) {

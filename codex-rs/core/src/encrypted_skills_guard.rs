@@ -87,39 +87,35 @@ fn guard_shell(
         .collect();
     let mut guarded_paths = dirs;
     guarded_paths.push(runtime.mem_root().to_string_lossy().into_owned());
-    if paths::command_references_dir(command, &guarded_paths)
-        && (paths::is_read_command(command) || paths::is_search_command(command))
-    {
-        return GuardDecision::Blocked {
-            message: BLOCK_MESSAGE.to_string(),
-            reason: if paths::is_read_command(command) {
-                "direct_read"
-            } else {
-                "search_probe"
-            },
-        };
-    }
     let rewritten = runtime.rewrite_paths(session_id, command);
-    if rewritten == command {
+    // 脚本执行始终允许（原目录 → 解密目录改写后执行）。
+    if paths::is_script_execution(command) {
+        return updated_command(tool_input, rewritten);
+    }
+    if paths::is_read_command(command) || paths::is_search_command(command) {
+        // 脚本内容禁止看到：任何脚本文件目标 → Blocked（文本/md/txt 放行）。
+        if paths::command_targets_script(&rewritten) {
+            return GuardDecision::Blocked {
+                message: BLOCK_MESSAGE.to_string(),
+                reason: "script_source",
+            };
+        }
+        // 递归 grep/rg 命中解密目录时注入脚本扩展名排除，避免搜索结果带出脚本源码。
+        if paths::command_references_dir(&rewritten, &guarded_paths)
+            && paths::is_recursive_search(&rewritten)
+        {
+            return updated_command(tool_input, paths::inject_script_exclusions(&rewritten));
+        }
+    }
+    updated_command(tool_input, rewritten)
+}
+
+fn updated_command(tool_input: &Value, command: String) -> GuardDecision {
+    if tool_input.get("command").and_then(Value::as_str) == Some(command.as_str()) {
         return GuardDecision::Allow;
     }
-    // An original-path read/search is rewritten to the decrypted directory;
-    // re-check the rewritten command so `cat /skills/foo/SKILL.md` cannot
-    // bypass the read block by going through the path rewrite.
-    if (paths::is_read_command(command) || paths::is_search_command(command))
-        && paths::command_references_dir(&rewritten, &guarded_paths)
-    {
-        return GuardDecision::Blocked {
-            message: BLOCK_MESSAGE.to_string(),
-            reason: if paths::is_read_command(command) {
-                "direct_read"
-            } else {
-                "search_probe"
-            },
-        };
-    }
     let mut updated = tool_input.clone();
-    updated["command"] = Value::String(rewritten);
+    updated["command"] = Value::String(command);
     GuardDecision::Updated(updated)
 }
 
@@ -355,11 +351,20 @@ pub(crate) fn redact_turn_item(
 pub(crate) struct RedactingToolOutput {
     pub(crate) inner: Box<dyn ToolOutput>,
     pub(crate) runtime: Arc<EncryptedSkillRuntime>,
+    pub(crate) session_id: String,
 }
 
 impl RedactingToolOutput {
     fn redact_text(&self, text: &str) -> String {
-        self.runtime.redact(text)
+        // 解密目录路径改写回原目录（agent 可读脚本名/原路径，不暴露 /dev/shm）；
+        // 未知 mem root 子路径仍以 [REDACTED] 兜底。
+        let mut out = self.runtime.unrewrite_paths(&self.session_id, text);
+        let root = self.runtime.mem_root().to_string_lossy();
+        out = paths::redact_path_prefix(&out, root.as_ref());
+        if root.as_ref() != paths::MEM_ROOT {
+            out = paths::redact_path_prefix(&out, paths::MEM_ROOT);
+        }
+        out
     }
 
     fn redact_payload(&self, payload: &mut FunctionCallOutputPayload) {

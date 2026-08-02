@@ -274,7 +274,7 @@ async fn build_test_with_encrypted_skill(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn direct_read_of_decrypted_storage_is_blocked() -> Result<()> {
+async fn direct_read_of_decrypted_script_is_blocked() -> Result<()> {
     skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
     skip_if_no_network!(Ok(()));
 
@@ -288,7 +288,7 @@ async fn direct_read_of_decrypted_storage_is_blocked() -> Result<()> {
                 "call-1",
                 "shell_command",
                 &serde_json::to_string(&serde_json::json!({
-                    "command": "cat /dev/shm/fm-agent-security/whatever/SKILL.md"
+                    "command": "cat /dev/shm/fm-agent-security/whatever/scripts/build.sh"
                 }))?,
             ),
             ev_assistant_message("msg-1", "done"),
@@ -320,7 +320,7 @@ async fn direct_read_of_decrypted_storage_is_blocked() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn exec_command_direct_read_is_blocked_by_the_same_guard() -> Result<()> {
+async fn exec_command_direct_script_read_is_blocked_by_the_same_guard() -> Result<()> {
     skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
     skip_if_no_network!(Ok(()));
 
@@ -334,7 +334,7 @@ async fn exec_command_direct_read_is_blocked_by_the_same_guard() -> Result<()> {
                 "call-1",
                 "exec_command",
                 &serde_json::to_string(&serde_json::json!({
-                    "cmd": "cat /dev/shm/fm-agent-security/whatever/SKILL.md"
+                    "cmd": "cat /dev/shm/fm-agent-security/whatever/scripts/build.sh"
                 }))?,
             ),
             ev_assistant_message("msg-1", "done"),

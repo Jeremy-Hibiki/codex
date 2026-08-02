@@ -115,3 +115,39 @@ fn command_references_decrypted_dir() {
     ));
     assert!(!command_references_dir("bash /tmp/run.sh", &dirs));
 }
+
+#[test]
+fn file_targets_skip_flags_and_redirections() {
+    assert_eq!(
+        file_targets("cat -n /x/a.md > /tmp/out.txt"),
+        vec!["/x/a.md"]
+    );
+    assert_eq!(file_targets("head -5 /x/b.sh 2>/dev/null"), vec!["/x/b.sh"]);
+}
+
+#[test]
+fn command_targets_script_detects_script_files() {
+    assert!(command_targets_script("cat /x/scripts/run.py"));
+    assert!(command_targets_script("head /x/scripts/build.sh"));
+    assert!(!command_targets_script("cat /x/notes.md"));
+    assert!(!command_targets_script("ls /x/scripts"));
+    // Execution is excluded at the guard level, not at the token level.
+    assert!(command_targets_script("bash /x/scripts/run.py"));
+}
+
+#[test]
+fn recursive_search_detected_for_grep_and_rg() {
+    assert!(is_recursive_search("grep -r secret /x"));
+    assert!(is_recursive_search("grep -rn secret /x"));
+    assert!(is_recursive_search("rg secret /x"));
+    assert!(!is_recursive_search("grep secret /x/notes.md"));
+    assert!(!is_recursive_search("ls /x"));
+}
+
+#[test]
+fn script_exclusions_injected_for_recursive_search() {
+    let out = inject_script_exclusions("grep -r secret /x");
+    assert!(out.contains("--exclude='*.sh'"));
+    assert!(out.contains("--exclude='*.py'"));
+    assert!(out.starts_with("grep -r secret /x"));
+}

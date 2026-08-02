@@ -291,6 +291,39 @@ fn redact_response_item_text(item: &mut ResponseItem, known: &[&str]) {
     }
 }
 
+/// Redacts known skill plaintext from tool-output text for durable surfaces
+/// (rollout and the client stream). In-memory history keeps the original text
+/// so the model can keep using skill-provided content across turns; the
+/// persisted copy never contains plaintext.
+pub(crate) fn redact_tool_output_plaintext_for_persistence(
+    runtime: &EncryptedSkillRuntime,
+    session_id: &str,
+    mut item: ResponseItem,
+) -> ResponseItem {
+    let known = runtime.known_plaintexts(session_id);
+    if known.is_empty() {
+        return item;
+    }
+    let known: Vec<&str> = known.iter().map(String::as_str).collect();
+    match &mut item {
+        ResponseItem::FunctionCallOutput { output, .. }
+        | ResponseItem::CustomToolCallOutput { output, .. } => match &mut output.body {
+            FunctionCallOutputBody::Text(text) => {
+                *text = export_guard::redact_known_plaintext(text, &known);
+            }
+            FunctionCallOutputBody::ContentItems(items) => {
+                for content in items {
+                    if let FunctionCallOutputContentItem::InputText { text } = content {
+                        *text = export_guard::redact_known_plaintext(text, &known);
+                    }
+                }
+            }
+        },
+        _ => {}
+    }
+    item
+}
+
 fn contains_redactable_text(item: &ResponseItem) -> bool {
     match item {
         ResponseItem::Message { role, content, .. } => {

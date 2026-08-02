@@ -3302,7 +3302,13 @@ impl Session {
     async fn persist_rollout_response_items(&self, items: &[ResponseItem]) {
         let rollout_items: Vec<RolloutItem> = items
             .iter()
-            .cloned()
+            .map(|item| {
+                crate::encrypted_skills_guard::redact_tool_output_plaintext_for_persistence(
+                    &self.services.encrypted_skills_runtime,
+                    &self.thread_id.to_string(),
+                    item.clone(),
+                )
+            })
             .map(RolloutItem::ResponseItem)
             .collect();
         self.persist_rollout_items(&rollout_items).await;
@@ -3349,9 +3355,14 @@ impl Session {
     #[tracing::instrument(level = "trace", skip_all, fields(item_count = items.len()))]
     async fn send_raw_response_items(&self, turn_context: &TurnContext, items: &[ResponseItem]) {
         for item in items {
+            let item = crate::encrypted_skills_guard::redact_tool_output_plaintext_for_persistence(
+                &self.services.encrypted_skills_runtime,
+                &self.thread_id.to_string(),
+                item.clone(),
+            );
             self.send_event(
                 turn_context,
-                EventMsg::RawResponseItem(RawResponseItemEvent { item: item.clone() }),
+                EventMsg::RawResponseItem(RawResponseItemEvent { item }),
             )
             .await;
         }

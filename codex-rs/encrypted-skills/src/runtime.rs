@@ -365,6 +365,24 @@ impl EncryptedSkillRuntime {
         rewrite_skill_paths(text, &mappings)
     }
 
+    /// Rewrites decrypted directories back to their original skill paths for
+    /// tool output, so the model can see file names and reuse original paths
+    /// without ever observing the /dev/shm location.
+    pub fn unrewrite_paths(&self, session_id: &str, text: &str) -> String {
+        let mappings: Vec<(PathBuf, PathBuf)> = self
+            .registry
+            .lock()
+            .map_err(lock_error)
+            .map(|registry| {
+                registry
+                    .skills_for_session(session_id)
+                    .map(|record| (record.dir.clone(), record.original_dir.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        rewrite_skill_paths(text, &mappings)
+    }
+
     /// Redacts decrypted storage paths from tool output text.
     pub fn redact(&self, text: &str) -> String {
         let root = self.mem_root.to_string_lossy();

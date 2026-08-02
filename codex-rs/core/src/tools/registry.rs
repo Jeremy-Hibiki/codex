@@ -742,6 +742,7 @@ impl ToolRegistry {
                 result.result = Box::new(crate::encrypted_skills_guard::RedactingToolOutput {
                     inner: result.result,
                     runtime: Arc::clone(&invocation.session.services.encrypted_skills_runtime),
+                    session_id: invocation.session.thread_id.to_string(),
                 });
                 dispatch_trace.record_completed(
                     &invocation,

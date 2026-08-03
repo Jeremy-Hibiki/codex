@@ -1,4 +1,4 @@
-# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v11）
+# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v12）
 
 ## 数据故事
 - 事实源：`FM_AGENT_SECURITY_IMPLEMENTATION_REPORT.md`（§1–§19）为主，OpenSpec change、测试结果与核心代码文件为辅；所有关键数字与报告一致（95/25/10/2146、600s/1800s、64 条/8MiB、4MiB、10MB）。
@@ -138,6 +138,17 @@
 - **npm 安装包**：`cargo build --release -p codex-cli --bin codex`（10m34s）→ `codex-rs/target/release/codex`（strip 后 397MB）；按官方布局打包 → `dist/npm/openai-codex-0.0.0-dev.tgz`（130MB，dist/ gitignore 不入库）；`npm install` 后 `.bin/codex --version` = `codex-cli 0.0.0` 已验证。说明：glibc 二进制置于 musl 名义目录，正式发布需官方多平台流程。
 - **§6 重构（详略得当、突出重点）**：新增 6.1 实现状态一览（能力/质量/部署/交付四行重点表）；模块单测数字按实际更新（token 7 / sdk 3 / mem_root 10 / cache 7 / registry 8 / rehydrate 9 / paths 16 / export_guard 19 / audit 6 / runtime 18 = 103）；6.6 npm 安装包；6.7 Codex 插件体系与源码修改说明（Extensions/Hooks/core-plugins 三层、四点插件无法实现的原因、独立 crate+薄接线策略、按 crate 的修改面清单）。
 - **Markdown 实现报告**追加 §20（npm 安装包）与 §21（插件体系与源码修改说明）。
+- 在线/离线双版本 check_report 全过。
+
+## v12 更新（2026-08-03 · 章节结构调整）
+
+- **修复顶栏重复**：nav 中 §0 摘要链接出现两次（一个带 class="on"、一个普通），已删除重复项。
+- **插件体系与源码修改独立成章（§3）**：从原 §6.7 提取，插入方案设计（§2）与总体架构（原 §3）之间，单独成章节：
+  - 3.1 Codex 插件体系（Extensions / Hooks / core-plugins 三层与边界）；
+  - 3.2 为什么插件无法实现需求（四个原因）；
+  - 3.3 为什么修改源码（核心边界非扩展点、独立 crate + 薄接线）；
+  - 3.4 修改了哪些源码（按 crate 修改面清单表）。
+- **章节顺延**：总体架构 §3→§4、核心流程 §4→§5、多轮场景 §5→§6、实现与验证 §6→§7、部署与运维 §7→§8；h3 编号、nav、chips、正文引用（多轮场景 §5→§6）全部同步。
 - 在线/离线双版本 check_report 全过。
 
 ## 主题原子

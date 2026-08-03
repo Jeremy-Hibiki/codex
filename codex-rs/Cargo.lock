@@ -2410,6 +2410,7 @@ dependencies = [
  "codex-utils-path",
  "codex-windows-sandbox",
  "crossterm",
+ "fm-license",
  "futures",
  "http 1.4.0",
  "insta",
@@ -6328,6 +6329,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fm-license"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "lmclient-rust-sdk",
+ "pretty_assertions",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8897,6 +8907,14 @@ name = "litrs"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
+
+[[package]]
+name = "lmclient-rust-sdk"
+version = "1.2.0"
+source = "git+http://192.168.131.126:8089/jiangzhengqi/lmclient-rust-sdk.git?tag=v1.2.0#c49257a2936508fba488984065a9c62ea08aaf71"
+dependencies = [
+ "clap",
+]
 
 [[package]]
 name = "local-waker"

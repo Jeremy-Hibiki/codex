@@ -998,6 +998,19 @@ async fn cli_main(
         profile_v2_for_subcommand(&interactive, subcommand)?;
     }
 
+    // Verify the product license before entering any of the main product
+    // flows (interactive, exec, review). The FMSH LMCLIENT SDK only ships a
+    // CentOS 7 / x86_64 static library, so other targets skip the check.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    let _license_guard = match subcommand.as_ref() {
+        None | Some(Subcommand::Exec(_)) | Some(Subcommand::Review(_)) => {
+            fm_license::verify_at_startup()?
+        }
+        _ => None,
+    };
+    #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
+    let _license_guard: Option<()> = None;
+
     match subcommand {
         None => {
             prepend_config_flags(

@@ -1,4 +1,4 @@
-# FM Agent Security — 实现成果与安全报告
+# FM Agent Security — V2 实现成果与安全报告
 
 > 日期：2026-07-31（v2）· 对应 OpenSpec change：`encrypt-agent-security-skills`（35/35 任务完成，strict 校验通过）
 > 前序设计：`FM_AGENT_SECURITY_SKILL_ENCRYPTION_IMPLEMENTATION.md`（v2.0 主 Agent + Token 重水合）

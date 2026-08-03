@@ -1,4 +1,4 @@
-# BUILD_LOG · 加密 Skill V2 实施报告（v15）
+# BUILD_LOG · 加密 Skill V2 实施报告（v16）
 
 ## 数据故事
 - 事实源：`FM_AGENT_SECURITY_IMPLEMENTATION_REPORT_V2.md`（§1–§19）为主，OpenSpec change、测试结果与核心代码文件为辅；所有关键数字与报告一致（95/25/10/2146、600s/1800s、64 条/8MiB、4MiB、10MB）。
@@ -202,4 +202,11 @@
 
 - HTML 报告重命名为中文并明确 V2：`analysis/加密Skill_V2实施报告.html`（在线）、`加密Skill_V2实施报告.offline.html`（离线）、`加密Skill_V2实施报告.BUILD_LOG.md`；
 - `<title>`、hero kicker、导航 brand 同步为「V2 实施报告」；在线版 footer 的离线版文件名引用同步；
+- 在线/离线双版本 check_report 全过。
+
+## v16 更新（2026-08-03 · CDN 换 npmmirror）
+
+- 在线版 Mermaid CDN 由 jsdelivr 换为淘宝镜像：`https://registry.npmmirror.com/mermaid/11.16.0/files/dist/mermaid.min.js`（npmmirror 文件路径格式为 `<pkg>/<version>/files/<path>`；已实测 200 且与 jsdelivr 内容逐字节一致）；
+- footer 文案同步标注「npmmirror CDN」；
+- 离线版用 npmmirror 源重新生成（内嵌 base64，内容一致）；
 - 在线/离线双版本 check_report 全过。

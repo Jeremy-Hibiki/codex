@@ -1,7 +1,7 @@
-# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v13）
+# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v14）
 
 ## 数据故事
-- 事实源：`FM_AGENT_SECURITY_IMPLEMENTATION_REPORT.md`（§1–§19）为主，OpenSpec change、测试结果与核心代码文件为辅；所有关键数字与报告一致（95/25/10/2146、600s/1800s、64 条/8MiB、4MiB、10MB）。
+- 事实源：`FM_AGENT_SECURITY_IMPLEMENTATION_REPORT_V2.md`（§1–§19）为主，OpenSpec change、测试结果与核心代码文件为辅；所有关键数字与报告一致（95/25/10/2146、600s/1800s、64 条/8MiB、4MiB、10MB）。
 - 支撑轴：主 Agent 方案与 V1 子代理隔离的差异 → 回复明文硬脱敏补齐；两级 TTL 满足常驻部署；fail-closed SDK 保障部署期。
 - 冲突口径：V2 设计设想的 SQLite 缓存/Ukey 与本项目取舍并列呈现（§1.4），未取单一叙事。
 - 删除规则：未核实的性能数字与无日期宣称未入渲染层。
@@ -160,6 +160,12 @@
   - 审计日志：默认 `<temp>/fm_skill_security_audit.log`（可配置 audit_path），JSONL 10MB 轮转；
   - 配置、日志/遥测（**注意**：改写后工具命令可能含解密路径，敏感字段脱敏未实现）、skill 包原目录（密文）、内存 cache/registry。
 - Markdown 实现报告同步追加 §22 存储一览表。
+- 在线/离线双版本 check_report 全过。
+
+## v14 更新（2026-08-03 · 实施报告重命名 V2）
+
+- Markdown 实施报告重命名为 `analysis/FM_AGENT_SECURITY_IMPLEMENTATION_REPORT_V2.md`（git mv），标题同步为「V2 实现成果与安全报告」；
+- HTML 在线/离线报告与 BUILD_LOG 中的引用路径全部同步更新；
 - 在线/离线双版本 check_report 全过。
 
 ## 主题原子

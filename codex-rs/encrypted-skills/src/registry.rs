@@ -1,4 +1,4 @@
-//! Session-scoped decrypted skill registry with two-tier TTL.
+//! Session-scoped decrypted skill registry with a skill-level idle TTL.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -43,14 +43,12 @@ pub struct EvictedSkill {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TtlConfig {
     pub skill_idle: Duration,
-    pub thread_idle: Duration,
 }
 
 impl Default for TtlConfig {
     fn default() -> Self {
         Self {
             skill_idle: Duration::from_secs(600),
-            thread_idle: Duration::from_secs(1800),
         }
     }
 }
@@ -60,7 +58,6 @@ impl Default for TtlConfig {
 /// job (see `mem_root::secure_wipe`).
 pub struct Registry {
     skills: HashMap<String, HashMap<String, SkillRecord>>,
-    session_activity: HashMap<String, u64>,
     clock: Arc<dyn Clock>,
     ttl: TtlConfig,
 }
@@ -69,7 +66,6 @@ impl Registry {
     pub fn new(clock: Arc<dyn Clock>, ttl: TtlConfig) -> Self {
         Self {
             skills: HashMap::new(),
-            session_activity: HashMap::new(),
             clock,
             ttl,
         }
@@ -84,7 +80,6 @@ impl Registry {
         token: String,
     ) {
         let now = self.clock.now_millis();
-        self.session_activity.insert(session_id.to_string(), now);
         let record = SkillRecord {
             dir,
             original_dir,
@@ -139,7 +134,6 @@ impl Registry {
     /// Refreshes the skill's `last_used_at` and the session's activity.
     pub fn touch_skill(&mut self, session_id: &str, skill_name: &str) {
         let now = self.clock.now_millis();
-        self.session_activity.insert(session_id.to_string(), now);
         if let Some(record) = self
             .skills
             .get_mut(session_id)
@@ -147,11 +141,6 @@ impl Registry {
         {
             record.last_used_at = now;
         }
-    }
-
-    pub fn touch_session(&mut self, session_id: &str) {
-        let now = self.clock.now_millis();
-        self.session_activity.insert(session_id.to_string(), now);
     }
 
     /// Evicts skills whose idle time exceeds the skill-level TTL.
@@ -182,36 +171,13 @@ impl Registry {
         evicted
     }
 
-    /// Evicts every decrypted directory of threads idle beyond the
-    /// thread-level TTL, removing their registry entries.
-    pub fn sweep_expired_threads(&mut self) -> Vec<(String, Vec<PathBuf>)> {
-        let now = self.clock.now_millis();
-        let ttl = self.ttl.thread_idle.as_millis() as u64;
-        let mut expired = Vec::new();
-        for (session_id, activity) in &self.session_activity {
-            if now.saturating_sub(*activity) > ttl {
-                expired.push(session_id.clone());
-            }
-        }
-        expired
-            .into_iter()
-            .map(|session_id| {
-                let dirs = self.clear_thread(&session_id);
-                (session_id, dirs)
-            })
-            .collect()
-    }
-
     /// Removes one thread and returns the decrypted dirs that must be wiped.
     pub fn clear_thread(&mut self, session_id: &str) -> Vec<PathBuf> {
-        let dirs = self
-            .skills
+        self.skills
             .remove(session_id)
             .into_iter()
             .flat_map(|bucket| bucket.into_values().map(|record| record.dir))
-            .collect();
-        self.session_activity.remove(session_id);
-        dirs
+            .collect()
     }
 
     pub fn clear_all(&mut self) -> Vec<PathBuf> {
@@ -220,7 +186,6 @@ impl Registry {
             .drain()
             .flat_map(|(_, bucket)| bucket.into_values().map(|record| record.dir))
             .collect();
-        self.session_activity.clear();
         dirs
     }
 }

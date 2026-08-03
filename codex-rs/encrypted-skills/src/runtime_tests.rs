@@ -209,6 +209,21 @@ fn clear_thread_wipes_dirs_and_cache() {
 }
 
 #[test]
+fn unload_turn_wipes_dirs_and_cache() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let (runtime, _tmp) = test_runtime(sdk);
+    let token = runtime
+        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+        .unwrap();
+
+    runtime.unload_turn("t1");
+
+    assert_eq!(runtime.rehydrate(Some("t1"), &token), token);
+    assert!(runtime.known_plaintexts("t1").is_empty());
+    assert!(runtime.decrypted_dirs("t1").is_empty());
+}
+
+#[test]
 fn redact_reply_uses_session_known_plaintexts() {
     let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
     let (runtime, _tmp) = test_runtime(sdk);
@@ -239,7 +254,6 @@ fn sweep_evicts_skills_after_ttl_and_keeps_fresh_ones() {
         sdk,
         TtlConfig {
             skill_idle: Duration::from_secs(60),
-            thread_idle: Duration::from_secs(600),
         },
         tmp.path().join("mem-root"),
         clock.clone(),
@@ -356,7 +370,6 @@ fn audit_events_cover_skill_ttl_eviction() {
         sdk,
         TtlConfig {
             skill_idle: Duration::from_secs(60),
-            thread_idle: Duration::from_secs(600),
         },
         tmp.path().join("mem-root"),
         clock.clone(),
@@ -392,7 +405,6 @@ fn rehydration_hit_refreshes_skill_ttl() {
         sdk,
         TtlConfig {
             skill_idle: Duration::from_secs(60),
-            thread_idle: Duration::from_secs(600),
         },
         tmp.path().join("mem-root"),
         clock.clone(),
@@ -440,7 +452,6 @@ fn evicting_one_shared_content_skill_keeps_the_other_token_alive() {
         sdk,
         TtlConfig {
             skill_idle: Duration::from_secs(60),
-            thread_idle: Duration::from_secs(600),
         },
         tmp.path().join("mem-root"),
         clock.clone(),
@@ -476,7 +487,6 @@ fn request_rehydration_enforces_ttl_for_idle_skills() {
         sdk,
         TtlConfig {
             skill_idle: Duration::from_secs(60),
-            thread_idle: Duration::from_secs(600),
         },
         tmp.path().join("mem-root"),
         clock.clone(),

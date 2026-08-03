@@ -52,7 +52,6 @@ async fn periodic_sweep_unloads_idle_skill_without_requests() {
         Arc::new(PeriodicSweepSdk),
         TtlConfig {
             skill_idle: Duration::from_secs(5),
-            thread_idle: Duration::from_secs(600),
         },
         tmp.path().join("mem-root"),
         clock.clone(),
@@ -92,7 +91,6 @@ async fn periodic_sweep_keeps_fresh_skills_loaded() {
         Arc::new(PeriodicSweepSdk),
         TtlConfig {
             skill_idle: Duration::from_secs(60),
-            thread_idle: Duration::from_secs(600),
         },
         tmp.path().join("mem-root"),
         clock.clone(),

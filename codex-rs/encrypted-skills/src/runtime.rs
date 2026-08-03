@@ -164,13 +164,6 @@ impl EncryptedSkillRuntime {
         }
     }
 
-    /// Refreshes the thread's activity timestamp.
-    pub fn touch_session(&self, session_id: &str) {
-        if let Ok(mut registry) = self.registry.lock() {
-            registry.touch_session(session_id);
-        }
-    }
-
     /// Rehydrates sentinel tokens owned by `owner_session` in `text`.
     pub fn rehydrate(&self, owner_session: Option<&str>, text: &str) -> String {
         let cache = self.cache.lock().map_err(lock_error);
@@ -184,8 +177,8 @@ impl EncryptedSkillRuntime {
     /// original base directory anchor. Never emits the decrypted path.
     pub fn rehydrate_framed(&self, owner_session: Option<&str>, text: &str) -> String {
         // Request-level TTL sweep: any model request activity also enforces
-        // the two-tier TTL, so long-idle threads on persistent servers do not
-        // keep decrypted content resident between turns.
+        // the skill TTL, so idle skills on long-lived processes do not keep
+        // decrypted content resident.
         self.sweep();
         let cache = match self.cache.lock() {
             Ok(cache) => cache,
@@ -246,17 +239,14 @@ impl EncryptedSkillRuntime {
         crate::export_guard::redact_known_plaintext(text, &known)
     }
 
-    /// Runs the two-tier TTL sweep and wipes evicted directories.
+    /// Runs the skill-level TTL sweep and wipes evicted directories.
     pub fn sweep(&self) {
-        let (skill_evictions, thread_evictions) = {
+        let skill_evictions = {
             let mut registry = match self.registry.lock() {
                 Ok(registry) => registry,
                 Err(_) => return,
             };
-            (
-                registry.sweep_expired_skills(),
-                registry.sweep_expired_threads(),
-            )
+            registry.sweep_expired_skills()
         };
         // Only drop cache entries that no remaining skill references. Two
         // skills with identical content share one token via cache dedup, so
@@ -286,25 +276,21 @@ impl EncryptedSkillRuntime {
         for (session_id, token) in &remove_from_cache {
             cache.remove(session_id, token);
         }
-        let mut removed = 0usize;
-        for (session_id, dirs) in &thread_evictions {
-            for dir in dirs {
-                let _ = secure_wipe(dir);
-                removed += 1;
-            }
-            cache.drop_session(session_id);
-        }
-        if removed > 0 {
-            self.emit(AuditEvent::Cleanup {
-                session_id: String::new(),
-                dirs_removed: removed,
-                reason: "thread_ttl_sweep".to_string(),
-            });
-        }
     }
 
     /// Immediately clears one thread's decrypted state (thread end).
     pub fn clear_thread(&self, session_id: &str) {
+        self.clear_session(session_id, "thread_end");
+    }
+
+    /// Unloads one thread's decrypted state at the end of a turn. Encrypted
+    /// skills do not carry plaintext across turns; re-mentioning a skill in a
+    /// later turn decrypts it again.
+    pub fn unload_turn(&self, session_id: &str) {
+        self.clear_session(session_id, "turn_end");
+    }
+
+    fn clear_session(&self, session_id: &str, reason: &str) {
         let dirs = self
             .registry
             .lock()
@@ -320,7 +306,7 @@ impl EncryptedSkillRuntime {
         self.emit(AuditEvent::Cleanup {
             session_id: session_id.to_string(),
             dirs_removed: dirs.len(),
-            reason: "thread_end".to_string(),
+            reason: reason.to_string(),
         });
     }
 

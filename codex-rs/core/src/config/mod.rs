@@ -4021,9 +4021,6 @@ impl Config {
                 skill_idle: std::time::Duration::from_secs(
                     cfg.encrypted_skills.skill_idle_ttl_secs.unwrap_or(600),
                 ),
-                thread_idle: std::time::Duration::from_secs(
-                    cfg.encrypted_skills.thread_idle_ttl_secs.unwrap_or(1800),
-                ),
             },
             encrypted_skills_audit_path: cfg
                 .encrypted_skills

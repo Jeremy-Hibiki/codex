@@ -991,12 +991,6 @@
           "format": "uint64",
           "minimum": 0.0,
           "type": "integer"
-        },
-        "thread_idle_ttl_secs": {
-          "description": "Thread-level idle TTL in seconds before all decrypted content of a thread is cleared.",
-          "format": "uint64",
-          "minimum": 0.0,
-          "type": "integer"
         }
       },
       "type": "object"
@@ -4997,7 +4991,7 @@
         }
       ],
       "default": {},
-      "description": "Encrypted-skill settings (SDK selection and TTLs)."
+      "description": "Encrypted-skill settings (SDK selection and skill TTL)."
     },
     "experimental_compact_prompt_file": {
       "$ref": "#/definitions/AbsolutePathBuf"

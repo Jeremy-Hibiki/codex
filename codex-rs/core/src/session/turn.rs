@@ -153,6 +153,30 @@ pub(crate) async fn run_turn(
     prewarmed_client_session: Option<ModelClientSession>,
     cancellation_token: CancellationToken,
 ) -> CodexResult<Option<String>> {
+    let result = run_turn_inner(
+        Arc::clone(&sess),
+        turn_context,
+        input,
+        prewarmed_client_session,
+        cancellation_token,
+    )
+    .await;
+    // Turn-end unload: encrypted-skill plaintext never outlives the turn that
+    // loaded it. The skill-level TTL sweep remains as a backstop for paths
+    // that bypass `run_turn` or terminate abnormally.
+    sess.services
+        .encrypted_skills_runtime
+        .unload_turn(&sess.thread_id.to_string());
+    result
+}
+
+async fn run_turn_inner(
+    sess: Arc<Session>,
+    turn_context: Arc<TurnContext>,
+    input: Vec<TurnInput>,
+    prewarmed_client_session: Option<ModelClientSession>,
+    cancellation_token: CancellationToken,
+) -> CodexResult<Option<String>> {
     let mut client_session =
         prewarmed_client_session.unwrap_or_else(|| sess.services.model_client.new_session());
     // TODO(ccunningham): Pre-turn compaction runs before context updates and the

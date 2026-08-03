@@ -27,7 +27,6 @@ fn registry_with(clock: Arc<FakeClock>) -> Registry {
         clock,
         TtlConfig {
             skill_idle: Duration::from_secs(60),
-            thread_idle: Duration::from_secs(600),
         },
     )
 }
@@ -105,62 +104,6 @@ fn sweep_expired_skills_evicts_only_expired() {
     assert_eq!(evicted[0].dir, PathBuf::from("/tmp/expired"));
     assert!(registry.is_loaded("t1", "fresh"));
     assert!(!registry.is_loaded("t1", "expired"));
-}
-
-#[test]
-fn thread_ttl_expiry_clears_whole_thread() {
-    let clock = Arc::new(FakeClock::new(1000));
-    let mut registry = registry_with(clock.clone());
-    registry.register(
-        "t1",
-        "skill-a",
-        PathBuf::from("/tmp/a"),
-        PathBuf::from("/orig"),
-        "hex-token".to_string(),
-    );
-    registry.register(
-        "t1",
-        "skill-b",
-        PathBuf::from("/tmp/b"),
-        PathBuf::from("/orig"),
-        "hex-token".to_string(),
-    );
-    registry.register(
-        "t2",
-        "skill-c",
-        PathBuf::from("/tmp/c"),
-        PathBuf::from("/orig"),
-        "hex-token".to_string(),
-    );
-    clock.advance(500_000);
-    registry.touch_session("t2");
-    clock.advance(200_000);
-    let cleared = registry.sweep_expired_threads();
-    assert_eq!(cleared.len(), 1);
-    assert_eq!(cleared[0].0, "t1");
-    let mut dirs = cleared[0].1.clone();
-    dirs.sort();
-    assert_eq!(dirs, vec![PathBuf::from("/tmp/a"), PathBuf::from("/tmp/b")]);
-    assert!(registry.get("t1", "skill-a").is_none());
-    assert!(registry.get("t2", "skill-c").is_some());
-}
-
-#[test]
-fn touch_session_refreshes_thread_activity() {
-    let clock = Arc::new(FakeClock::new(1000));
-    let mut registry = registry_with(clock.clone());
-    registry.register(
-        "t1",
-        "skill-a",
-        PathBuf::from("/tmp/a"),
-        PathBuf::from("/orig"),
-        "hex-token".to_string(),
-    );
-    clock.advance(500_000);
-    registry.touch_session("t1");
-    clock.advance(500_000);
-    let cleared = registry.sweep_expired_threads();
-    assert!(cleared.is_empty());
 }
 
 #[test]

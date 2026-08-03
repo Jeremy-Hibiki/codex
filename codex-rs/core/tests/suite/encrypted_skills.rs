@@ -512,7 +512,7 @@ async fn skill_ttl_expiry_forces_redecryption_on_reminder() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn compaction_request_rehydrates_encrypted_skill_content() -> Result<()> {
+async fn compaction_request_keeps_stale_skill_token_unreplaced() -> Result<()> {
     skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
     skip_if_no_network!(Ok(()));
 
@@ -555,14 +555,14 @@ async fn compaction_request_rehydrates_encrypted_skill_content() -> Result<()> {
     assert!(
         user_texts
             .iter()
-            .any(|text| text.contains("REAL_SKILL_CONTENT_MARKER")),
-        "compaction request should rehydrate skill content, got {user_texts:?}"
+            .any(|text| text.contains("[SENSITIVE_SKILL_TOKEN:")),
+        "compaction request should carry the stale token placeholder, got {user_texts:?}"
     );
     assert!(
         user_texts
             .iter()
-            .any(|text| text.contains("base_directory")),
-        "compaction request should carry framed content, got {user_texts:?}"
+            .all(|text| !text.contains("REAL_SKILL_CONTENT_MARKER")),
+        "compaction request must not rehydrate turn-unloaded plaintext, got {user_texts:?}"
     );
     assert!(
         user_texts
@@ -699,7 +699,7 @@ async fn script_execution_rewrites_original_path_and_redacts_output() -> Result<
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn re_mention_within_ttl_reuses_the_same_token() -> Result<()> {
+async fn re_mention_in_next_turn_redecrypts() -> Result<()> {
     skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
     skip_if_no_network!(Ok(()));
 
@@ -747,9 +747,9 @@ async fn re_mention_within_ttl_reuses_the_same_token() -> Result<()> {
         2,
         "expected one token per turn, got {tokens:?}"
     );
-    assert_eq!(
+    assert_ne!(
         tokens[0], tokens[1],
-        "re-mention within the skill TTL must reuse the same token"
+        "decrypted state is unloaded at turn end, so a re-mention must decrypt a fresh token"
     );
     let _ = mock;
     Ok(())

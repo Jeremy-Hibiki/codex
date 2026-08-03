@@ -415,3 +415,16 @@ TTL sweep 原只在 **turn 边界**（`build_skills_and_plugins`）执行——�
 | `codex-rs/config` | config_toml.rs · core/config.schema.json | [encrypted_skills] 配置与 schema |
 | `codex-rs/app-server-protocol` | v2/plugin.rs | SkillMetadata 可选加密字段 |
 | 示例/测试/工具 | thread-manager-sample · ext/skills · tui · core/tests/suite/encrypted_skills.rs · Cargo.toml/Cargo.lock | 构造点补齐、集成测试、zip deflate-only |
+
+## 22. 存储文件与格式一览（2026-08-03）
+
+| 存储面 | 位置 | 格式 | 内容 | 明文策略 |
+|---|---|---|---|---|
+| /dev/shm（解密存储） | `/dev/shm/fm-agent-security/p<pid>/fm_skill_security_<hex>/` | 目录树（0700） | 解密包全部条目（SKILL.md、scripts、resources） | **明文（TTL 窗口内）**：600s/1800s 卸载 secure wipe、进程命名空间隔离、容量门控 |
+| rollout | `<codex_home>/sessions/<yyyy/mm/dd>/<thread_id>.jsonl`（归档 `archived_sessions/`） | JSONL（RolloutItem） | ResponseItem、TurnContext、WorldState、Compacted、EventMsg | **零明文**：只存哨兵 Token 与 [REDACTED]（E2E 断言） |
+| SQLite（state_db） | sqlite_home（默认 codex_home 下，可 `CODEX_SQLITE_HOME` 覆盖） | SQLite | 记忆、token 用量/预算、会话索引、rollout 引用索引、线程状态 | **无 Skill 明文**：明文不落盘是设计约束，缓存 SQLite 有意不用 |
+| 审计日志 | 默认 `<temp>/fm_skill_security_audit.log`，可配置 `audit_path` | JSONL（10MB 轮转 .1） | decryption/tokenization/rehydration/blocked/cleanup | **无明文**：仅元数据 |
+| 配置 | `<codex_home>/config.toml` | TOML | [encrypted_skills]、[sandbox_workspace_write] | 无明文 |
+| 日志/遥测 | `<codex_home>/log/` | 文本 / OTLP | 工具调用、turn 元数据 | **注意**：改写后工具命令可能含解密路径（不含明文正文）；敏感字段脱敏未实现，属潜在写入面 |
+| skill 包（原目录） | workspace `.agents/skills/<name>/` 或 `codex_home/skills/` | SKILL.md（stub）+ `<name>.zip.enc` | 加密包只读来源 | 密文：部署要求只放执行容器私有路径 |
+| 内存（非磁盘） | EncryptedSkillRuntime cache / registry | 内存 | 明文缓存（64 条/8MiB）、TTL 注册表 | 明文（进程内）：TTL 卸载 + 周期 sweep |

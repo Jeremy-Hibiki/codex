@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>fm-agent-security · 加密 Skill 主 Agent 方案 · 单页汇报</title>
+<title>加密 Skill 主 Agent 方案 · V2 实施报告</title>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <style>
 :root{
@@ -149,7 +149,7 @@ th b,td b{color:var(--ink)}
 <body>
 
 <nav><div class="wrap">
-  <span class="brand">加密 Skill · 汇报</span>
+  <span class="brand">加密 Skill · V2 实施报告</span>
   <a href="#sec-0" class="on">§0 摘要</a>
   <a href="#sec-1">§1 背景与前提</a>
   <a href="#sec-2">§2 方案设计</a>
@@ -163,7 +163,7 @@ th b,td b{color:var(--ink)}
 </div></nav>
 
 <header class="hero"><div class="wrap">
-  <p class="kicker">Agent 数据安全 · 单页汇报 · 2026-08-01</p>
+  <p class="kicker">Agent 数据安全 · V2 实施报告 · 2026-08-03</p>
   <h1>加密 Skill：<em>触发即解密，TTL 即卸载，明文只在请求瞬间</em></h1>
   <p class="lede">部署前提：<span class="hl">单容器部署 CodeX</span>，前端 <span class="hl">AHP Client</span> 通过 <span class="hl">AHP 协议（HTTP / WebSocket）</span>与 CodeX 交互，<span class="hl">不给用户 SSH 远程连接机会</span>，每用户一容器、非 root 运行、断外网（局域网推理服务）、持久化常驻。在此前提下把 V1 的 SubAgent 隔离方案迁移到「主 Agent 方案」：SKILL.md 加密包按触发解密到 /dev/shm，上下文只留 Token，请求时重水合，两级 TTL 自动卸载，工具拦截 + 回复硬脱敏封死全部明文落盘通道。</p>
   <div class="meta">
@@ -1054,7 +1054,7 @@ network_access = false           # shell 断网；推理服务由 host 进程调
     <tr><td>K8</td><td>测试结果（crate 95/95 · guard 25/25 · 集成 10/10 · core lib 2146）</td><td>本地运行验证，含 RUST_MIN_STACK 环境注记</td></tr>
     <tr><td>K9</td><td><code>html-report</code> 方法论 Skill（个人技能目录）</td><td>本报告所依据的单页报告方法论；不属于本分支产物</td></tr>
   </table>
-  <p style="font-size:.8rem;color:var(--ink-soft);margin-top:18px">时序图由 Mermaid（CDN 引入，需联网加载）渲染；离线版见 <code>fm-agent-security-report.offline.html</code>（内嵌 Mermaid，无需联网）。部署口径：单容器 CodeX，前端 AHP Client 经 AHP 协议（HTTP/WebSocket）交互，无 SSH。</p>
+  <p style="font-size:.8rem;color:var(--ink-soft);margin-top:18px">时序图由 Mermaid（CDN 引入，需联网加载）渲染；离线版见 <code>加密Skill_V2实施报告.offline.html</code>（内嵌 Mermaid，无需联网）。部署口径：单容器 CodeX，前端 AHP Client 经 AHP 协议（HTTP/WebSocket）交互，无 SSH。</p>
 </div></footer>
 
 <button id="topbtn" aria-label="回到顶部">↑</button>

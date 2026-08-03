@@ -1,4 +1,4 @@
-# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v14）
+# BUILD_LOG · 加密 Skill V2 实施报告（v15）
 
 ## 数据故事
 - 事实源：`FM_AGENT_SECURITY_IMPLEMENTATION_REPORT_V2.md`（§1–§19）为主，OpenSpec change、测试结果与核心代码文件为辅；所有关键数字与报告一致（95/25/10/2146、600s/1800s、64 条/8MiB、4MiB、10MB）。
@@ -73,7 +73,7 @@
 - **P0 周期 TTL sweep**（`6f27cee9fe`）：新增 `encrypted_skills_periodic`——常驻进程后台每 30s 执行 sweep，覆盖「进程活着但无请求」空闲窗口；2 个 paused-time 单测（空闲卸载 / 新鲜保留）；进程挂起仍由部署侧 healthcheck/restart 兜底（§4.6 同步更新）。
 - **P1 MCP/扩展路径探测拦截**（`b3689de01f`）：guard_export 默认分支增加路径引用检查——非 shell 工具参数引用 mem root/解密目录即 Blocked（audit reason `storage_probe`）；guard 单测 25 → 28（原 `mcp_tools_pass_through` 改为无存储引用的放行用例）。
 - **P2a 引号片段脱敏**（`50d0cecdb1`）：`redact_quoted_fragments` 覆盖「long sensitive line」这类中段引用（引号包裹、≥12 字符、保留引号）；crate 单测 95 → 99。
-- **P2b 离线版报告**（`d25890a5a0` + 本轮再生成）：`fm-agent-security-report.offline.html` 内嵌 Mermaid（base64 + eval，剥离 `"use strict";` 规避间接 eval 全局 var 不挂载问题；`type="text/plain"` 防误执行），无需联网 7/7 渲染。
+- **P2b 离线版报告**（`d25890a5a0` + 本轮再生成）：`加密Skill_V2实施报告.offline.html` 内嵌 Mermaid（base64 + eval，剥离 `"use strict";` 规避间接 eval 全局 var 不挂载问题；`type="text/plain"` 防误执行），无需联网 7/7 渲染。
 - **测试补强**：进程被杀残留清理已有等价单测（`init_mem_root_removes_dead_process_namespaces_and_keeps_live` / `removes_stale_decrypted_dirs_only`），在 §6.2 引用。
 
 ### 报告更新
@@ -197,3 +197,9 @@
 - 架构图文字密度较高，窄视口（&lt;1100px）下 SVG 文字按比例缩小，可读性需真机确认。
 - Mermaid CDN 依赖外网：受限网络（--network none）环境下打开页面图表不渲染；如需离线可用需内嵌 mermaid.min.js（与用户当前「CDN 引入」要求相反，按需求保留 CDN）。
 - 本 Skill 属于个人技能目录（~/.codex/skills/html-report），不是 feat/agent-security 分支的实现产物，分支内不跟踪。
+
+## v15 更新（2026-08-03 · HTML 报告中文重命名）
+
+- HTML 报告重命名为中文并明确 V2：`analysis/加密Skill_V2实施报告.html`（在线）、`加密Skill_V2实施报告.offline.html`（离线）、`加密Skill_V2实施报告.BUILD_LOG.md`；
+- `<title>`、hero kicker、导航 brand 同步为「V2 实施报告」；在线版 footer 的离线版文件名引用同步；
+- 在线/离线双版本 check_report 全过。

@@ -1,4 +1,4 @@
-# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v12）
+# BUILD_LOG · fm-agent-security 加密 Skill 单页汇报（v13）
 
 ## 数据故事
 - 事实源：`FM_AGENT_SECURITY_IMPLEMENTATION_REPORT.md`（§1–§19）为主，OpenSpec change、测试结果与核心代码文件为辅；所有关键数字与报告一致（95/25/10/2146、600s/1800s、64 条/8MiB、4MiB、10MB）。
@@ -149,6 +149,17 @@
   - 3.3 为什么修改源码（核心边界非扩展点、独立 crate + 薄接线）；
   - 3.4 修改了哪些源码（按 crate 修改面清单表）。
 - **章节顺延**：总体架构 §3→§4、核心流程 §4→§5、多轮场景 §5→§6、实现与验证 §6→§7、部署与运维 §7→§8；h3 编号、nav、chips、正文引用（多轮场景 §5→§6）全部同步。
+- 在线/离线双版本 check_report 全过。
+
+## v13 更新（2026-08-03 · 存储文件与格式一览）
+
+- **方案设计新增 2.5 存储文件与格式一览**（按实际代码核实）：
+  - /dev/shm：`p<pid>/fm_skill_security_<hex>/` 目录树（0700），解密包全部条目，TTL 窗口内明文；
+  - rollout：`<codex_home>/sessions/<yyyy/mm/dd>/<thread_id>.jsonl`（JSONL），只存 Token 与 [REDACTED]；
+  - SQLite（state_db）：sqlite_home（`CODEX_SQLITE_HOME` 可覆盖），记忆/token 用量/会话索引等，无 Skill 明文；
+  - 审计日志：默认 `<temp>/fm_skill_security_audit.log`（可配置 audit_path），JSONL 10MB 轮转；
+  - 配置、日志/遥测（**注意**：改写后工具命令可能含解密路径，敏感字段脱敏未实现）、skill 包原目录（密文）、内存 cache/registry。
+- Markdown 实现报告同步追加 §22 存储一览表。
 - 在线/离线双版本 check_report 全过。
 
 ## 主题原子

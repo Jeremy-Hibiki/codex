@@ -946,49 +946,6 @@
       },
       "type": "object"
     },
-    "EncryptedSkillsSdkToml": {
-      "description": "Envelope SDK selection for encrypted skills. Defaults to fail-closed (no decryption possible).",
-      "oneOf": [
-        {
-          "enum": [
-            "unavailable"
-          ],
-          "type": "string"
-        },
-        {
-          "description": "Test-only SDK that decrypts plain ZIP `.zip.enc` packages.",
-          "enum": [
-            "test_zip"
-          ],
-          "type": "string"
-        }
-      ]
-    },
-    "EncryptedSkillsToml": {
-      "additionalProperties": false,
-      "description": "Encrypted-skill settings.",
-      "properties": {
-        "audit_path": {
-          "description": "Audit log path for encrypted-skill security events. Defaults to the process temp directory (ephemeral); persistent deployments should set this to a path on a mounted volume.",
-          "type": "string"
-        },
-        "sdk": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/EncryptedSkillsSdkToml"
-            }
-          ],
-          "description": "Envelope SDK used to decrypt encrypted skills."
-        },
-        "skill_idle_ttl_secs": {
-          "description": "Skill-level idle TTL in seconds before a skill's decrypted content is unloaded.",
-          "format": "uint64",
-          "minimum": 0.0,
-          "type": "integer"
-        }
-      },
-      "type": "object"
-    },
     "ExperimentalRequestUserInput": {
       "additionalProperties": false,
       "properties": {
@@ -4973,15 +4930,6 @@
     "disable_paste_burst": {
       "description": "When true, disables burst-paste detection for typed input entirely. All characters are inserted as they are received, and no buffering or placeholder replacement will occur for fast keypress bursts.",
       "type": "boolean"
-    },
-    "encrypted_skills": {
-      "allOf": [
-        {
-          "$ref": "#/definitions/EncryptedSkillsToml"
-        }
-      ],
-      "default": {},
-      "description": "Encrypted-skill settings (SDK selection and skill TTL)."
     },
     "experimental_compact_prompt_file": {
       "$ref": "#/definitions/AbsolutePathBuf"

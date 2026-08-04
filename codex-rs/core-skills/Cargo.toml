@@ -17,7 +17,6 @@ anyhow = { workspace = true }
 codex-analytics = { workspace = true }
 codex-config = { workspace = true }
 codex-context-fragments = { workspace = true }
-codex-encrypted-skills = { workspace = true }
 codex-exec-server = { workspace = true }
 codex-login = { workspace = true }
 codex-model-provider = { workspace = true }
@@ -39,7 +38,7 @@ shlex = { workspace = true }
 tokio = { workspace = true, features = ["fs", "macros", "rt"] }
 toml = { workspace = true }
 tracing = { workspace = true }
-zip = { workspace = true, features = ["deflate"] }
+zip = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

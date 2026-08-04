@@ -58,15 +58,6 @@ fn skills_to_info(
                 path: skill.path_to_skills_md.clone(),
                 scope: skill.scope.into(),
                 enabled,
-                encrypted: skill.encrypted,
-                encryption: skill.encryption.clone().map(|encryption| {
-                    codex_app_server_protocol::SkillEncryption {
-                        version: encryption.version,
-                        key_id: encryption.key_id,
-                        algorithm: encryption.algorithm,
-                        package: encryption.package,
-                    }
-                }),
             }
         })
         .collect()

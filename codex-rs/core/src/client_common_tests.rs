@@ -2,113 +2,17 @@ use codex_api::OpenAiVerbosity;
 use codex_api::ResponsesApiRequest;
 use codex_api::TextControls;
 use codex_api::create_text_param_for_request;
-use codex_encrypted_skills::registry::TtlConfig;
-use codex_encrypted_skills::runtime::EncryptedSkillRuntime;
-use codex_encrypted_skills::sdk::EnvelopeError;
-use codex_encrypted_skills::sdk::EnvelopeSdk;
-use codex_encrypted_skills::sdk::PackageEntry;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ImageDetail;
 use pretty_assertions::assert_eq;
 use serde_json::value::RawValue;
-use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::*;
 
 fn empty_tools() -> Arc<RawValue> {
     Arc::from(RawValue::from_string("[]".to_string()).expect("valid tool JSON"))
-}
-
-struct ClientTestSdk;
-
-impl EnvelopeSdk for ClientTestSdk {
-    fn decrypt_package(
-        &self,
-        _package_path: &Path,
-    ) -> std::result::Result<Vec<PackageEntry>, EnvelopeError> {
-        Ok(vec![PackageEntry {
-            rel_path: PathBuf::from("SKILL.md"),
-            contents: b"# Framed content\nrun scripts/build.sh".to_vec(),
-        }])
-    }
-}
-
-#[test]
-fn request_input_rehydrates_encrypted_skill_tokens() {
-    let tmp = tempfile::tempdir().unwrap();
-    let runtime = EncryptedSkillRuntime::new(
-        Arc::new(ClientTestSdk),
-        TtlConfig::default(),
-        tmp.path().join("mem-root"),
-    );
-    let token = runtime
-        .load_or_register(
-            "thread-1",
-            "secret-skill",
-            Path::new("/skills/secret.zip.enc"),
-        )
-        .expect("load encrypted skill");
-    let rehydrator = EncryptedSkillRehydrator {
-        runtime: Arc::new(runtime),
-        session_id: "thread-1".to_string(),
-    };
-    let prompt = Prompt {
-        input: vec![ResponseItem::Message {
-            id: None,
-            role: "user".to_string(),
-            content: vec![ContentItem::InputText {
-                text: token.clone(),
-            }],
-            phase: None,
-            internal_chat_message_metadata_passthrough: None,
-        }],
-        encrypted_skills: Some(rehydrator),
-        ..Default::default()
-    };
-
-    let formatted = prompt.get_formatted_input_for_request(/*use_responses_lite*/ false);
-
-    let ResponseItem::Message { content, .. } = &formatted[0] else {
-        panic!("expected message item");
-    };
-    let ContentItem::InputText { text } = &content[0] else {
-        panic!("expected input text");
-    };
-    assert!(text.contains("<skill_name>secret-skill</skill_name>"));
-    assert!(text.contains("# Framed content"));
-    assert!(!text.contains(&token));
-    assert!(!text.contains("/dev/shm/fm-agent-security"));
-}
-
-#[test]
-fn request_input_without_rehydrator_is_unchanged() {
-    let token = "[SENSITIVE_SKILL_TOKEN:thread-1:abcdef0123456789abcdef0123456789]";
-    let prompt = Prompt {
-        input: vec![ResponseItem::Message {
-            id: None,
-            role: "user".to_string(),
-            content: vec![ContentItem::InputText {
-                text: token.to_string(),
-            }],
-            phase: None,
-            internal_chat_message_metadata_passthrough: None,
-        }],
-        encrypted_skills: None,
-        ..Default::default()
-    };
-
-    let formatted = prompt.get_formatted_input_for_request(/*use_responses_lite*/ false);
-
-    let ResponseItem::Message { content, .. } = &formatted[0] else {
-        panic!("expected message item");
-    };
-    let ContentItem::InputText { text } = &content[0] else {
-        panic!("expected input text");
-    };
-    assert_eq!(text, token);
 }
 
 fn prompt_with_image_outputs() -> Prompt {
@@ -148,7 +52,6 @@ fn prompt_with_image_outputs() -> Prompt {
                 internal_chat_message_metadata_passthrough: None,
             },
         ],
-        encrypted_skills: None,
         ..Default::default()
     }
 }

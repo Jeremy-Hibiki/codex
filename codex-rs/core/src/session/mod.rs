@@ -2075,17 +2075,12 @@ impl Session {
             .turn_timing_state
             .record_item_started(item.id(), now_unix_timestamp_ms())
             .await;
-        let item = crate::encrypted_skills_guard::redact_turn_item(
-            &self.services.encrypted_skills_runtime,
-            &self.thread_id.to_string(),
-            item.clone(),
-        );
         self.send_event(
             turn_context,
             EventMsg::ItemStarted(ItemStartedEvent {
                 thread_id: self.thread_id,
                 turn_id: turn_context.sub_id.clone(),
-                item,
+                item: item.clone(),
                 started_at_ms,
             }),
         )
@@ -2113,11 +2108,6 @@ impl Session {
                 );
                 completed_at_ms
             });
-        let item = crate::encrypted_skills_guard::redact_turn_item(
-            &self.services.encrypted_skills_runtime,
-            &self.thread_id.to_string(),
-            item,
-        );
         self.send_event(
             turn_context,
             EventMsg::ItemCompleted(ItemCompletedEvent {
@@ -2920,15 +2910,7 @@ impl Session {
         for item in items.to_mut() {
             item.set_turn_id_if_missing(&turn_context.sub_id);
         }
-        let items = Self::assign_missing_response_item_ids(items);
-        // Hard enforcement for the `<output_policy>` soft constraint: any
-        // plaintext the model quotes back is redacted at the durable history
-        // boundary so it never persists in rollout or in-memory history.
-        crate::encrypted_skills_guard::redact_assistant_reply_items(
-            &self.services.encrypted_skills_runtime,
-            &self.thread_id.to_string(),
-            items,
-        )
+        Self::assign_missing_response_item_ids(items)
     }
 
     fn assign_missing_response_item_ids(items: Cow<'_, [ResponseItem]>) -> Cow<'_, [ResponseItem]> {
@@ -3233,13 +3215,7 @@ impl Session {
     async fn persist_rollout_response_items(&self, items: &[ResponseItem]) {
         let rollout_items: Vec<RolloutItem> = items
             .iter()
-            .map(|item| {
-                crate::encrypted_skills_guard::redact_tool_output_plaintext_for_persistence(
-                    &self.services.encrypted_skills_runtime,
-                    &self.thread_id.to_string(),
-                    item.clone(),
-                )
-            })
+            .cloned()
             .map(RolloutItem::ResponseItem)
             .collect();
         self.persist_rollout_items(&rollout_items).await;
@@ -3286,14 +3262,9 @@ impl Session {
     #[tracing::instrument(level = "trace", skip_all, fields(item_count = items.len()))]
     async fn send_raw_response_items(&self, turn_context: &TurnContext, items: &[ResponseItem]) {
         for item in items {
-            let item = crate::encrypted_skills_guard::redact_tool_output_plaintext_for_persistence(
-                &self.services.encrypted_skills_runtime,
-                &self.thread_id.to_string(),
-                item.clone(),
-            );
             self.send_event(
                 turn_context,
-                EventMsg::RawResponseItem(RawResponseItemEvent { item }),
+                EventMsg::RawResponseItem(RawResponseItemEvent { item: item.clone() }),
             )
             .await;
         }

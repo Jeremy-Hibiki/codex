@@ -277,10 +277,6 @@ async fn run_compact_task_inner_impl(
         let prompt = Prompt {
             input: turn_input,
             base_instructions: sess.get_base_instructions().await,
-            encrypted_skills: Some(crate::client_common::EncryptedSkillRehydrator {
-                runtime: Arc::clone(&sess.services.encrypted_skills_runtime),
-                session_id: sess.thread_id.to_string(),
-            }),
             ..Default::default()
         };
         let attempt_result = drain_to_completed(

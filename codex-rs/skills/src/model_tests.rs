@@ -9,8 +9,6 @@ fn missing_policy_allows_implicit_invocation_and_all_products() {
         short_description: None,
         dependencies: None,
         policy: None,
-        encrypted: false,
-        encryption: None,
     };
 
     assert!(skill.allows_implicit_invocation());
@@ -30,8 +28,6 @@ fn policy_restricts_implicit_invocation_and_products() {
         short_description: None,
         dependencies: None,
         policy: Some(policy),
-        encrypted: false,
-        encryption: None,
     };
 
     assert!(!skill.allows_implicit_invocation());

@@ -695,8 +695,6 @@ async fn submission_prefers_selected_duplicate_skill_path() {
             path: repo_skill_path,
             scope: crate::test_support::skill_scope_repo(),
             enabled: true,
-            encrypted: false,
-            encryption: None,
         },
         SkillMetadata {
             name: "figma".to_string(),
@@ -707,8 +705,6 @@ async fn submission_prefers_selected_duplicate_skill_path() {
             path: user_skill_path.clone(),
             scope: crate::test_support::skill_scope_user(),
             enabled: true,
-            encrypted: false,
-            encryption: None,
         },
     ]));
 

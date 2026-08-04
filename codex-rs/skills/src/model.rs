@@ -17,19 +17,9 @@ pub struct SkillMetadata {
     pub scope: SkillScope,
     pub plugin_id: Option<String>,
     pub remote_plugin_id: Option<String>,
-    /// Set when the skill's SKILL.md frontmatter declares
-    /// `metadata.encrypted: true`.
-    pub encrypted: bool,
-    /// Encryption package metadata from the frontmatter
-    /// (`metadata.encryption`), when the skill is encrypted.
-    pub encryption: Option<SkillEncryption>,
 }
 
 impl SkillMetadata {
-    pub fn is_encrypted(&self) -> bool {
-        self.encrypted
-    }
-
     pub fn allows_implicit_invocation(&self) -> bool {
         self.policy
             .as_ref()
@@ -54,18 +44,9 @@ pub struct EnvironmentSkillMetadata {
     pub short_description: Option<String>,
     pub dependencies: Option<SkillDependencies>,
     pub policy: Option<SkillPolicy>,
-    /// Set when the skill's SKILL.md frontmatter declares
-    /// `metadata.encrypted: true`.
-    pub encrypted: bool,
-    /// Encryption package metadata from the frontmatter, when encrypted.
-    pub encryption: Option<SkillEncryption>,
 }
 
 impl EnvironmentSkillMetadata {
-    pub fn is_encrypted(&self) -> bool {
-        self.encrypted
-    }
-
     pub fn allows_implicit_invocation(&self) -> bool {
         self.policy
             .as_ref()
@@ -76,16 +57,6 @@ impl EnvironmentSkillMetadata {
     pub fn matches_product_restriction(&self, restriction_product: Option<Product>) -> bool {
         matches_product_restriction(self.policy.as_ref(), restriction_product)
     }
-}
-
-/// Encryption metadata declared in a skill's SKILL.md frontmatter under
-/// `metadata.encryption`.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct SkillEncryption {
-    pub version: Option<u64>,
-    pub key_id: Option<String>,
-    pub algorithm: Option<String>,
-    pub package: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

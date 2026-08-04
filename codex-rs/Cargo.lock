@@ -18,7 +18,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5f7b0a21988c1bf877cf4759ef5ddaac04c1c9fe808c9142ecb78ba97d97a28a"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "bytes",
  "futures-core",
  "futures-sink",
@@ -39,7 +39,7 @@ dependencies = [
  "actix-rt",
  "actix-service",
  "actix-utils",
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "bytes",
  "bytestring",
  "derive_more 2.1.1",
@@ -394,7 +394,7 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "app_test_support"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1286,7 +1286,7 @@ version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "993776b509cfb49c750f11b8f07a46fa23e0a1386ffc01fb1e7d343efc387895"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "cexpr",
  "clang-sys",
  "itertools 0.13.0",
@@ -1323,9 +1323,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-version = "2.13.1"
+version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
+checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 dependencies = [
  "serde_core",
 ]
@@ -1498,6 +1498,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "113b4343b5f6617e7ad401ced8de3cc8b012e73a594347c307b90db3e9271289"
 dependencies = [
  "bytes",
+]
+
+[[package]]
+name = "bzip2"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49ecfb22d906f800d4fe833b6282cf4dc1c298f5057ca0b5445e5c209735ca47"
+dependencies = [
+ "bzip2-sys",
+]
+
+[[package]]
+name = "bzip2-sys"
+version = "0.1.13+1.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "225bff33b2141874fe80d71e07d6eec4f85c5c216453dd96388240f96e1acc14"
+dependencies = [
+ "cc",
+ "pkg-config",
 ]
 
 [[package]]
@@ -1818,7 +1837,7 @@ dependencies = [
 
 [[package]]
 name = "codex-agent-extension"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "codex-core",
@@ -1830,7 +1849,7 @@ dependencies = [
 
 [[package]]
 name = "codex-agent-graph-store"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-protocol",
  "codex-state",
@@ -1845,7 +1864,7 @@ dependencies = [
 
 [[package]]
 name = "codex-agent-identity"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1865,7 +1884,7 @@ dependencies = [
 
 [[package]]
 name = "codex-analytics"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-app-server-protocol",
  "codex-git-utils",
@@ -1886,7 +1905,7 @@ dependencies = [
 
 [[package]]
 name = "codex-ansi-escape"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "ansi-to-tui",
  "ratatui",
@@ -1895,7 +1914,7 @@ dependencies = [
 
 [[package]]
 name = "codex-api"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -1931,7 +1950,7 @@ dependencies = [
 
 [[package]]
 name = "codex-app-server"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "app_test_support",
@@ -2028,7 +2047,7 @@ dependencies = [
 
 [[package]]
 name = "codex-app-server-client"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-app-server",
  "codex-app-server-protocol",
@@ -2055,7 +2074,7 @@ dependencies = [
 
 [[package]]
 name = "codex-app-server-daemon"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "codex-app-server-protocol",
@@ -2076,7 +2095,7 @@ dependencies = [
 
 [[package]]
 name = "codex-app-server-protocol"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "clap",
@@ -2105,7 +2124,7 @@ dependencies = [
 
 [[package]]
 name = "codex-app-server-test-client"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "clap",
@@ -2127,7 +2146,7 @@ dependencies = [
 
 [[package]]
 name = "codex-app-server-transport"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "axum",
@@ -2169,7 +2188,7 @@ dependencies = [
 
 [[package]]
 name = "codex-apply-patch"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2189,7 +2208,7 @@ dependencies = [
 
 [[package]]
 name = "codex-arg0"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "codex-apply-patch",
@@ -2209,7 +2228,7 @@ dependencies = [
 
 [[package]]
 name = "codex-async-utils"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "pretty_assertions",
  "tokio",
@@ -2218,7 +2237,7 @@ dependencies = [
 
 [[package]]
 name = "codex-aws-auth"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "aws-config",
  "aws-credential-types",
@@ -2233,7 +2252,7 @@ dependencies = [
 
 [[package]]
 name = "codex-backend-client"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "codex-api",
@@ -2253,7 +2272,7 @@ dependencies = [
 
 [[package]]
 name = "codex-backend-openapi-models"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "serde",
  "serde_json",
@@ -2262,7 +2281,7 @@ dependencies = [
 
 [[package]]
 name = "codex-bwrap"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "cc",
  "libc",
@@ -2271,7 +2290,7 @@ dependencies = [
 
 [[package]]
 name = "codex-chatgpt"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "clap",
@@ -2292,7 +2311,7 @@ dependencies = [
 
 [[package]]
 name = "codex-cli"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "app_test_support",
@@ -2344,6 +2363,7 @@ dependencies = [
  "codex-utils-path",
  "codex-windows-sandbox",
  "crossterm",
+ "fm-license",
  "http 1.4.0",
  "insta",
  "libc",
@@ -2354,6 +2374,7 @@ dependencies = [
  "regex-lite",
  "serde",
  "serde_json",
+ "signal-hook",
  "sqlx",
  "supports-color 3.0.2",
  "sys-locale",
@@ -2373,7 +2394,7 @@ dependencies = [
 
 [[package]]
 name = "codex-client"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-http-client",
  "eventsource-stream",
@@ -2385,7 +2406,7 @@ dependencies = [
 
 [[package]]
 name = "codex-cloud-config"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -2410,7 +2431,7 @@ dependencies = [
 
 [[package]]
 name = "codex-cloud-tasks"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2441,7 +2462,7 @@ dependencies = [
 
 [[package]]
 name = "codex-cloud-tasks-client"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2456,7 +2477,7 @@ dependencies = [
 
 [[package]]
 name = "codex-cloud-tasks-mock-client"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "chrono",
  "codex-cloud-tasks-client",
@@ -2465,7 +2486,7 @@ dependencies = [
 
 [[package]]
 name = "codex-code-mode"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-code-mode-protocol",
  "codex-http-client",
@@ -2484,7 +2505,7 @@ dependencies = [
 
 [[package]]
 name = "codex-code-mode-host"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "axum",
@@ -2506,7 +2527,7 @@ dependencies = [
 
 [[package]]
 name = "codex-code-mode-protocol"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-protocol",
  "pretty_assertions",
@@ -2518,11 +2539,11 @@ dependencies = [
 
 [[package]]
 name = "codex-collaboration-mode-templates"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 
 [[package]]
 name = "codex-config"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2570,7 +2591,7 @@ dependencies = [
 
 [[package]]
 name = "codex-connectors"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -2592,7 +2613,7 @@ dependencies = [
 
 [[package]]
 name = "codex-connectors-extension"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-connectors",
  "codex-core-plugins",
@@ -2605,7 +2626,7 @@ dependencies = [
 
 [[package]]
 name = "codex-context-fragments"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-protocol",
  "codex-utils-string",
@@ -2613,7 +2634,7 @@ dependencies = [
 
 [[package]]
 name = "codex-core"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -2636,7 +2657,6 @@ dependencies = [
  "codex-context-fragments",
  "codex-core-plugins",
  "codex-core-skills",
- "codex-encrypted-skills",
  "codex-exec-server",
  "codex-exec-server-test-support",
  "codex-execpolicy",
@@ -2739,13 +2759,12 @@ dependencies = [
  "which 8.0.0",
  "whoami 1.6.1",
  "wiremock",
- "zip",
  "zstd",
 ]
 
 [[package]]
 name = "codex-core-api"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-analytics",
  "codex-app-server-protocol",
@@ -2767,7 +2786,7 @@ dependencies = [
 
 [[package]]
 name = "codex-core-plugins"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2820,13 +2839,12 @@ dependencies = [
 
 [[package]]
 name = "codex-core-skills"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "codex-analytics",
  "codex-config",
  "codex-context-fragments",
- "codex-encrypted-skills",
  "codex-exec-server",
  "codex-login",
  "codex-model-provider",
@@ -2854,19 +2872,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-encrypted-skills"
-version = "0.146.0"
-dependencies = [
- "libc",
- "rand 0.9.3",
- "tempfile",
- "thiserror 2.0.18",
- "zip",
-]
-
-[[package]]
 name = "codex-exec"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2912,7 +2919,7 @@ dependencies = [
 
 [[package]]
 name = "codex-exec-server"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -2966,7 +2973,7 @@ dependencies = [
 
 [[package]]
 name = "codex-exec-server-protocol"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "base64 0.22.1",
  "codex-file-system",
@@ -2981,7 +2988,7 @@ dependencies = [
 
 [[package]]
 name = "codex-exec-server-test-support"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-exec-server",
  "codex-http-client",
@@ -2989,7 +2996,7 @@ dependencies = [
 
 [[package]]
 name = "codex-execpolicy"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "clap",
@@ -3007,7 +3014,7 @@ dependencies = [
 
 [[package]]
 name = "codex-experimental-api-macros"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3016,7 +3023,7 @@ dependencies = [
 
 [[package]]
 name = "codex-extension-api"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-config",
  "codex-context-fragments",
@@ -3032,7 +3039,7 @@ dependencies = [
 
 [[package]]
 name = "codex-extension-items"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-utils-absolute-path",
  "pretty_assertions",
@@ -3044,7 +3051,7 @@ dependencies = [
 
 [[package]]
 name = "codex-external-agent-migration"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "chrono",
  "codex-analytics",
@@ -3072,7 +3079,7 @@ dependencies = [
 
 [[package]]
 name = "codex-features"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-otel",
  "codex-protocol",
@@ -3085,7 +3092,7 @@ dependencies = [
 
 [[package]]
 name = "codex-feedback"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "codex-login",
@@ -3099,7 +3106,7 @@ dependencies = [
 
 [[package]]
 name = "codex-file-search"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "clap",
@@ -3115,7 +3122,7 @@ dependencies = [
 
 [[package]]
 name = "codex-file-system"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "bytes",
  "codex-protocol",
@@ -3127,7 +3134,7 @@ dependencies = [
 
 [[package]]
 name = "codex-file-watcher"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "notify",
  "pretty_assertions",
@@ -3138,7 +3145,7 @@ dependencies = [
 
 [[package]]
 name = "codex-git-attribution"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-backend-client",
  "codex-extension-api",
@@ -3151,7 +3158,7 @@ dependencies = [
 
 [[package]]
 name = "codex-git-utils"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3176,7 +3183,7 @@ dependencies = [
 
 [[package]]
 name = "codex-goal-extension"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3199,7 +3206,7 @@ dependencies = [
 
 [[package]]
 name = "codex-guardian"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-core",
  "codex-extension-api",
@@ -3208,7 +3215,7 @@ dependencies = [
 
 [[package]]
 name = "codex-home"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-extension-api",
  "codex-utils-absolute-path",
@@ -3219,7 +3226,7 @@ dependencies = [
 
 [[package]]
 name = "codex-hooks"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3242,7 +3249,7 @@ dependencies = [
 
 [[package]]
 name = "codex-http-client"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "bytes",
  "codex-utils-cargo-bin",
@@ -3273,7 +3280,7 @@ dependencies = [
 
 [[package]]
 name = "codex-image-generation-extension"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "base64 0.22.1",
  "codex-api",
@@ -3300,7 +3307,7 @@ dependencies = [
 
 [[package]]
 name = "codex-install-context"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-utils-absolute-path",
  "codex-utils-home-dir",
@@ -3310,7 +3317,7 @@ dependencies = [
 
 [[package]]
 name = "codex-keyring-store"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "keyring",
  "tracing",
@@ -3318,7 +3325,7 @@ dependencies = [
 
 [[package]]
 name = "codex-linux-sandbox"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "clap",
  "codex-core",
@@ -3343,7 +3350,7 @@ dependencies = [
 
 [[package]]
 name = "codex-lmstudio"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-core",
  "codex-http-client",
@@ -3357,7 +3364,7 @@ dependencies = [
 
 [[package]]
 name = "codex-login"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3399,7 +3406,7 @@ dependencies = [
 
 [[package]]
 name = "codex-mcp"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -3436,7 +3443,7 @@ dependencies = [
 
 [[package]]
 name = "codex-mcp-extension"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-config",
  "codex-connectors",
@@ -3462,7 +3469,7 @@ dependencies = [
 
 [[package]]
 name = "codex-mcp-server"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "app_test_support",
@@ -3498,7 +3505,7 @@ dependencies = [
 
 [[package]]
 name = "codex-memories-extension"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-core",
  "codex-extension-api",
@@ -3519,7 +3526,7 @@ dependencies = [
 
 [[package]]
 name = "codex-memories-read"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-protocol",
  "codex-shell-command",
@@ -3529,7 +3536,7 @@ dependencies = [
 
 [[package]]
 name = "codex-memories-write"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3566,7 +3573,7 @@ dependencies = [
 
 [[package]]
 name = "codex-message-history"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-config",
  "memchr",
@@ -3580,7 +3587,7 @@ dependencies = [
 
 [[package]]
 name = "codex-model-provider"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-agent-identity",
  "codex-api",
@@ -3603,7 +3610,7 @@ dependencies = [
 
 [[package]]
 name = "codex-model-provider-info"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-api",
  "codex-protocol",
@@ -3619,7 +3626,7 @@ dependencies = [
 
 [[package]]
 name = "codex-models-manager"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "chrono",
  "codex-collaboration-mode-templates",
@@ -3639,7 +3646,7 @@ dependencies = [
 
 [[package]]
 name = "codex-network-proxy"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3677,7 +3684,7 @@ dependencies = [
 
 [[package]]
 name = "codex-ollama"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "assert_matches",
  "async-stream",
@@ -3697,7 +3704,7 @@ dependencies = [
 
 [[package]]
 name = "codex-otel"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "chrono",
  "codex-api",
@@ -3728,7 +3735,7 @@ dependencies = [
 
 [[package]]
 name = "codex-plugin"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-config",
  "codex-protocol",
@@ -3741,7 +3748,7 @@ dependencies = [
 
 [[package]]
 name = "codex-process-hardening"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "libc",
  "pretty_assertions",
@@ -3749,7 +3756,7 @@ dependencies = [
 
 [[package]]
 name = "codex-prompts"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "codex-context-fragments",
@@ -3763,7 +3770,7 @@ dependencies = [
 
 [[package]]
 name = "codex-protocol"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "chardetng",
@@ -3805,7 +3812,7 @@ dependencies = [
 
 [[package]]
 name = "codex-response-debug-context"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "base64 0.22.1",
  "codex-api",
@@ -3816,7 +3823,7 @@ dependencies = [
 
 [[package]]
 name = "codex-responses-api-proxy"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "clap",
@@ -3833,7 +3840,7 @@ dependencies = [
 
 [[package]]
 name = "codex-rmcp-client"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "axum",
@@ -3875,7 +3882,7 @@ dependencies = [
 
 [[package]]
 name = "codex-rollout"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3901,7 +3908,7 @@ dependencies = [
 
 [[package]]
 name = "codex-rollout-trace"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "codex-code-mode",
@@ -3917,7 +3924,7 @@ dependencies = [
 
 [[package]]
 name = "codex-sandboxing"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "codex-network-proxy",
@@ -3941,7 +3948,7 @@ dependencies = [
 
 [[package]]
 name = "codex-secrets"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "age",
  "anyhow",
@@ -3962,7 +3969,7 @@ dependencies = [
 
 [[package]]
 name = "codex-shell-command"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3983,7 +3990,7 @@ dependencies = [
 
 [[package]]
 name = "codex-shell-escalation"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "clap",
@@ -4003,7 +4010,7 @@ dependencies = [
 
 [[package]]
 name = "codex-skills"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-protocol",
  "codex-utils-absolute-path",
@@ -4014,7 +4021,7 @@ dependencies = [
 
 [[package]]
 name = "codex-skills-extension"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-core-skills",
  "codex-exec-server",
@@ -4040,7 +4047,7 @@ dependencies = [
 
 [[package]]
 name = "codex-state"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4066,7 +4073,7 @@ dependencies = [
 
 [[package]]
 name = "codex-stdio-to-uds"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "codex-uds",
@@ -4078,7 +4085,7 @@ dependencies = [
 
 [[package]]
 name = "codex-terminal-detection"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "pretty_assertions",
  "tracing",
@@ -4086,7 +4093,7 @@ dependencies = [
 
 [[package]]
 name = "codex-test-binary-support"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-arg0",
  "tempfile",
@@ -4094,7 +4101,7 @@ dependencies = [
 
 [[package]]
 name = "codex-thread-manager-sample"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "clap",
@@ -4105,7 +4112,7 @@ dependencies = [
 
 [[package]]
 name = "codex-thread-store"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "chrono",
  "codex-app-server-protocol",
@@ -4133,7 +4140,7 @@ dependencies = [
 
 [[package]]
 name = "codex-tools"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-code-mode",
  "codex-connectors",
@@ -4158,7 +4165,7 @@ dependencies = [
 
 [[package]]
 name = "codex-tui"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "app_test_support",
@@ -4269,7 +4276,7 @@ dependencies = [
 
 [[package]]
 name = "codex-uds"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "async-io",
  "pretty_assertions",
@@ -4281,7 +4288,7 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-absolute-path"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "dirs",
  "dunce",
@@ -4295,14 +4302,14 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-approval-presets"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-protocol",
 ]
 
 [[package]]
 name = "codex-utils-cache"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "lru 0.16.3",
  "sha1 0.10.6",
@@ -4311,7 +4318,7 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-cargo-bin"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "assert_cmd",
  "runfiles",
@@ -4320,7 +4327,7 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-cli"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "clap",
  "codex-protocol",
@@ -4332,15 +4339,15 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-elapsed"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 
 [[package]]
 name = "codex-utils-fuzzy-match"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 
 [[package]]
 name = "codex-utils-home-dir"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-utils-absolute-path",
  "dirs",
@@ -4350,7 +4357,7 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-image"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "base64 0.22.1",
  "codex-utils-cache",
@@ -4363,7 +4370,7 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-json-to-toml"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "pretty_assertions",
  "serde_json",
@@ -4372,7 +4379,7 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-oss"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-core",
  "codex-lmstudio",
@@ -4382,7 +4389,7 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-output-truncation"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-protocol",
  "codex-utils-string",
@@ -4391,7 +4398,7 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-path"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-utils-absolute-path",
  "dunce",
@@ -4401,7 +4408,7 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-path-uri"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "base64 0.22.1",
  "codex-utils-absolute-path",
@@ -4417,7 +4424,7 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-plugins"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-exec-server",
  "codex-exec-server-protocol",
@@ -4431,7 +4438,7 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-pty"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "filedescriptor",
@@ -4447,7 +4454,7 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-readiness"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "assert_matches",
  "thiserror 2.0.18",
@@ -4457,14 +4464,14 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-rustls-provider"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "rustls",
 ]
 
 [[package]]
 name = "codex-utils-sandbox-summary"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-protocol",
  "codex-utils-absolute-path",
@@ -4473,7 +4480,7 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-sleep-inhibitor"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "core-foundation 0.9.4",
  "libc",
@@ -4483,14 +4490,14 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-stream-parser"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "pretty_assertions",
 ]
 
 [[package]]
 name = "codex-utils-string"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "pretty_assertions",
  "regex-lite",
@@ -4500,14 +4507,14 @@ dependencies = [
 
 [[package]]
 name = "codex-utils-template"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "pretty_assertions",
 ]
 
 [[package]]
 name = "codex-v8-poc"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "pretty_assertions",
  "v8",
@@ -4515,7 +4522,7 @@ dependencies = [
 
 [[package]]
 name = "codex-web-search-extension"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-api",
  "codex-core",
@@ -4536,7 +4543,7 @@ dependencies = [
 
 [[package]]
 name = "codex-websocket-client"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "codex-http-client",
  "codex-utils-rustls-provider",
@@ -4552,7 +4559,7 @@ dependencies = [
 
 [[package]]
 name = "codex-windows-sandbox"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4627,9 +4634,9 @@ dependencies = [
 
 [[package]]
 name = "compact_str"
-version = "0.8.2"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fd622ebbb56a5b2ccb651b32b911cdeb2a9b4b11776b2473bf26a26a286244e"
+checksum = "3b79c4069c6cad78e2e0cdfcbd26275770669fb39fd308a752dc110e83b9af32"
 dependencies = [
  "castaway",
  "cfg-if",
@@ -4803,7 +4810,7 @@ dependencies = [
 
 [[package]]
 name = "core_test_support"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -4941,7 +4948,7 @@ name = "crossterm"
 version = "0.28.1"
 source = "git+https://github.com/nornagon/crossterm?rev=87db8bfa6dc99427fd3b071681b07fc31c6ce995#87db8bfa6dc99427fd3b071681b07fc31c6ce995"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "crossterm_winapi",
  "futures-core",
  "mio",
@@ -5314,6 +5321,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "deflate64"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26bf8fc351c5ed29b5c2f0cbbac1b209b74f60ecd62e675a998df72c49af5204"
+
+[[package]]
 name = "deno_core_icudata"
 version = "0.77.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5551,7 +5564,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89a09f22a6c6069a18470eb92d2298acf25463f14256d24778e1230d789a2aec"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "objc2",
 ]
 
@@ -6192,6 +6205,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fm-license"
+version = "0.146.0-fm-license"
+dependencies = [
+ "anyhow",
+ "lmclient-rust-sdk",
+ "pretty_assertions",
+ "tracing",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6668,7 +6691,7 @@ version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "441a300bc3645a1f45cba495b9175f90f47256ce43f2ee161da0031e3ac77c92"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "bstr",
  "gix-path",
  "libc",
@@ -6814,7 +6837,7 @@ version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b03e6cd88cc0dc1eafa1fddac0fb719e4e74b6ea58dd016e71125fde4a326bee"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "bstr",
  "gix-features",
  "gix-path",
@@ -6862,7 +6885,7 @@ version = "0.49.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1bae54ab14e4e74d5dda60b82ea7afad7c8eb3be68283d6d5f29bd2e6d47fff7"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "bstr",
  "filetime",
  "fnv",
@@ -6927,7 +6950,7 @@ version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ea064c7595eea08fdd01c70748af747d9acc40f727b61f4c8a2145a5c5fc28c"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "gix-commitgraph",
  "gix-date",
  "gix-hash",
@@ -7025,7 +7048,7 @@ version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f89611f13544ca5ebeb68a502673814ef57200df60c24a61c2ce7b96f612f08b"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "bstr",
  "gix-attributes",
  "gix-config-value",
@@ -7108,7 +7131,7 @@ version = "0.43.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c08f1ec5d1e6a524f8ba291c41f0ccaef64e48ed0e8cf790b3461cae45f6d3d"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "bstr",
  "gix-commitgraph",
  "gix-date",
@@ -7142,7 +7165,7 @@ version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf82ae037de9c62850ce67beaa92ec8e3e17785ea307cdde7618edc215603b4f"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "gix-path",
  "libc",
  "windows-sys 0.61.2",
@@ -7240,7 +7263,7 @@ version = "0.55.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "963dc2afcdb611092aa587c3f9365e749ac0a0892ff27662dbc75f26c953fbec"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "gix-commitgraph",
  "gix-date",
  "gix-hash",
@@ -8253,7 +8276,7 @@ version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f37dccff2791ab604f9babef0ba14fbe0be30bd368dc541e2b08d07c8aa908f3"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "inotify-sys",
  "libc",
 ]
@@ -8712,7 +8735,7 @@ version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d0b95e02c851351f877147b7deea7b1afb1df71b63aa5f8270716e0c5720616"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "libc",
  "redox_syscall 0.7.0",
 ]
@@ -8752,7 +8775,7 @@ version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "761e49ec5fd8a5a463f9b84e877c373d888935b71c6be78f3767fe2ae6bed18e"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "libc",
 ]
 
@@ -8779,6 +8802,14 @@ name = "litrs"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
+
+[[package]]
+name = "lmclient-rust-sdk"
+version = "1.2.0"
+source = "git+http://192.168.131.126:8089/jiangzhengqi/lmclient-rust-sdk.git?tag=v1.2.0#c49257a2936508fba488984065a9c62ea08aaf71"
+dependencies = [
+ "clap",
+]
 
 [[package]]
 name = "local-waker"
@@ -8899,6 +8930,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "lzma-rs"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "297e814c836ae64db86b36cf2a557ba54368d03f6afcd7d947c266692f71115e"
+dependencies = [
+ "byteorder",
+ "crc",
+]
+
+[[package]]
+name = "lzma-sys"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fda04ab3764e6cde78b9974eec4f779acaba7c4e84b36eca3cf77c581b85d27"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+]
+
+[[package]]
 name = "maplit"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8938,7 +8990,7 @@ dependencies = [
 
 [[package]]
 name = "mcp_test_support"
-version = "0.146.0"
+version = "0.146.0-fm-license"
 dependencies = [
  "anyhow",
  "codex-login",
@@ -9126,7 +9178,7 @@ version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab2156c4fce2f8df6c499cc1c763e4394b7482525bf2a9701c9d79d215f519e4"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "cfg-if",
  "cfg_aliases 0.1.1",
  "libc",
@@ -9138,7 +9190,7 @@ version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71e2746dc3a24dd78b3cfcb7be93368c6de9963d30f43a6a73998a9cf4b17b46"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "cfg-if",
  "cfg_aliases 0.2.1",
  "libc",
@@ -9151,7 +9203,7 @@ version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "cfg-if",
  "cfg_aliases 0.2.1",
  "libc",
@@ -9194,7 +9246,7 @@ version = "8.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d3d07927151ff8575b7087f245456e549fea62edf0ec4e565a5ee50c8402bc3"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "fsevent-sys",
  "inotify",
  "kqueue",
@@ -9212,7 +9264,7 @@ version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42b8cfee0e339a0337359f3c88165702ac6e600dc01c0cc9579a92d62b08477a"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
 ]
 
 [[package]]
@@ -9377,7 +9429,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d49e936b501e5c5bf01fda3a9452ff86dc3ea98ad5f283e1455153142d97518c"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "objc2",
  "objc2-core-graphics",
  "objc2-foundation",
@@ -9389,7 +9441,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73ad74d880bb43877038da939b7427bba67e9dd42004a18b809ba7d87cee241c"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "objc2",
  "objc2-foundation",
 ]
@@ -9410,7 +9462,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "dispatch2",
  "objc2",
 ]
@@ -9421,7 +9473,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "dispatch2",
  "objc2",
  "objc2-core-foundation",
@@ -9454,7 +9506,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cde0dfb48d25d2b4862161a4d5fcc0e3c24367869ad306b0c9ec0073bfed92d"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "objc2",
  "objc2-core-foundation",
  "objc2-core-graphics",
@@ -9472,7 +9524,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3e0adef53c21f888deb4fa59fc59f7eb17404926ee8a6f59f5df0fd7f9f3272"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "block2",
  "libc",
  "objc2",
@@ -9485,7 +9537,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "180788110936d59bab6bd83b6060ffdfffb3b922ba1396b312ae795e1de9d81d"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "objc2",
  "objc2-core-foundation",
 ]
@@ -9496,7 +9548,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96c1358452b371bf9f104e21ec536d37a650eb10f7ee379fff67d2e08d537f1f"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "objc2",
  "objc2-core-foundation",
  "objc2-foundation",
@@ -9508,7 +9560,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d87d638e33c06f577498cbcc50491496a3ed4246998a7fbba7ccb98b1e7eab22"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "block2",
  "objc2",
  "objc2-cloud-kit",
@@ -9573,7 +9625,7 @@ version = "6.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "336b9c63443aceef14bea841b899035ae3abe89b7c486aaf4c5bd8aafedac3f0"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "libc",
  "once_cell",
  "onig_sys",
@@ -9601,7 +9653,7 @@ version = "0.10.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08838db121398ad17ab8531ce9de97b244589089e290a384c900cb9ff7434328"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "cfg-if",
  "foreign-types",
  "libc",
@@ -10042,7 +10094,7 @@ version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97baced388464909d42d89643fe4361939af9b7ce7a31ee32a168f832a70f2a0"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "crc32fast",
  "fdeflate",
  "flate2",
@@ -10290,7 +10342,7 @@ version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bee689443a2bd0a16ab0348b52ee43e3b2d1b1f931c8aa5c9f8de4c86fbe8c40"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "num-traits",
  "rand 0.9.3",
  "rand_chacha 0.9.0",
@@ -10381,7 +10433,7 @@ version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76979bea66e7875e7509c4ec5300112b316af87fa7a252ca91c448b32dfe3993"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "memchr",
  "unicase",
 ]
@@ -10580,7 +10632,7 @@ checksum = "453d60af031e23af2d48995e41b17023f6150044738680508b63671f8d7417dd"
 dependencies = [
  "ahash",
  "base64 0.22.1",
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "chrono",
  "const_format",
  "csv",
@@ -10928,7 +10980,7 @@ name = "ratatui"
 version = "0.29.0"
 source = "git+https://github.com/nornagon/ratatui?rev=9b2ad1298408c45918ee9f8241a6f95498cdbed2#9b2ad1298408c45918ee9f8241a6f95498cdbed2"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "cassowary",
  "compact_str",
  "crossterm",
@@ -10992,7 +11044,7 @@ version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
 ]
 
 [[package]]
@@ -11001,7 +11053,7 @@ version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49f3fe0889e69e2ae9e41f4d6c4c0181701d00e4697b356fb1f74173a5e0ee27"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
 ]
 
 [[package]]
@@ -11351,7 +11403,7 @@ version = "0.38.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
@@ -11364,7 +11416,7 @@ version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
@@ -11460,7 +11512,7 @@ version = "14.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7803e8936da37efd9b6d4478277f4b2b9bb5cdb37a113e8d63222e58da647e63"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "cfg-if",
  "clipboard-win",
  "fd-lock",
@@ -11708,7 +11760,7 @@ version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "897b2245f0b511c87893af39b033e5ca9cce68824c4d7e7630b5a1d339658d02"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "core-foundation 0.9.4",
  "core-foundation-sys",
  "libc",
@@ -11721,7 +11773,7 @@ version = "3.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b3297343eaf830f66ede390ea39da1d462b6b0c1b000f420d0a83f898bbbe6ef"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "core-foundation 0.10.1",
  "core-foundation-sys",
  "libc",
@@ -11856,7 +11908,7 @@ version = "0.46.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1dd47df349a80025819f3d25c3d2f751df705d49c65a4cdc0f130f700972a48"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "sentry-backtrace",
  "sentry-core",
  "tracing-core",
@@ -12238,9 +12290,9 @@ checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
 
 [[package]]
 name = "simd_cesu8"
-version = "1.2.0"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11031e251abf8611c80f460e19dbdeb54a66db918e49c65a7065b46ac7aec520"
+checksum = "94f90157bb87cddf702797c5dadfa0be7d266cdf49e22da2fcaa32eff75b2c33"
 dependencies = [
  "rustc_version",
  "simdutf8",
@@ -12447,7 +12499,7 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90b8020fe17c5f2c245bfa2505d7ef59c5604839527c740266ad2214acebea27"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "byteorder",
  "bytes",
  "chrono",
@@ -12478,7 +12530,7 @@ checksum = "87a2bdd6e83f6b3ea525ca9fee568030508b58355a43d0b2c1674d5f79dcd65e"
 dependencies = [
  "atoi",
  "base64 0.22.1",
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "byteorder",
  "chrono",
  "crc",
@@ -12537,9 +12589,9 @@ dependencies = [
 
 [[package]]
 name = "sse-stream"
-version = "0.2.5"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c123f296ade4ec4b8b0f6162116e6629f5146922ca5ab40ca9d3c2e73ab4761e"
+checksum = "eb4dc4d33c68ec1f27d386b5610a351922656e1fdf5c05bbaad930cd1519479a"
 dependencies = [
  "bytes",
  "futures-util",
@@ -12857,7 +12909,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95ec293b5f288383b72a7bffcade6b2860b642cf66f28b3bd5967349a49938b1"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "bytemuck",
  "lazy_static",
  "log",
@@ -13004,7 +13056,7 @@ version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a13f3d0daba03132c0aa9767f98351b3488edc2c100cda2d2ec2b04f3d8d3c8b"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "core-foundation 0.9.4",
  "system-configuration-sys",
 ]
@@ -13637,7 +13689,7 @@ version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4e6559d53cc268e5031cd8429d05415bc4cb4aefc4aa5d6cc35fbf5b924a1f8"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "bytes",
  "futures-util",
  "http 1.4.0",
@@ -14167,7 +14219,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46dccf61a364b61bbaac70a8ba64a1a1006e87123b7d62eaeec999a3ba31ecdb"
 dependencies = [
  "bindgen",
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "fslock",
  "gzip-header",
  "home",
@@ -14393,7 +14445,7 @@ version = "0.244.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47b807c72e1bac69382b3a6fb3dbe8ea4c0ed87ff5629b8685ae6b9a611028fe"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "hashbrown 0.15.5",
  "indexmap 2.14.0",
  "semver",
@@ -14418,7 +14470,7 @@ version = "0.31.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8e6faa537fbb6c186cb9f1d41f2f811a4120d1b57ec61f50da451a0c5122bec"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "rustix 1.1.4",
  "wayland-backend",
  "wayland-scanner",
@@ -14430,7 +14482,7 @@ version = "0.32.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baeda9ffbcfc8cd6ddaade385eaf2393bd2115a69523c735f12242353c3df4f3"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "wayland-backend",
  "wayland-client",
  "wayland-scanner",
@@ -14442,7 +14494,7 @@ version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9597cdf02cf0c34cd5823786dce6b5ae8598f05c2daf5621b6e178d4f7345f3"
 dependencies = [
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
@@ -15224,7 +15276,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d66ea20e9553b30172b5e831994e35fbde2d165325bec84fc43dbf6f4eb9cb2"
 dependencies = [
  "anyhow",
- "bitflags 2.13.1",
+ "bitflags 2.10.0",
  "indexmap 2.14.0",
  "log",
  "serde",
@@ -15341,6 +15393,15 @@ name = "xmlparser"
 version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66fee0b777b0f5ac1c69bb06d361268faafa61cd4682ae064a171c16c433e9e4"
+
+[[package]]
+name = "xz2"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "388c44dc09d76f1536602ead6d325eb532f5c122f17782bd57fb47baeeb767e2"
+dependencies = [
+ "lzma-sys",
+]
 
 [[package]]
 name = "yaml-rust"
@@ -15553,15 +15614,28 @@ version = "2.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fabe6324e908f85a1c52063ce7aa26b68dcb7eb6dbc83a2d148403c9bc3eba50"
 dependencies = [
+ "aes",
  "arbitrary",
+ "bzip2",
+ "constant_time_eq",
  "crc32fast",
  "crossbeam-utils",
+ "deflate64",
  "displaydoc",
  "flate2",
+ "getrandom 0.3.4",
+ "hmac 0.12.1",
  "indexmap 2.14.0",
+ "lzma-rs",
  "memchr",
+ "pbkdf2",
+ "sha1 0.10.6",
  "thiserror 2.0.18",
+ "time",
+ "xz2",
+ "zeroize",
  "zopfli",
+ "zstd",
 ]
 
 [[package]]

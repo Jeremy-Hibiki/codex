@@ -76,10 +76,6 @@ pub(super) async fn run_remote_compact_v2_attempt(
         base_instructions,
         output_schema: None,
         output_schema_strict: true,
-        encrypted_skills: Some(crate::client_common::EncryptedSkillRehydrator {
-            runtime: Arc::clone(&sess.services.encrypted_skills_runtime),
-            session_id: sess.thread_id.to_string(),
-        }),
     };
 
     let window_id = sess.current_window_id().await;

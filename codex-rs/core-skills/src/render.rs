@@ -940,8 +940,6 @@ mod tests {
             scope,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }
     }
 

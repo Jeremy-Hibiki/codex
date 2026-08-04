@@ -313,9 +313,6 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         feedback_enabled: false,
         tool_suggest: ToolSuggestConfig::default(),
         otel: OtelConfig::default(),
-        encrypted_skills_sdk: Default::default(),
-        encrypted_skills_ttl: Default::default(),
-        encrypted_skills_audit_path: None,
     };
     config
         .features

@@ -437,27 +437,6 @@ pub struct SkillMetadata {
     pub path: AbsolutePathBuf,
     pub scope: SkillScope,
     pub enabled: bool,
-    /// Set when the skill's SKILL.md frontmatter declares
-    /// `metadata.encrypted: true`.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub encrypted: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub encryption: Option<SkillEncryption>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export_to = "v2/")]
-pub struct SkillEncryption {
-    #[ts(optional)]
-    pub version: Option<u64>,
-    #[ts(optional)]
-    pub key_id: Option<String>,
-    #[ts(optional)]
-    pub algorithm: Option<String>,
-    #[ts(optional)]
-    pub package: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -924,8 +903,6 @@ impl From<CoreSkillMetadata> for SkillMetadata {
             path: value.path,
             scope: value.scope.into(),
             enabled: true,
-            encrypted: false,
-            encryption: None,
         }
     }
 }

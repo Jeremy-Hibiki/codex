@@ -506,8 +506,6 @@ async fn loads_skills_from_home_agents_dir_for_user_scope() -> anyhow::Result<()
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 
@@ -597,8 +595,6 @@ fn expected_user_skill(path: &Path, name: &str, description: &str) -> SkillMetad
         scope: SkillScope::User,
         plugin_id: None,
         remote_plugin_id: None,
-        encrypted: false,
-        encryption: None,
     }
 }
 
@@ -687,8 +683,6 @@ async fn loads_skill_dependencies_metadata_from_yaml() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -746,8 +740,6 @@ interface:
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -783,79 +775,6 @@ policy:
         })
     );
     assert!(outcome.allowed_skills_for_implicit_invocation().is_empty());
-}
-
-#[tokio::test]
-async fn loads_encrypted_skill_marker_from_frontmatter() {
-    let codex_home = tempfile::tempdir().expect("tempdir");
-    write_raw_skill_at(
-        &codex_home.path().join("skills"),
-        "encrypted-skill",
-        r##"
-name: encrypted-skill
-description: Encrypted skill.
-metadata:
-  encrypted: true
-  encryption:
-    version: 2
-    key_id: required_hardware_key
-    algorithm: ZIP-AES-256-CBC
-    package: encrypted-skill.zip.enc
-"##,
-    );
-
-    let cfg = make_config(&codex_home).await;
-    let outcome = load_skills_for_test(&cfg).await;
-
-    assert!(
-        outcome.errors.is_empty(),
-        "unexpected errors: {:?}",
-        outcome.errors
-    );
-    assert_eq!(outcome.skills.len(), 1);
-    let skill = &outcome.skills[0];
-    assert!(skill.is_encrypted());
-    let encryption = skill.encryption.as_ref().expect("encryption metadata");
-    assert_eq!(encryption.version, Some(2));
-    assert_eq!(encryption.key_id.as_deref(), Some("required_hardware_key"));
-    assert_eq!(encryption.algorithm.as_deref(), Some("ZIP-AES-256-CBC"));
-    assert_eq!(
-        encryption.package.as_deref(),
-        Some("encrypted-skill.zip.enc")
-    );
-}
-
-#[tokio::test]
-async fn unencrypted_skill_defaults_to_plaintext_metadata() {
-    let codex_home = tempfile::tempdir().expect("tempdir");
-    write_raw_skill_at(
-        &codex_home.path().join("skills"),
-        "plain-skill",
-        "name: plain-skill\ndescription: Plain skill.",
-    );
-
-    let cfg = make_config(&codex_home).await;
-    let outcome = load_skills_for_test(&cfg).await;
-
-    assert_eq!(outcome.skills.len(), 1);
-    assert!(!outcome.skills[0].is_encrypted());
-    assert!(outcome.skills[0].encryption.is_none());
-}
-
-#[tokio::test]
-async fn malformed_encryption_metadata_is_rejected() {
-    let codex_home = tempfile::tempdir().expect("tempdir");
-    write_raw_skill_at(
-        &codex_home.path().join("skills"),
-        "bad-encryption",
-        "name: bad-encryption\ndescription: Bad encryption.\nmetadata:\n  encrypted: [not-a-bool]\n",
-    );
-
-    let cfg = make_config(&codex_home).await;
-    let outcome = load_skills_for_test(&cfg).await;
-
-    assert!(!outcome.errors.is_empty());
-    assert!(outcome.skills.is_empty());
 }
 
 #[tokio::test]
@@ -976,8 +895,6 @@ async fn accepts_icon_paths_under_assets_dir() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -1020,8 +937,6 @@ async fn ignores_invalid_brand_color() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -1077,8 +992,6 @@ async fn ignores_default_prompt_over_max_length() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -1122,8 +1035,6 @@ async fn drops_interface_when_icons_are_invalid() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -1195,8 +1106,6 @@ interface:
             scope: SkillScope::User,
             plugin_id: Some("twilio-developer-kit@test".to_string()),
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -1256,8 +1165,6 @@ interface:
             scope: SkillScope::User,
             plugin_id: Some("twilio-developer-kit@test".to_string()),
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -1304,8 +1211,6 @@ async fn loads_skills_via_symlinked_subdir_for_user_scope() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -1393,8 +1298,6 @@ async fn does_not_loop_on_symlink_cycle_for_user_scope() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -1443,8 +1346,6 @@ async fn loads_skills_via_symlinked_subdir_for_admin_scope() {
             scope: SkillScope::Admin,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -1486,8 +1387,6 @@ async fn loads_skills_via_symlinked_subdir_for_repo_scope() {
             scope: SkillScope::Repo,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -1577,8 +1476,6 @@ async fn respects_max_scan_depth_for_user_scope() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -1608,8 +1505,6 @@ async fn loads_valid_skill() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -1644,8 +1539,6 @@ async fn falls_back_to_directory_name_when_skill_name_is_missing() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -1702,8 +1595,6 @@ async fn namespaces_plugin_skills_using_provided_namespace() {
             scope: SkillScope::User,
             plugin_id: Some("sample@test".to_string()),
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -1957,8 +1848,6 @@ async fn plugin_skill_name_length_limit_allows_max_qualified_name() {
             scope: SkillScope::User,
             plugin_id: Some("sample@test".to_string()),
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -2045,8 +1934,6 @@ async fn direct_child_discovery_ignores_nested_skills() {
             scope: SkillScope::User,
             plugin_id: Some("plugin@test".to_string()),
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -2113,8 +2000,6 @@ async fn loads_short_description_from_metadata() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -2148,8 +2033,6 @@ async fn loads_unquoted_description_containing_colon_space() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -2183,8 +2066,6 @@ async fn loads_unquoted_short_description_containing_colon_space_and_apostrophe(
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -2218,8 +2099,6 @@ async fn loads_unrecognized_frontmatter_fields_that_need_quotes() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -2253,8 +2132,6 @@ async fn preserves_block_scalar_body_while_repairing_other_fields() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -2373,8 +2250,6 @@ async fn loads_skills_from_repo_root() {
             scope: SkillScope::Repo,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -2412,8 +2287,6 @@ async fn loads_skills_from_agents_dir_without_codex_dir() {
             scope: SkillScope::Repo,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -2469,8 +2342,6 @@ async fn loads_skills_from_all_codex_dirs_under_project_root() {
                 scope: SkillScope::Repo,
                 plugin_id: None,
                 remote_plugin_id: None,
-                encrypted: false,
-                encryption: None,
             },
             SkillMetadata {
                 name: "root-skill".to_string(),
@@ -2483,8 +2354,6 @@ async fn loads_skills_from_all_codex_dirs_under_project_root() {
                 scope: SkillScope::Repo,
                 plugin_id: None,
                 remote_plugin_id: None,
-                encrypted: false,
-                encryption: None,
             },
         ]
     );
@@ -2762,8 +2631,6 @@ async fn loads_skills_from_codex_dir_when_not_git_repo() {
             scope: SkillScope::Repo,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -2818,8 +2685,6 @@ async fn deduplicates_by_path_preferring_first_root() {
             scope: SkillScope::Repo,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -2863,8 +2728,6 @@ async fn keeps_duplicate_names_from_repo_and_user() {
                 scope: SkillScope::Repo,
                 plugin_id: None,
                 remote_plugin_id: None,
-                encrypted: false,
-                encryption: None,
             },
             SkillMetadata {
                 name: "dupe-skill".to_string(),
@@ -2877,8 +2740,6 @@ async fn keeps_duplicate_names_from_repo_and_user() {
                 scope: SkillScope::User,
                 plugin_id: None,
                 remote_plugin_id: None,
-                encrypted: false,
-                encryption: None,
             },
         ]
     );
@@ -2943,8 +2804,6 @@ async fn keeps_duplicate_names_from_nested_codex_dirs() {
                 scope: SkillScope::Repo,
                 plugin_id: None,
                 remote_plugin_id: None,
-                encrypted: false,
-                encryption: None,
             },
             SkillMetadata {
                 name: "dupe-skill".to_string(),
@@ -2957,8 +2816,6 @@ async fn keeps_duplicate_names_from_nested_codex_dirs() {
                 scope: SkillScope::Repo,
                 plugin_id: None,
                 remote_plugin_id: None,
-                encrypted: false,
-                encryption: None,
             },
         ]
     );
@@ -3032,8 +2889,6 @@ async fn loads_skills_when_cwd_is_file_in_repo() {
             scope: SkillScope::Repo,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }
@@ -3094,8 +2949,6 @@ async fn loads_skills_from_system_cache_when_present() {
             scope: SkillScope::System,
             plugin_id: None,
             remote_plugin_id: None,
-            encrypted: false,
-            encryption: None,
         }]
     );
 }

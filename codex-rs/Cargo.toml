@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "fm-license",
     "aws-auth",
     "analytics",
     "agent-graph-store",
@@ -130,7 +131,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.146.0"
+version = "0.146.0-fm-license"
 # Track the edition for all workspace crates in one place. Individual
 # crates can still override this value, but keeping it here means new
 # crates created with `cargo new -w ...` automatically inherit the 2024
@@ -201,6 +202,7 @@ codex-git-utils = { path = "git-utils" }
 codex-hooks = { path = "hooks" }
 codex-keyring-store = { path = "keyring-store" }
 codex-linux-sandbox = { path = "linux-sandbox" }
+fm-license = { path = "fm-license" }
 codex-lmstudio = { path = "lmstudio" }
 codex-login = { path = "login" }
 codex-message-history = { path = "message-history" }
@@ -395,6 +397,7 @@ serde_json = "1"
 serde_path_to_error = "0.1.20"
 serde_with = "3.17"
 serde_yaml = "0.9"
+signal-hook = "0.3"
 serial_test = "3.2.0"
 sha1 = "0.10.6"
 scopeguard = "1.2.0"

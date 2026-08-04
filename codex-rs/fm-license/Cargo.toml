@@ -1,0 +1,23 @@
+[package]
+name = "fm-license"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "fm_license"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
+lmclient-rust-sdk = { git = "http://192.168.131.126:8089/jiangzhengqi/lmclient-rust-sdk.git", tag = "v1.2.0" }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

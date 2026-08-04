@@ -56,20 +56,6 @@ fn force_enables_verification_in_debug_builds() {
 }
 
 #[test]
-fn disable_overrides_everything() {
-    assert!(!license_check_enabled(
-        Some("1"),
-        Some("1"),
-        /*debug_build*/ false
-    ));
-    assert!(!license_check_enabled(
-        Some("true"),
-        /*force*/ None,
-        /*debug_build*/ false
-    ));
-}
-
-#[test]
 fn empty_values_do_not_toggle_verification() {
     assert!(license_check_enabled(
         Some(""),
@@ -80,5 +66,33 @@ fn empty_values_do_not_toggle_verification() {
         Some(""),
         Some(""),
         /*debug_build*/ true
+    ));
+}
+
+#[test]
+fn disable_only_applies_in_debug_builds() {
+    assert!(!license_check_enabled(
+        Some("1"),
+        Some("1"),
+        /*debug_build*/ true
+    ));
+    assert!(!license_check_enabled(
+        Some("true"),
+        /*force*/ None,
+        /*debug_build*/ true
+    ));
+}
+
+#[test]
+fn release_builds_always_verify() {
+    assert!(license_check_enabled(
+        Some("1"),
+        /*force*/ None,
+        /*debug_build*/ false
+    ));
+    assert!(license_check_enabled(
+        Some("true"),
+        Some("1"),
+        /*debug_build*/ false
     ));
 }

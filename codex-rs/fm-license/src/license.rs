@@ -6,7 +6,9 @@ use lmclient_rust_sdk::InitConfig;
 use lmclient_rust_sdk::LM_NOWAIT;
 use lmclient_rust_sdk::LicenseClient;
 use lmclient_rust_sdk::RetryCallback;
+use std::ffi::CString;
 use std::ffi::c_int;
+use std::sync::Mutex;
 
 /// Environment variable pointing at the LicenseService (`<port>@<host>`).
 pub const SERVER_ENV_VAR: &str = "FMSH_LIC_SERVER";
@@ -14,14 +16,22 @@ pub const SERVER_ENV_VAR: &str = "FMSH_LIC_SERVER";
 pub const FEATURE_ENV_VAR: &str = "FMSH_LIC_FEATURE";
 /// Environment variable overriding the licensed feature version.
 pub const VERSION_ENV_VAR: &str = "FMSH_LIC_VERSION";
-/// When set to `1` or `true`, startup verification is skipped even in release builds.
+/// When set to `1` or `true`, startup verification is skipped in debug builds.
+/// Ignored in release builds, where verification is always required.
 pub const DISABLE_ENV_VAR: &str = "FMSH_LIC_DISABLE";
-/// When set to `1` or `true`, startup verification runs even in debug builds.
+/// When set to `1` or `true`, startup verification runs in debug builds.
+/// Ignored in release builds, where verification is always required.
 pub const FORCE_ENV_VAR: &str = "FMSH_LIC_FORCE";
 
 const RECHECK_INTERVAL_SECONDS: c_int = 30;
 const RETRY_COUNT: c_int = 10;
 const SLEEP_TIME_SECONDS: c_int = 1;
+
+/// Feature currently checked out; `None` once the license has been returned.
+///
+/// The signal handler and the [`LicenseGuard`] share this so exactly one
+/// `check_in` happens no matter which path shuts the license down first.
+static ACTIVE_FEATURE: Mutex<Option<String>> = Mutex::new(None);
 
 /// License settings resolved from the environment.
 #[derive(Debug, PartialEq, Eq)]
@@ -54,13 +64,16 @@ pub(crate) fn resolve_config(
 }
 
 fn license_check_enabled(disable: Option<&str>, force: Option<&str>, debug_build: bool) -> bool {
+    if !debug_build {
+        return true;
+    }
     if disable.is_some_and(|value| matches!(value, "1" | "true")) {
         return false;
     }
     if force.is_some_and(|value| matches!(value, "1" | "true")) {
         return true;
     }
-    !debug_build
+    false
 }
 
 unsafe extern "C" fn on_retry() -> c_int {
@@ -84,22 +97,52 @@ unsafe extern "C" fn on_license_lost() -> c_int {
 /// outstanding licenses as a fallback.
 pub struct LicenseGuard {
     client: Option<LicenseClient>,
-    feature: String,
 }
 
 impl Drop for LicenseGuard {
     fn drop(&mut self) {
+        let feature = ACTIVE_FEATURE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        if let Some(feature) = feature {
+            if let Some(client) = self.client.as_mut() {
+                let _ = client.check_in(&feature);
+            }
+        }
         if let Some(client) = self.client.as_mut() {
-            let _ = client.check_in(&self.feature);
             let _ = client.exit();
         }
     }
 }
 
+/// Return the checked-out license immediately, if one is still active.
+///
+/// This is the entry point used by the Ctrl-C/SIGINT handler so the license
+/// is released before the process terminates, without waiting for `Drop`.
+pub fn check_in_now() {
+    let feature = ACTIVE_FEATURE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take();
+    let Some(feature) = feature else {
+        return;
+    };
+    let Ok(feature) = CString::new(feature) else {
+        return;
+    };
+    // SAFETY: `feature` is a valid NUL-terminated C string for this call, and
+    // the C library keeps global license state so no client handle is needed.
+    unsafe {
+        lmclient_rust_sdk::ffi::lmCheckIn(feature.as_ptr());
+    }
+}
+
 /// Check out the configured license feature at startup.
 ///
-/// Returns `Ok(None)` when verification is disabled via [`DISABLE_ENV_VAR`],
-/// or when running a debug build without [`FORCE_ENV_VAR`].
+/// Returns `Ok(None)` when running a debug build and verification is disabled
+/// via [`DISABLE_ENV_VAR`] or skipped without [`FORCE_ENV_VAR`]. Release builds
+/// always verify and ignore both environment variables.
 /// On failure the license error is returned with context so the caller can
 /// refuse to start.
 pub fn verify_at_startup() -> Result<Option<LicenseGuard>> {
@@ -151,9 +194,11 @@ pub fn verify_at_startup() -> Result<Option<LicenseGuard>> {
             )
         })?;
 
+    *ACTIVE_FEATURE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(config.feature.clone());
     Ok(Some(LicenseGuard {
         client: Some(client),
-        feature: config.feature,
     }))
 }
 

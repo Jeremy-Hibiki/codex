@@ -972,6 +972,27 @@ fn main() -> anyhow::Result<()> {
     })
 }
 
+/// Return the license immediately when the process is interrupted.
+///
+/// Codex can exit through paths that bypass normal destructor ordering (a
+/// SIGINT during startup, `std::process::exit` from deep call stacks), so the
+/// license must be returned from the signal handler itself.
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+fn install_license_checkin_signal_handler() -> anyhow::Result<()> {
+    use signal_hook::consts::signal::SIGINT;
+    use signal_hook::consts::signal::SIGTERM;
+    use signal_hook::iterator::Signals;
+
+    let mut signals = Signals::new([SIGINT, SIGTERM])?;
+    std::thread::spawn(move || {
+        for signal in signals.forever() {
+            fm_license::check_in_now();
+            std::process::exit(128 + signal);
+        }
+    });
+    Ok(())
+}
+
 async fn cli_main(
     arg0_paths: Arg0DispatchPaths,
     remote_control_disabled: bool,
@@ -1010,6 +1031,10 @@ async fn cli_main(
     };
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
     let _license_guard: Option<()> = None;
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    if _license_guard.is_some() {
+        install_license_checkin_signal_handler()?;
+    }
 
     match subcommand {
         None => {

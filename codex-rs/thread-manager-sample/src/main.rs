@@ -316,6 +316,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         encrypted_skills_sdk: Default::default(),
         encrypted_skills_ttl: Default::default(),
         encrypted_skills_audit_path: None,
+        encrypted_skills_local_privkey: None,
     };
     config
         .features

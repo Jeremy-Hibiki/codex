@@ -158,8 +158,8 @@ and unrelated to this fix set.
   plugins feature 或由受信管理工具下发配置，安全路线不得挂在用户可关闭的 flag 下。
 
 | 27 | `1c694a0269` + `5c44c17a17` | openspec: agent-security-rpc-guard | 进程级 engaged 注册表（Weak，`any_engaged`/`engaged_guarded_paths`）；telemetry 工具预览先包 `RedactingToolOutput` 再取 `log_preview`（日志不再含明文/路径）；core `agent_security::rpc` 纯函数（fs path/command/args）；app-server RPC 面接线：fs 读/枚举/watch/写/复制/删除、`command/exec`、`thread/shellCommand`、`process/spawn`、`thread/inject_items`、`thread/name|goal|metadata`；无 thread_id 的 RPC 采用进程级“任一 engaged”保守判定（决策记录）；E2E 集成测试：真实加载加密 Skill，在 turn in-flight 窗口内验证 fs/readFile、command/exec、thread/shellCommand、process/spawn 被拦截，普通路径放行，未 engaged 时不受影响 |
-| 28 | `e29eda359d` | openspec: agent-security-product-policy | I6/I7/D10 落地：core `ensure_encrypted_skill_sandbox`（engaged 且无有效沙箱 → 拒绝执行）；CLI 拒绝 `--sandbox danger-full-access` 与 `dangerously-bypass-approvals-and-sandbox`（根级 `interactive.shared` 之外，覆盖 exec/resume/fork/archive/delete/unarchive 子命令自身 shared 参数），拒绝 `plugin`/`marketplace` 子命令；app-server `thread/start`/`turn/start` 请求参数携带 danger-full-access 时 `invalid_request` 拒绝；插件/marketplace CLI 集成测试收敛为“策略拒绝”断言（core-plugins 单元测试保留底层覆盖）；app-server 既有 full-access 用例改为配置级 full-access 或 WorkspaceWrite 保持原意图；新增 `product_policy` 集成测试 |
-| 29 | `faf8a03fb3` + `6a2f9a217a` | TODO-6/7/8/9 收尾 | app-server 消息边界统一拦截 `marketplace/add|remove|upgrade`、`plugin/install|uninstall`、`plugin/share/save|updateTargets|checkout|delete`（只读 list/read 保留）；`thread/settings/update` 拒绝 danger-full-access；engaged 时拒绝 `config/value/write`、`config/batchWrite`、`experimentalFeature/enablement/set`、`skills/config/write`、`skills/extraRoots/set`（未 engaged 行为不变）；`redact_turn_item` 扩展覆盖 CommandExecution/FileChange/WebSearch/CollabAgentToolCall/DynamicToolCall/McpToolCall 文本面（明文+路径红act），集成测试验证技能脚本回显明文在 rollout 中被红act |
+| 28 | `e29eda359d` | openspec: agent-security-product-policy | I6/I7/D10 落地：core `ensure_encrypted_skill_sandbox`（engaged 且无有效沙箱 → 拒绝执行）；CLI 拒绝 `--sandbox danger-full-access` 与 `dangerously-bypass-approvals-and-sandbox`（根级 `interactive.shared` 之外，覆盖 exec/resume/fork/archive/delete/unarchive 子命令自身 shared 参数），拒绝 `plugin`/`marketplace` 子命令；app-server `thread/start`/`turn/start` 请求参数携带 danger-full-access 时 `invalid_request` 拒绝；插件/marketplace CLI 原集成测试保留并标记 `#[ignore]`（策略拒绝断言另存 `plugin_policy.rs`/`product_policy.rs`）；app-server 既有 full-access 用例改为配置级 full-access 或 WorkspaceWrite 保持原意图 |
+| 29 | `faf8a03fb3` + `6a2f9a217a` | TODO-6/7/8/9 收尾 | app-server 消息边界统一拦截 `marketplace/add|remove|upgrade`、`plugin/install|uninstall`、`plugin/share/save|updateTargets|checkout|delete`（只读 list/read 保留）；`thread/settings/update` 拒绝 danger-full-access；engaged 时拒绝 `config/value/write`、`config/batchWrite`、`experimentalFeature/enablement/set`、`skills/config/write`、`skills/extraRoots/set`（未 engaged 行为不变）；`redact_turn_item` 扩展覆盖 CommandExecution/FileChange/WebSearch/CollabAgentToolCall/DynamicToolCall/McpToolCall 文本面（明文+路径红act），集成测试验证技能脚本回显明文在 rollout 中被红act；原 8 个 app-server 插件/市场测试文件保留并标记 `#[ignore]`（非删除），策略拒绝测试另存 `plugin_policy.rs` |
 
 ## I28 补充说明：产品策略边界与决策记录
 
@@ -174,9 +174,10 @@ and unrelated to this fix set.
   默认配置/受信管理工具保证，已列入“待处理问题”。
 - D10 确认（用户决策回填）：`thread/realtime/*` 产品不提供，排除在范围外；客户端不提供任何
   改配置/改模型配置入口；Skill 仅可配置启用/禁用；配置由未来受信管理工具负责。
-- 测试策略：插件/marketplace CLI 集成测试改为断言产品策略拒绝；core-plugins 单元测试仍覆盖
-  底层插件逻辑；app-server 新增 `product_policy` 集成测试覆盖 thread/turn start 的
-  danger-full-access 拒绝。
+- 测试策略（非破坏性）：插件/marketplace 原有 CLI 与 app-server 集成测试全部保留，统一加
+  `#[ignore = "plugin and marketplace management is disabled by product policy"]` 跳过；
+  产品策略拒绝行为由新增的 `plugin_policy.rs`/`product_policy.rs` 测试覆盖；core-plugins
+  单元测试继续覆盖底层插件逻辑。
 
 ## TODO-1 验证记录：bwrap 只读 bind 真实执行
 

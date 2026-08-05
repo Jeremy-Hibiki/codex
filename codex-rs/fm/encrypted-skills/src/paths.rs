@@ -74,6 +74,135 @@ pub fn is_script_execution(cmd: &str) -> bool {
         .is_some_and(|target| is_script_file(unquote(target)))
 }
 
+/// True when a script-execution segment uses guarded paths only as ordinary
+/// arguments. Shell I/O channels that read decrypted storage bypass the
+/// "execute-only" semantic even when the segment still runs a script, so a
+/// guarded path used as a redirection target, inside `$( ... )`/backticks, in
+/// a here-string, or through process substitution is rejected.
+pub fn script_execution_avoids_guarded_io(command: &str, guarded: &[String]) -> bool {
+    let chars: Vec<char> = command.chars().collect();
+    let mut index = 0usize;
+    let mut single_quote = false;
+    let mut double_quote = false;
+    let mut substitution_depth = 0usize;
+    let mut in_backtick = false;
+
+    while index < chars.len() {
+        let c = chars[index];
+        if single_quote {
+            if c == '\'' {
+                single_quote = false;
+            }
+            index += 1;
+            continue;
+        }
+        if double_quote {
+            match c {
+                '"' => double_quote = false,
+                '`' => in_backtick = !in_backtick,
+                '$' if chars.get(index + 1) == Some(&'(') => {
+                    substitution_depth += 1;
+                    index += 1;
+                }
+                ')' if substitution_depth > 0 => substitution_depth -= 1,
+                _ if substitution_depth > 0 || in_backtick => {
+                    if guarded_at(&chars, index, guarded) {
+                        return false;
+                    }
+                }
+                _ => {}
+            }
+            index += 1;
+            continue;
+        }
+        match c {
+            '\'' => single_quote = true,
+            '"' => double_quote = true,
+            '`' => in_backtick = !in_backtick,
+            '$' if chars.get(index + 1) == Some(&'(') => {
+                substitution_depth += 1;
+                index += 2;
+                continue;
+            }
+            // Process substitution `<( ... )` / `>( ... )` executes a reader
+            // inside the segment; a guarded path there is a forbidden read.
+            '<' if chars.get(index + 1) == Some(&'(') || chars.get(index + 1) == Some(&'>') => {
+                substitution_depth += 1;
+                index += 2;
+                continue;
+            }
+            '<' | '>' => {
+                let mut end = index + 1;
+                while end < chars.len() && (chars[end] == '<' || chars[end] == '>') {
+                    end += 1;
+                }
+                let target = redirect_target(&chars, end);
+                if guarded.iter().any(|dir| target.contains(dir.as_str())) {
+                    return false;
+                }
+                index = end;
+            }
+            ')' if substitution_depth > 0 => substitution_depth -= 1,
+            _ if substitution_depth > 0 || in_backtick => {
+                if guarded_at(&chars, index, guarded) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    true
+}
+
+/// The token following a redirection operator (after optional whitespace and
+/// quote handling), used to decide whether the redirect reads a guarded path.
+fn redirect_target(chars: &[char], mut index: usize) -> String {
+    while index < chars.len() && chars[index].is_whitespace() {
+        index += 1;
+    }
+    let mut out = String::new();
+    let mut quote: Option<char> = None;
+    while index < chars.len() {
+        let c = chars[index];
+        if let Some(active) = quote {
+            if c == active {
+                break;
+            }
+            out.push(c);
+            index += 1;
+            continue;
+        }
+        match c {
+            '\'' | '"' => {
+                quote = Some(c);
+                index += 1;
+            }
+            c if c.is_whitespace() || matches!(c, '<' | '>' | '|' | '&' | ';' | '(' | ')') => {
+                break;
+            }
+            _ => {
+                out.push(c);
+                index += 1;
+            }
+        }
+    }
+    out
+}
+
+fn guarded_at(chars: &[char], index: usize, guarded: &[String]) -> bool {
+    guarded.iter().any(|dir| {
+        let mut offset = index;
+        for expected in dir.chars() {
+            match chars.get(offset) {
+                Some(actual) if *actual == expected => offset += 1,
+                _ => return false,
+            }
+        }
+        true
+    })
+}
+
 /// True when `path` ends in a script extension.
 pub fn is_script_file(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();

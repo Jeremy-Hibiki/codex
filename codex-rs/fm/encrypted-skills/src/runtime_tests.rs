@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::mpsc;
 use std::time::Duration;
 
 use super::*;
@@ -351,6 +352,144 @@ fn test_runtime(sdk: Arc<dyn EnvelopeSdk>) -> (EncryptedSkillRuntime, tempfile::
         EncryptedSkillRuntime::new(sdk, TtlConfig::default(), tmp.path().join("mem-root")),
         tmp,
     )
+}
+
+struct BlockingSdk {
+    started: std::sync::Mutex<Option<mpsc::Sender<()>>>,
+    release: std::sync::Mutex<Option<mpsc::Receiver<()>>>,
+}
+
+impl EnvelopeSdk for BlockingSdk {
+    fn decrypt_package(&self, _package_path: &Path) -> Result<Vec<PackageEntry>, EnvelopeError> {
+        if let Some(tx) = self.started.lock().unwrap().take() {
+            let _ = tx.send(());
+        }
+        if let Some(rx) = self.release.lock().unwrap().as_ref() {
+            let _ = rx.recv();
+        }
+        Ok(vec![PackageEntry {
+            rel_path: PathBuf::from("SKILL.md"),
+            contents: b"# Encrypted skill".to_vec(),
+        }])
+    }
+}
+
+struct PartialWriteSdk;
+
+impl EnvelopeSdk for PartialWriteSdk {
+    fn decrypt_package(&self, _package_path: &Path) -> Result<Vec<PackageEntry>, EnvelopeError> {
+        Ok(vec![
+            PackageEntry {
+                rel_path: PathBuf::from("SKILL.md"),
+                contents: b"# ok".to_vec(),
+            },
+            PackageEntry {
+                rel_path: PathBuf::from("../escape"),
+                contents: b"x".to_vec(),
+            },
+        ])
+    }
+}
+
+#[test]
+fn is_engaged_tracks_load_and_clear() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let (runtime, _tmp) = test_runtime(sdk);
+
+    assert!(!runtime.is_engaged("t1"));
+    runtime
+        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+        .unwrap();
+    assert!(runtime.is_engaged("t1"));
+
+    runtime.clear_thread("t1");
+    assert!(!runtime.is_engaged("t1"));
+}
+
+#[test]
+fn is_engaged_true_while_decryption_in_flight() {
+    let (started_tx, started_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let sdk = Arc::new(BlockingSdk {
+        started: std::sync::Mutex::new(Some(started_tx)),
+        release: std::sync::Mutex::new(Some(release_rx)),
+    });
+    let runtime = Arc::new(test_runtime(sdk).0);
+
+    assert!(!runtime.is_engaged("t1"));
+    let rt = Arc::clone(&runtime);
+    let handle = std::thread::spawn(move || {
+        rt.load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+    });
+
+    started_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("decryption should start");
+    assert!(
+        runtime.is_engaged("t1"),
+        "engaged must be true while decryption is in flight"
+    );
+
+    release_tx.send(()).unwrap();
+    let result = handle.join().expect("load thread should not panic");
+    assert!(result.is_ok());
+    assert!(runtime.is_engaged("t1"));
+}
+
+#[test]
+fn failed_decryption_removes_in_flight_and_wipes_partial_dir() {
+    let (runtime, _tmp) = test_runtime(Arc::new(PartialWriteSdk));
+
+    assert!(
+        runtime
+            .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+            .is_err()
+    );
+    assert!(!runtime.is_engaged("t1"));
+    assert!(runtime.decrypted_dirs("t1").is_empty());
+
+    let namespace_dir = runtime.mem_root().join(process_namespace());
+    let leftover = std::fs::read_dir(&namespace_dir)
+        .expect("namespace dir should exist")
+        .filter_map(Result::ok)
+        .any(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(crate::mem_root::DECRYPTED_DIR_PREFIX)
+        });
+    assert!(
+        !leftover,
+        "partial decrypted dir must be wiped after failure"
+    );
+}
+
+#[test]
+fn path_mappings_expose_registered_skill_pairs() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let (runtime, _tmp) = test_runtime(sdk);
+    runtime
+        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+        .unwrap();
+
+    let mappings = runtime.path_mappings("t1");
+    assert_eq!(mappings.len(), 1);
+    let (decrypted, original) = &mappings[0];
+    assert_eq!(*original, PathBuf::from("/skills"));
+    assert_eq!(runtime.decrypted_dirs("t1"), vec![decrypted.clone()]);
+    assert!(decrypted.starts_with(runtime.mem_root()));
+}
+
+#[test]
+fn path_mappings_exclude_empty_original_dir_and_empty_session() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let (runtime, _tmp) = test_runtime(sdk);
+    runtime
+        .load_or_register("t1", "flat", Path::new("secret.zip.enc"))
+        .unwrap();
+
+    assert!(runtime.path_mappings("t1").is_empty());
+    assert!(runtime.path_mappings("other").is_empty());
 }
 
 #[test]

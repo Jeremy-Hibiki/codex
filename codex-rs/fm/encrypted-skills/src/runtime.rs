@@ -1,6 +1,7 @@
 //! Host-facing runtime that owns decryption state for encrypted skills.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -31,16 +32,22 @@ use crate::token::random_hex;
 
 /// Per-process encrypted-skill state: session registry, content cache, the
 /// envelope SDK, and the memory root. Threads are isolated by session id.
+/// Key identifying a per-(session, skill) in-flight load gate.
+type SkillLoadGateKey = (String, String);
+
 pub struct EncryptedSkillRuntime {
     registry: Mutex<Registry>,
     cache: Mutex<ContentCache>,
+    /// Sessions with a decryption currently in flight, so `is_engaged` stays
+    /// true between plaintext landing on disk and registry registration.
+    in_flight_sessions: Mutex<HashSet<String>>,
     /// Serializes the "cache store + registry register" sequence against
     /// per-session teardown (`clear_session`), so a load cannot register a
     /// record pointing at a cache entry that teardown already dropped.
     state_lock: Mutex<()>,
     /// Per-(session, skill) gates so concurrent loads of the same skill share
     /// one decryption instead of racing to decrypt and replace each other.
-    inflight: Mutex<HashMap<(String, String), Arc<Mutex<()>>>>,
+    inflight: Mutex<HashMap<SkillLoadGateKey, Arc<Mutex<()>>>>,
     sdk: Arc<dyn EnvelopeSdk>,
     mem_root: PathBuf,
     namespace: String,
@@ -89,6 +96,7 @@ impl EncryptedSkillRuntime {
         Self {
             registry: Mutex::new(Registry::new(clock, ttl)),
             cache: Mutex::new(ContentCache::new(64)),
+            in_flight_sessions: Mutex::new(HashSet::new()),
             state_lock: Mutex::new(()),
             inflight: Mutex::new(HashMap::new()),
             sdk,
@@ -121,13 +129,12 @@ impl EncryptedSkillRuntime {
         let _gate = gate.lock().map_err(lock_error)?;
         let result = self.load_or_register_inner(session_id, skill_name, package_path);
         drop(_gate);
-        if let Ok(mut inflight) = self.inflight.lock() {
-            if inflight
+        if let Ok(mut inflight) = self.inflight.lock()
+            && inflight
                 .get(&key)
                 .is_some_and(|candidate| Arc::ptr_eq(candidate, &gate))
-            {
-                inflight.remove(&key);
-            }
+        {
+            inflight.remove(&key);
         }
         result
     }
@@ -157,6 +164,11 @@ impl EncryptedSkillRuntime {
                 return Ok(Token::new(session_id, token).serialize());
             }
         }
+
+        // Mark the session as engaged for the whole decryption window. The
+        // guard removes the marker on every exit path, including errors and
+        // panics, so plaintext never exists while `is_engaged` is false.
+        let _in_flight = InFlightGuard::enter(self, session_id)?;
 
         self.check_capacity_for_package(package_path)?;
         let entries = self.sdk.decrypt_package(package_path)?;
@@ -337,6 +349,37 @@ impl EncryptedSkillRuntime {
         self.clear_session(session_id, "thread_end");
     }
 
+    /// Returns true while this session has decrypted plaintext available or a
+    /// decryption is in flight. Derived purely from runtime state.
+    pub fn is_engaged(&self, session_id: &str) -> bool {
+        let registered = self
+            .registry
+            .lock()
+            .map(|registry| registry.skills_for_session(session_id).next().is_some())
+            .unwrap_or(false);
+        let in_flight = self
+            .in_flight_sessions
+            .lock()
+            .map(|sessions| sessions.contains(session_id))
+            .unwrap_or(false);
+        registered || in_flight
+    }
+
+    /// Returns `(decrypted_dir, original_dir)` pairs for every skill
+    /// registered to this session whose original directory is non-empty.
+    pub fn path_mappings(&self, session_id: &str) -> Vec<(PathBuf, PathBuf)> {
+        self.registry
+            .lock()
+            .map(|registry| {
+                registry
+                    .skills_for_session(session_id)
+                    .filter(|record| !record.original_dir.as_os_str().is_empty())
+                    .map(|record| (record.dir.clone(), record.original_dir.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// Unloads one thread's decrypted state at the end of a turn. Encrypted
     /// skills do not carry plaintext across turns; re-mentioning a skill in a
     /// later turn decrypts it again.
@@ -345,6 +388,9 @@ impl EncryptedSkillRuntime {
     }
 
     fn clear_session(&self, session_id: &str, reason: &str) {
+        if let Ok(mut sessions) = self.in_flight_sessions.lock() {
+            sessions.remove(session_id);
+        }
         let Ok(_state) = self.state_lock.lock() else {
             tracing::error!("encrypted-skill lifecycle lock poisoned; session cleanup skipped");
             return;
@@ -492,6 +538,35 @@ impl EncryptedSkillRuntime {
             ));
         }
         Ok(())
+    }
+}
+
+/// RAII marker that keeps a session's in-flight decryption visible to
+/// `is_engaged` until the load completes, fails, or unwinds.
+struct InFlightGuard<'a> {
+    sessions: &'a Mutex<HashSet<String>>,
+    session_id: String,
+}
+
+impl<'a> InFlightGuard<'a> {
+    fn enter(runtime: &'a EncryptedSkillRuntime, session_id: &str) -> Result<Self, EnvelopeError> {
+        runtime
+            .in_flight_sessions
+            .lock()
+            .map_err(lock_error)?
+            .insert(session_id.to_string());
+        Ok(Self {
+            sessions: &runtime.in_flight_sessions,
+            session_id: session_id.to_string(),
+        })
+    }
+}
+
+impl Drop for InFlightGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut sessions) = self.sessions.lock() {
+            sessions.remove(&self.session_id);
+        }
     }
 }
 

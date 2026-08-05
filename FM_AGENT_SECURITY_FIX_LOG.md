@@ -29,6 +29,7 @@ design.
 | 21 | `2de0c3caa0` | audit sink | F4: process-wide per-(path, max_bytes) shared FileAuditSink (Weak registry) wired into Session::new; one writer per file, no concurrent rotation |
 | 22 | `5d9fae664c` | fmsh-ukey groundwork | Reserve `SdkKind::UKey`/`Local` and `sdk = "ukey"/"local"` config variants (fail-closed until `fmsh-ukey` feature is wired); schema regenerated |
 | 23 | `01d3a010c0` | guardian/review redaction | Reviewer models must not see the real decrypted `/dev/shm` location: `redact_guardian_request` rewrites registered decrypted dirs back to original skill paths and redacts remaining memory-root segments in every command-bearing `GuardianApprovalRequest` (Shell / ExecCommand / Execve / NetworkAccess trigger) before the review prompt is built; shared `redact_storage_paths` helper is now also used by `RedactingToolOutput` |
+| 24 | openspec: encrypted-skill-engagement | 会话级 engaged 判定基础：`is_engaged`（registry 非空 || 解密 in-flight）、RAII `InFlightGuard` 覆盖“明文落盘→登记”窗口、失败路径保持 `secure_wipe`、`path_mappings` 导出 `(解密目录, 逻辑路径)`；`clear_thread` 同步清理 in-flight；未 engaged 不引入任何行为（门控由后续变更实现） |
 
 ## I23 补充说明：`/dev/shm` 路径的模型可见性
 

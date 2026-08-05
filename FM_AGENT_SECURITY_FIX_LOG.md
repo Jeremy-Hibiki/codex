@@ -163,3 +163,13 @@ and unrelated to this fix set.
 在宿主 `/dev/shm` 放置标记文件、把临时解密目录 `--ro-bind` 到逻辑技能路径后启动真实 bwrap，
 断言（1）逻辑路径下能读到绑定内容；（2）沙箱内 `/dev/shm` 为空；（3）宿主 `/dev/shm` 标记
 在沙箱内不可见。该测试在 bwrap 不可用或无法创建用户命名空间时自动跳过。
+
+## TODO-2/3/4 验证记录
+
+- TODO-2：发现并修复 `TurnItem::Plan`（task 列表/计划）未红act的缺口——`redact_turn_item` 新增
+  `PlanItem.text` 红act并补测试；reasoning summary/raw、agentMessage 已有覆盖；路径面由
+  `RedactingToolOutput`/`redact_storage_paths` 统一处理；subagent 消息走 agentMessage 面。
+- TODO-3：确认 rollout/compaction/fork/state 持久化在源头红act（有测试断言），磁盘无明文，
+  不需要把 rollout/state db 路径纳入受保护路径集合；resume/fork 正常读取不受影响。
+- TODO-4：确认 TUI `!` 走 `thread/shellCommand`，变更 4 的 `ensure_not_engaged_unsandboxed`
+  在处理器入口拦截，`rpc_guard` E2E 已覆盖；`process/spawn` 同样拦截。

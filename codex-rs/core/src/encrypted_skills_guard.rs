@@ -714,6 +714,9 @@ pub(crate) fn redact_turn_item(
                 *text = export_guard::redact_known_plaintext(text, &known);
             }
         }
+        TurnItem::Plan(plan) => {
+            plan.text = export_guard::redact_known_plaintext(&plan.text, &known);
+        }
         _ => {}
     }
     item

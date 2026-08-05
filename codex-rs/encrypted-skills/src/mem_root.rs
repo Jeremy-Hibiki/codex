@@ -175,12 +175,52 @@ fn validate_rel_path(rel: &Path) -> Result<(), EnvelopeError> {
     Ok(())
 }
 
-/// Secure wipe: overwrites regular file contents with random bytes, then
-/// removes the whole tree.
+/// Secure wipe: removes the whole decrypted tree.
+///
+/// On a tmpfs memory root (Linux `/dev/shm`), files live in RAM — overwriting
+/// them with random bytes is forensic theatre and can only push plaintext
+/// pages into swap. We therefore skip the overwrite and go straight to
+/// `remove_dir_all`. On non-tmpfs roots (the non-Linux `temp_dir()` fallback
+/// or a custom disk-backed root) we overwrite regular files first so a
+/// recoverable medium does not retain plaintext.
 pub fn secure_wipe(dir: &Path) -> io::Result<()> {
     if !dir.exists() {
         return Ok(());
     }
+    if !is_tmpfs_root(dir) {
+        overwrite_tree_files_random(dir)?;
+    }
+    fs::remove_dir_all(dir)
+}
+
+/// True when `dir` is on a Linux tmpfs (`/dev/shm`), where plaintext pages
+/// are RAM and overwrite-before-delete is pointless.
+fn is_tmpfs_root(dir: &Path) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        // Walk up to the nearest existing ancestor and stat its device.
+        let mut probe = dir;
+        loop {
+            if probe.exists() {
+                break;
+            }
+            match probe.parent() {
+                Some(parent) => probe = parent,
+                None => return false,
+            }
+        }
+        is_dev_shm(probe)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = dir;
+        false
+    }
+}
+
+/// Overwrites every regular file under `dir` with random bytes, leaving the
+/// directory structure intact for the caller to remove.
+fn overwrite_tree_files_random(dir: &Path) -> io::Result<()> {
     let mut files = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
     while let Some(current) = stack.pop() {
@@ -197,7 +237,19 @@ pub fn secure_wipe(dir: &Path) -> io::Result<()> {
         overwrite_with_random(&file)?;
         fs::remove_file(file)?;
     }
-    fs::remove_dir_all(dir)
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn is_dev_shm(path: &Path) -> bool {
+    // `/dev/shm` is a tmpfs mount; detect by checking whether the canonical
+    // path starts with the default memory root prefix.
+    path.starts_with(DEFAULT_MEM_ROOT)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_dev_shm(_path: &Path) -> bool {
+    false
 }
 
 fn overwrite_with_random(path: &Path) -> io::Result<()> {

@@ -6,14 +6,6 @@ use std::path::PathBuf;
 
 pub const MEM_ROOT: &str = "/dev/shm/fm-agent-security";
 pub const REDACTED_MARKER: &str = "[REDACTED]";
-pub const TEXT_EXTENSIONS: [&str; 3] = [".md", ".txt", ".markdown"];
-pub const READ_COMMANDS: [&str; 14] = [
-    "cat", "head", "tail", "less", "more", "tac", "nl", "bat", "batcat", "xxd", "od", "hexdump",
-    "strings", "base64",
-];
-pub const SEARCH_COMMANDS: [&str; 12] = [
-    "grep", "rg", "sed", "awk", "find", "ls", "cut", "tr", "paste", "column", "shuf", "uniq",
-];
 pub const RUNNERS: [&str; 10] = [
     "python", "python3", "bash", "zsh", "sh", "node", "deno", "ruby", "perl", "pwsh",
 ];
@@ -63,19 +55,6 @@ pub fn redact_path_prefix(text: &str, prefix: &str) -> String {
     out
 }
 
-pub fn is_allowed_text_file(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
-    TEXT_EXTENSIONS.iter().any(|ext| lower.ends_with(ext))
-}
-
-pub fn is_read_command(cmd: &str) -> bool {
-    command_basenames(cmd).any(|name| READ_COMMANDS.contains(&name))
-}
-
-pub fn is_search_command(cmd: &str) -> bool {
-    command_basenames(cmd).any(|name| SEARCH_COMMANDS.contains(&name))
-}
-
 /// True when the command runs a script (runner + non-flag token ending in a
 /// script extension). Only the runner's first non-flag argument counts, so
 /// `bash -c 'cat script.sh'` is not treated as script execution.
@@ -101,78 +80,13 @@ pub fn is_script_file(path: &str) -> bool {
     SCRIPT_EXTENSIONS.iter().any(|ext| lower.ends_with(ext))
 }
 
-/// Returns non-flag, non-redirection file-like tokens in a command, excluding
-/// the command name itself.
-pub fn file_targets(cmd: &str) -> Vec<&str> {
-    let tokens: Vec<&str> = cmd.split_whitespace().collect();
-    let mut out = Vec::new();
-    let mut skip_next = false;
-    for (index, token) in tokens.iter().enumerate() {
-        if skip_next {
-            skip_next = false;
-            continue;
-        }
-        match *token {
-            ">" | ">>" | "<" | "2>" | "2>>" | "1>" | "1>>" | "&>" | "&>>" => {
-                skip_next = true;
-                continue;
-            }
-            "|" | "||" | "&&" | ";" => continue,
-            _ => {}
-        }
-        if index == 0 || token.starts_with('-') {
-            continue;
-        }
-        // Embedded redirections like `2>/dev/null` carry no file target of
-        // interest for script detection.
-        if token.contains('>')
-            && (token.starts_with('>')
-                || token
-                    .as_bytes()
-                    .first()
-                    .is_some_and(|byte| byte.is_ascii_digit() || *byte == b'&'))
-        {
-            continue;
-        }
-        out.push(unquote(token));
-    }
-    out
-}
-
 fn unquote(token: &str) -> &str {
     token.trim_matches(|c| c == '\'' || c == '"')
 }
 
-/// True when a read/search command targets at least one script file.
-pub fn command_targets_script(cmd: &str) -> bool {
-    file_targets(cmd)
-        .iter()
-        .any(|target| is_script_file(target))
-}
-
-/// True when the command is a recursive grep/rg search (rg recurses by
-/// default).
-pub fn is_recursive_search(cmd: &str) -> bool {
-    if command_basenames(cmd).any(|name| name == "rg") {
-        return true;
-    }
-    cmd.split_whitespace().any(|token| {
-        (token == "-r" || token == "-R" || token == "--recursive")
-            || ((token.starts_with("-r") || token.starts_with("-R")) && token.len() > 2)
-    })
-}
-
-/// Appends script-extension exclusions so a recursive grep/rg never emits
-/// script source lines.
-pub fn inject_script_exclusions(cmd: &str) -> String {
-    let exclusions: Vec<String> = SCRIPT_EXTENSIONS
-        .iter()
-        .map(|ext| format!("--exclude='*{ext}'"))
-        .collect();
-    format!("{cmd} {}", exclusions.join(" "))
-}
-
 /// True when a command mentions the memory root or any known decrypted dir.
+/// Substring matching means globs (`/dev/shm/.../p*/f*/SKILL.md`) and
+/// cross-session directories under the shared root are also caught.
 pub fn command_references_dir(cmd: &str, decrypted_dirs: &[String]) -> bool {
     if cmd.contains(MEM_ROOT) {
         return true;
@@ -180,10 +94,87 @@ pub fn command_references_dir(cmd: &str, decrypted_dirs: &[String]) -> bool {
     decrypted_dirs.iter().any(|dir| cmd.contains(dir.as_str()))
 }
 
-fn command_basenames(cmd: &str) -> impl Iterator<Item = &str> {
-    cmd.split_whitespace()
-        .map(command_basename)
-        .filter(|name| !name.is_empty())
+/// Splits a command into independent segments at unquoted chain operators
+/// (`;`, `|`, `||`, `&&`, background `&`, newline `\n`, and bash stderr pipe
+/// `|&`). Each segment is judged independently by the guard so a forbidden
+/// read cannot be smuggled after an allowed script execution
+/// (`bash run.sh; cat SKILL.md`).
+///
+/// Backslash-escaped operators (`cat a\|b`) are not separators. Quote-aware:
+/// operators inside single or double quotes are not separators. `&` inside a
+/// redirection token (`2>&1`) is not treated as a separator.
+pub fn split_command_segments(command: &str) -> Vec<String> {
+    let chars: Vec<char> = command.chars().collect();
+    let mut segments = Vec::new();
+    let mut start = 0usize;
+    let mut i = 0usize;
+    let mut quote: Option<char> = None;
+    while i < chars.len() {
+        let c = chars[i];
+        if let Some(q) = quote {
+            if c == q {
+                quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        // Backslash escape: the next char is literal, never a separator.
+        // Covers `cat a\|b` and `cat a\;b` where the operator is escaped.
+        if c == '\\' && i + 1 < chars.len() {
+            i += 2;
+            continue;
+        }
+        match c {
+            '\'' | '"' => {
+                quote = Some(c);
+                i += 1;
+            }
+            // Bare newline is a command separator like `;`.
+            '\n' => {
+                push_segment(&mut segments, &chars, start, i);
+                i += 1;
+                start = i;
+            }
+            ';' | '|' => {
+                // `;;` and `||` consume two chars; `|&` (bash stderr pipe)
+                // also consumes two and is a separator; single char otherwise.
+                let consume = if i + 1 < chars.len() && (chars[i + 1] == c || chars[i + 1] == '&') {
+                    2
+                } else {
+                    1
+                };
+                push_segment(&mut segments, &chars, start, i);
+                i += consume;
+                start = i;
+            }
+            '&' => {
+                if i + 1 < chars.len() && chars[i + 1] == '&' {
+                    push_segment(&mut segments, &chars, start, i);
+                    i += 2;
+                    start = i;
+                } else if i + 1 == chars.len() || chars[i + 1].is_whitespace() {
+                    push_segment(&mut segments, &chars, start, i);
+                    i += 1;
+                    start = i;
+                } else {
+                    i += 1;
+                }
+            }
+            _ => {
+                i += 1;
+            }
+        }
+    }
+    push_segment(&mut segments, &chars, start, chars.len());
+    segments
+}
+
+fn push_segment(segments: &mut Vec<String>, chars: &[char], start: usize, end: usize) {
+    let segment: String = chars[start..end].iter().collect();
+    let trimmed = segment.trim();
+    if !trimmed.is_empty() {
+        segments.push(trimmed.to_string());
+    }
 }
 
 fn command_basename(token: &str) -> &str {

@@ -17,9 +17,19 @@ fn user_message(text: &str) -> RolloutItem {
 }
 
 #[test]
-fn user_message_with_encrypted_skill_token_is_dropped() {
+fn user_message_with_encrypted_skill_token_is_kept() {
+    // Fork isolation strips tokens, not the whole message — see the fork
+    // pipeline. At the keep/drop filter level the message is always retained.
     let item = user_message("[SENSITIVE_SKILL_TOKEN:thread-1:abcdef0123456789abcdef0123456789]");
-    assert!(!keep_forked_rollout_item(&item, false));
+    assert!(keep_forked_rollout_item(&item, false));
+}
+
+#[test]
+fn user_message_with_token_and_real_content_is_kept() {
+    let item = user_message(
+        "please do the task [SENSITIVE_SKILL_TOKEN:thread-1:abcdef0123456789abcdef0123456789]",
+    );
+    assert!(keep_forked_rollout_item(&item, false));
 }
 
 #[test]

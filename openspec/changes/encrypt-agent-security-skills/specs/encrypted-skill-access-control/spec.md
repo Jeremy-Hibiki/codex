@@ -1,19 +1,41 @@
 ## ADDED Requirements
 
-### Requirement: Intercept direct reads of decrypted skill storage
-The system SHALL block tool invocations that directly read files or directory listings under `/dev/shm/fm-agent-security/`.
+### Requirement: Execute only access to decrypted storage
+The system SHALL allow only script execution against decrypted skill storage. Every other reference to the memory root or any decrypted directory — reading text or script files, copying, redirecting, piping, listing, searching, or globbing — SHALL be blocked, regardless of the command name. This is a semantic gate, not a command-name allowlist, so it cannot be bypassed by `cp SKILL.md /tmp`, redirection, or commands outside a curated list.
 
-#### Scenario: Direct file read is blocked
-- **WHEN** a model or user issues a command that reads a file under `/dev/shm/fm-agent-security/` (for example `cat`, `less`, `head`, or `tail`)
-- **THEN** the tool invocation is blocked with an explanatory message
+The check operates on each segment of the command after splitting at unquoted chain operators (`;`, `|`, `&&`, `||`, and background `&`), so a forbidden read cannot be smuggled after an allowed execution. The check runs against the path-rewritten command (original skill directories already rewritten to their decrypted counterparts) so original-path and decrypted-path references are judged on the same canonical view.
 
-#### Scenario: Directory probing is blocked
-- **WHEN** a model or user issues a command that lists `/dev/shm/fm-agent-security/` or its subdirectories (for example `ls`, `find`)
-- **THEN** the tool invocation is blocked with an explanatory message
+#### Scenario: Reading a text file (including SKILL.md) is blocked
+- **WHEN** a command reads any file under the memory root or a decrypted directory, including text files such as `SKILL.md`, `notes.md`, or `references/*.md`
+- **THEN** the invocation is blocked with an explanatory message
+
+#### Scenario: Directory probing and listing are blocked
+- **WHEN** a command lists the memory root or any decrypted directory (for example `ls`, `find`, `tree`, `eza`, `lsd`, `fd`)
+- **THEN** the invocation is blocked
+
+#### Scenario: Copying or redirecting plaintext out of storage is blocked
+- **WHEN** a command copies, redirects, or encodes a file from decrypted storage to an outside location (for example `cp <dir>/SKILL.md /tmp/leak.md`, `cat <dir>/SKILL.md > /tmp/leak.md`, `base64 <dir>/SKILL.md`)
+- **THEN** the invocation is blocked
 
 #### Scenario: Original-path read is not rewritten into a decrypted read
 - **WHEN** a read or search command references the skill's original directory (for example `cat ~/.codex/skills/foo/SKILL.md`, `grep -r secret ~/.codex/skills/foo`)
 - **THEN** the invocation is blocked instead of being rewritten to the decrypted directory
+
+#### Scenario: Glob probing of decrypted storage is blocked
+- **WHEN** a command uses shell globbing to reach decrypted storage without knowing the exact path (for example `cat /dev/shm/fm-agent-security/p*/f*/SKILL.md`)
+- **THEN** the invocation is blocked
+
+#### Scenario: Cross-session directory access is blocked
+- **WHEN** a command references a decrypted directory that belongs to another session but still lives under the shared memory root
+- **THEN** the invocation is blocked
+
+#### Scenario: Chain-operator smuggled read is blocked
+- **WHEN** a command chains a forbidden read after an allowed script execution via `;`, `&&`, `||`, `|`, or background `&` (for example `bash <dir>/scripts/build.sh; cat <dir>/SKILL.md`)
+- **THEN** the invocation is blocked, because each chain segment is judged independently
+
+#### Scenario: File-viewing tool blocks decrypted directory access
+- **WHEN** a file-viewing tool (for example `view_image`) targets any file inside a decrypted skill directory
+- **THEN** the invocation is blocked
 
 ### Requirement: Allow script execution from decrypted storage
 The system SHALL allow executing scripts located under `/dev/shm/fm-agent-security/` without exposing their source content.
@@ -50,24 +72,6 @@ Tool outputs containing the decrypted storage path SHALL be redacted before the 
 - **WHEN** an executed script or the `SKILL.md` document references resources via relative paths within its decrypted directory
 - **THEN** the references resolve inside the decrypted directory without requiring the absolute storage path in model-visible context
 
-### Requirement: Script source isolation
-Direct reads of decrypted skill directories through file-viewing or shell tools SHALL be blocked so script sources never enter the model context outside rehydration; script files SHALL remain executable. Codex has no standalone `read` tool, so this covers the actual file-viewing surface: `view_image` and shell read/search commands.
-
-#### Scenario: File-viewing tool blocks decrypted directory access
-- **WHEN** a file-viewing tool (for example `view_image`) targets any file inside a decrypted skill directory
-- **THEN** the invocation is blocked
-
-#### Scenario: Bash read commands block script source
-- **WHEN** a bash command reads a script file inside a decrypted skill directory (for example `cat`, `head`, `tail`)
-- **THEN** the invocation is blocked
-
-#### Scenario: Search tools block decrypted directory access
-- **WHEN** `grep` or `glob` targets a decrypted skill directory, or a bash search command (for example `grep -r`, `find`) references it
-- **THEN** the invocation is blocked
-
-#### Scenario: Script execution still allowed
-- **WHEN** a command executes a script inside a decrypted skill directory (for example `python run.py`)
-- **THEN** the command runs without exposing the script source
 
 ### Requirement: Outbound plaintext export blocking
 Tool invocations capable of carrying plaintext out of the session (file writes, edits, network requests) SHALL be blocked when their arguments contain known decrypted skill plaintext.

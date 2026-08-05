@@ -48,3 +48,22 @@ fn is_hex_rejects_empty_and_non_hex() {
     assert!(!is_hex("zz"));
     assert!(is_hex("0123456789abcdef"));
 }
+#[test]
+fn strip_tokens_replaces_all_sentinels() {
+    let text = "do [SENSITIVE_SKILL_TOKEN:abc:ff00] then [SENSITIVE_SKILL_TOKEN:abc:00ff]";
+    assert_eq!(
+        strip_tokens(text, "[REMOVED]"),
+        "do [REMOVED] then [REMOVED]"
+    );
+}
+
+#[test]
+fn strip_tokens_keeps_surrounding_text() {
+    let text = "prefix [SENSITIVE_SKILL_TOKEN:abc:ff00] suffix";
+    assert_eq!(strip_tokens(text, "X"), "prefix X suffix");
+}
+
+#[test]
+fn strip_tokens_without_sentinels_is_identity() {
+    assert_eq!(strip_tokens("nothing here", "X"), "nothing here");
+}

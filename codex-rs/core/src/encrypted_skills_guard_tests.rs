@@ -92,7 +92,7 @@ fn blocks_cat_script_referencing_original_skill_paths() {
 }
 
 #[test]
-fn allows_cat_text_file_referencing_original_skill_paths() {
+fn blocks_cat_text_file_referencing_original_skill_paths() {
     let (runtime, _tmp) = loaded_runtime();
     let decision = before_tool_with_runtime(
         &runtime,
@@ -100,19 +100,14 @@ fn allows_cat_text_file_referencing_original_skill_paths() {
         &HookToolName::bash(),
         &json!({ "command": "cat /skills/secret/SKILL.md" }),
     );
-    match decision {
-        GuardDecision::Updated(updated) => {
-            let command = updated["command"].as_str().expect("rewritten command");
-            assert!(command.contains("/mem-root/"));
-            assert!(!command.contains("/skills/secret"));
-        }
-        GuardDecision::Allow => {}
-        other => panic!("expected rewritten text read, got {other:?}"),
-    }
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "reading SKILL.md from decrypted storage must be blocked: {decision:?}"
+    );
 }
 
 #[test]
-fn recursive_grep_injects_script_exclusions() {
+fn recursive_grep_on_decrypted_dir_is_blocked() {
     let (runtime, _tmp) = loaded_runtime();
     let dirs = runtime.decrypted_dirs("t1");
     let command = format!("grep -r secret {}", dirs[0].to_string_lossy());
@@ -122,18 +117,14 @@ fn recursive_grep_injects_script_exclusions() {
         &HookToolName::bash(),
         &json!({ "command": command }),
     );
-    match decision {
-        GuardDecision::Updated(updated) => {
-            let command = updated["command"].as_str().expect("rewritten command");
-            assert!(command.contains("--exclude='*.sh'"));
-            assert!(command.contains("--exclude='*.py'"));
-        }
-        other => panic!("expected exclusion-injected grep, got {other:?}"),
-    }
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "recursive grep into decrypted storage must be blocked: {decision:?}"
+    );
 }
 
 #[test]
-fn recursive_grep_on_original_dir_injects_script_exclusions() {
+fn recursive_grep_on_original_dir_is_blocked() {
     let (runtime, _tmp) = loaded_runtime();
     let decision = before_tool_with_runtime(
         &runtime,
@@ -141,14 +132,10 @@ fn recursive_grep_on_original_dir_injects_script_exclusions() {
         &HookToolName::bash(),
         &json!({ "command": "grep -r secret /skills/secret" }),
     );
-    match decision {
-        GuardDecision::Updated(updated) => {
-            let command = updated["command"].as_str().expect("rewritten command");
-            assert!(command.contains("--exclude='*.sh'"));
-            assert!(!command.contains("/skills/secret"));
-        }
-        other => panic!("expected rewritten grep with exclusions, got {other:?}"),
-    }
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "recursive grep referencing original skill dir must be blocked: {decision:?}"
+    );
 }
 
 #[test]
@@ -166,7 +153,7 @@ fn grep_specific_script_file_is_blocked() {
 }
 
 #[test]
-fn allows_listing_decrypted_dir() {
+fn blocks_listing_decrypted_dir() {
     let (runtime, _tmp) = loaded_runtime();
     let dirs = runtime.decrypted_dirs("t1");
     let decision = before_tool_with_runtime(
@@ -176,13 +163,13 @@ fn allows_listing_decrypted_dir() {
         &json!({ "command": format!("ls {}", dirs[0].to_string_lossy()) }),
     );
     assert!(
-        matches!(decision, GuardDecision::Allow | GuardDecision::Updated(_)),
-        "listing the decrypted dir must be allowed: {decision:?}"
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "listing the decrypted dir must be blocked: {decision:?}"
     );
 }
 
 #[test]
-fn allows_find_in_decrypted_dir() {
+fn blocks_find_in_decrypted_dir() {
     let (runtime, _tmp) = loaded_runtime();
     let dirs = runtime.decrypted_dirs("t1");
     let command = format!("find {} -name '*.md'", dirs[0].to_string_lossy());
@@ -193,13 +180,13 @@ fn allows_find_in_decrypted_dir() {
         &json!({ "command": command }),
     );
     assert!(
-        matches!(decision, GuardDecision::Allow | GuardDecision::Updated(_)),
-        "find in the decrypted dir must be allowed: {decision:?}"
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "find in the decrypted dir must be blocked: {decision:?}"
     );
 }
 
 #[test]
-fn allows_cat_text_file_in_decrypted_dir() {
+fn blocks_cat_text_file_in_decrypted_dir() {
     let (runtime, _tmp) = loaded_runtime();
     let dirs = runtime.decrypted_dirs("t1");
     let command = format!("cat {}/notes.md", dirs[0].to_string_lossy());
@@ -210,8 +197,8 @@ fn allows_cat_text_file_in_decrypted_dir() {
         &json!({ "command": command }),
     );
     assert!(
-        matches!(decision, GuardDecision::Allow | GuardDecision::Updated(_)),
-        "text reads must be allowed: {decision:?}"
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "text reads from decrypted storage must be blocked: {decision:?}"
     );
 }
 
@@ -284,7 +271,7 @@ fn blocks_bash_c_inner_script_read() {
 }
 
 #[test]
-fn allows_modern_listing_commands() {
+fn blocks_modern_listing_commands() {
     let (runtime, _tmp) = loaded_runtime();
     let dirs = runtime.decrypted_dirs("t1");
     for command in [
@@ -300,41 +287,26 @@ fn allows_modern_listing_commands() {
             &json!({ "command": command }),
         );
         assert!(
-            matches!(decision, GuardDecision::Allow | GuardDecision::Updated(_)),
-            "modern listing command must be allowed: {command}"
+            matches!(decision, GuardDecision::Blocked { .. }),
+            "modern listing command on decrypted storage must be blocked: {command}"
         );
     }
 }
 
 #[test]
-fn allows_modern_text_reader_and_blocks_script() {
+fn blocks_modern_text_reader_on_decrypted_storage() {
     let (runtime, _tmp) = loaded_runtime();
     let dirs = runtime.decrypted_dirs("t1");
-    let text = format!("bat {}/notes.md", dirs[0].to_string_lossy());
-    let text_decision = before_tool_with_runtime(
+    let text = format!("bat {}/SKILL.md", dirs[0].to_string_lossy());
+    let decision = before_tool_with_runtime(
         &runtime,
         "t1",
         &HookToolName::bash(),
         &json!({ "command": text }),
     );
     assert!(
-        matches!(
-            text_decision,
-            GuardDecision::Allow | GuardDecision::Updated(_)
-        ),
-        "bat on a text file must be allowed: {text_decision:?}"
-    );
-
-    let script = format!("bat {}/scripts/run.sh", dirs[0].to_string_lossy());
-    let script_decision = before_tool_with_runtime(
-        &runtime,
-        "t1",
-        &HookToolName::bash(),
-        &json!({ "command": script }),
-    );
-    assert!(
-        matches!(script_decision, GuardDecision::Blocked { .. }),
-        "bat on a script file must be blocked: {script_decision:?}"
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "bat on decrypted storage must be blocked: {decision:?}"
     );
 }
 
@@ -356,6 +328,150 @@ fn rewrites_original_skill_path_in_execution_commands() {
         }
         other => panic!("expected Updated, got {other:?}"),
     }
+}
+
+
+#[test]
+fn blocks_chain_smuggled_read_after_script_execution() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": "bash /skills/secret/scripts/build.sh; cat /skills/secret/SKILL.md" }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "chain-smuggled read after execution must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn blocks_chain_smuggled_read_via_logical_and() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": "bash /skills/secret/scripts/build.sh && cat /skills/secret/SKILL.md" }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "chain-smuggled read via && must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn blocks_pipe_smuggled_read() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": "bash /skills/secret/scripts/build.sh | cat /skills/secret/SKILL.md" }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "pipe-smuggled read must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn blocks_glob_probing_decrypted_storage() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": "cat /dev/shm/fm-agent-security/p*/f*/SKILL.md" }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "glob probing of decrypted storage must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn blocks_cross_session_directory_access() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": "cat /dev/shm/fm-agent-security/p99999/fm_skill_security_deadbeef/SKILL.md" }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "cross-session directory access must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn blocks_copy_escape_from_decrypted_storage() {
+    let (runtime, _tmp) = loaded_runtime();
+    let dirs = runtime.decrypted_dirs("t1");
+    let command = format!("cp {}/SKILL.md /tmp/leak.md", dirs[0].to_string_lossy());
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": command }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "copying plaintext out of decrypted storage must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn blocks_redirect_escape_from_decrypted_storage() {
+    let (runtime, _tmp) = loaded_runtime();
+    let dirs = runtime.decrypted_dirs("t1");
+    let command = format!("cat {}/SKILL.md > /tmp/leak.md", dirs[0].to_string_lossy());
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": command }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "redirecting plaintext out of decrypted storage must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn blocks_base64_escape_from_decrypted_storage() {
+    let (runtime, _tmp) = loaded_runtime();
+    let dirs = runtime.decrypted_dirs("t1");
+    let command = format!("base64 {}/SKILL.md", dirs[0].to_string_lossy());
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": command }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "base64-encoding plaintext out of decrypted storage must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn allows_script_execution_in_decrypted_storage() {
+    let (runtime, _tmp) = loaded_runtime();
+    let dirs = runtime.decrypted_dirs("t1");
+    let command = format!("bash {}/scripts/build.sh", dirs[0].to_string_lossy());
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": command }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Updated(_) | GuardDecision::Allow),
+        "script execution in decrypted storage must be allowed: {decision:?}"
+    );
 }
 
 #[test]
@@ -791,7 +907,7 @@ fn blocked_audit_records_specific_reason() {
     let events = sink.events();
     assert!(events.iter().any(|event| matches!(
         event,
-        AuditEvent::Blocked { reason, .. } if reason == "script_source"
+        AuditEvent::Blocked { reason, .. } if reason == "non_execution_access"
     )));
     assert!(events.iter().any(|event| matches!(
         event,
@@ -800,7 +916,7 @@ fn blocked_audit_records_specific_reason() {
 }
 
 #[test]
-fn allows_listing_the_runtime_mem_root() {
+fn blocks_listing_the_runtime_mem_root() {
     let (runtime, _tmp) = loaded_runtime();
     let root = runtime.mem_root().to_string_lossy().to_string();
     let decision = before_tool_with_runtime(
@@ -810,8 +926,8 @@ fn allows_listing_the_runtime_mem_root() {
         &json!({ "command": format!("ls {root}") }),
     );
     assert!(
-        matches!(decision, GuardDecision::Allow | GuardDecision::Updated(_)),
-        "listing the memory root must be allowed: {decision:?}"
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "listing the memory root must be blocked: {decision:?}"
     );
 }
 

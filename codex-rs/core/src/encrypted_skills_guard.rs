@@ -80,31 +80,32 @@ fn guard_shell(
     let Some(command) = tool_input.get("command").and_then(Value::as_str) else {
         return GuardDecision::Allow;
     };
-    let dirs: Vec<String> = runtime
+    // Rewrite original skill directories to their decrypted `/dev/shm` paths
+    // FIRST, so every downstream check operates on a single, canonical view
+    // of what the shell will actually execute.
+    let rewritten = runtime.rewrite_paths(session_id, command);
+    let guarded_paths = runtime
         .decrypted_dirs(session_id)
         .into_iter()
         .map(|dir| dir.to_string_lossy().into_owned())
-        .collect();
-    let mut guarded_paths = dirs;
-    guarded_paths.push(runtime.mem_root().to_string_lossy().into_owned());
-    let rewritten = runtime.rewrite_paths(session_id, command);
-    // 脚本执行始终允许（原目录 → 解密目录改写后执行）。
-    if paths::is_script_execution(command) {
-        return updated_command(tool_input, rewritten);
-    }
-    // 脚本内容禁止看到：任何非执行语义的命令引用解密目录内的脚本文件
-    // （读取/复制/打包/归档/编码等，无论命令名）→ Blocked。
-    if paths::command_targets_script(&rewritten) {
-        return GuardDecision::Blocked {
-            message: BLOCK_MESSAGE.to_string(),
-            reason: "script_source",
-        };
-    }
-    // 递归 grep/rg 命中解密目录时注入脚本扩展名排除，避免搜索结果带出脚本源码。
-    if paths::command_references_dir(&rewritten, &guarded_paths)
-        && paths::is_recursive_search(&rewritten)
-    {
-        return updated_command(tool_input, paths::inject_script_exclusions(&rewritten));
+        .chain([runtime.mem_root().to_string_lossy().into_owned()])
+        .collect::<Vec<_>>();
+    // Split at unquoted chain operators (`;`, `|`, `&&`, `&`) and judge each
+    // segment independently. This closes the smuggle vector where a forbidden
+    // read hides after an allowed execution (`bash run.sh; cat SKILL.md`).
+    for segment in paths::split_command_segments(&rewritten) {
+        let references_dir = paths::command_references_dir(&segment, &guarded_paths);
+        // Execution of a skill script is allowed (the runner receives the
+        // rewritten decrypted path). Anything else that touches the decrypted
+        // storage — read, copy, redirect, pipe, glob — is blocked.
+        if references_dir && !paths::is_script_execution(&segment) {
+            return GuardDecision::Blocked {
+                message: BLOCK_MESSAGE.to_string(),
+                reason: "non_execution_access",
+            };
+        }
+        // A segment that does NOT reference decrypted storage is always
+        // allowed on its own.
     }
     updated_command(tool_input, rewritten)
 }

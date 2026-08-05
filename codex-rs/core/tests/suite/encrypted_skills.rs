@@ -360,7 +360,7 @@ async fn exec_command_direct_script_read_is_blocked_by_the_same_guard() -> Resul
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn text_read_of_skill_md_is_allowed_but_rollout_stays_clean() -> Result<()> {
+async fn text_read_of_skill_md_is_blocked() -> Result<()> {
     skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
     skip_if_no_network!(Ok(()));
 
@@ -396,8 +396,8 @@ async fn text_read_of_skill_md_is_allowed_but_rollout_stays_clean() -> Result<()
         .expect("rollout path");
     let rollout = std::fs::read_to_string(rollout_path)?;
     assert!(
-        rollout.contains("[REDACTED]"),
-        "tool output plaintext must be redacted in rollout, got: {rollout}"
+        rollout.contains("Direct access to encrypted skill storage is not allowed"),
+        "reading SKILL.md from decrypted storage must be blocked, got: {rollout}"
     );
     assert!(
         !rollout.contains("REAL_SKILL_CONTENT_MARKER"),

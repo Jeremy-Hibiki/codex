@@ -55,6 +55,25 @@ pub fn random_hex() -> String {
     rand::rng().fill_bytes(&mut bytes);
     hex_encode(&bytes)
 }
+/// Replaces every sentinel token in `text` with `replacement`. Used at fork
+/// boundaries to neutralize the parent session's decryption handles without
+/// discarding the surrounding user message that carries them.
+pub fn strip_tokens(text: &str, replacement: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find(TOKEN_PREFIX) {
+        out.push_str(&rest[..start]);
+        let tail = &rest[start..];
+        let Some(end_rel) = tail.find(TOKEN_SUFFIX) else {
+            out.push_str(tail);
+            return out;
+        };
+        out.push_str(replacement);
+        rest = &tail[end_rel + TOKEN_SUFFIX.len()..];
+    }
+    out.push_str(rest);
+    out
+}
 
 pub fn is_hex(value: &str) -> bool {
     !value.is_empty() && value.chars().all(|c| c.is_ascii_hexdigit())

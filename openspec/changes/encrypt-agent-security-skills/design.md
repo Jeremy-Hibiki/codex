@@ -72,17 +72,19 @@ Token 携带属主会话 ID（门禁用）与内容缓存 key（重水合用）�
 
 **替代方案**：在 `build_prompt` 或各调用点分别处理——点多易漏、与 compaction/恢复路径重复实现，已否决。
 
-### 4. PreToolUse 拦截采用"默认拦截读取、放行执行"
+### 4. PreToolUse 拦截采用「语义化仅执行」(execute-only)模型
 
-以命令行为输入，识别对 `/dev/shm/fm-agent-security/` 的访问：`cat/less/head/tail/ls/find` 等读取型访问一律 Blocked；`bash/python` 等执行型命令放行。
+拦截不是命令名黑白名单，而是**语义判定**：对命令按未引用的链式操作符（`;` `|` `&&` `||` 背景 `&`）切段，先做原目录→解密目录路径改写，再逐段判断——任何段引用内存根或已解密目录、且不是脚本执行（`is_script_execution`）即 Blocked。这样 `cat SKILL.md`、`cp <dir>/SKILL.md /tmp`、`cat <dir>/SKILL.md > /tmp/leak`、`base64 <dir>/SKILL.md`、glob 探测（`cat /dev/shm/.../p*/f*/SKILL.md`）、跨会话目录、`grep -r` 全部被拦截，且 `bash run.sh; cat SKILL.md` 这类链式走私也被逐段判定命中。判定统一在改写后的命令上做，避免原路径/解密路径不一致漏判。`command_references_dir` 对 `MEM_ROOT` 常量做子串匹配，glob 与跨会话路径天然命中，无需专门处理。
 
-**替代方案**：仅维护黑名单命令——规则漏配即暴露；维护执行白名单（bash/python/scripts 路径）更贴近"允许执行、禁止读源码"的安全意图。
+**演进**：初版用「命令名黑名单/脚本扩展名分类」(`is_read_command`/`command_targets_script`)，但该方案无法覆盖 `cp`/`mv`/重定向等逃逸路径，且 `cat` `.md` 等文本读取会放行——使 token 化与信任层级框架两条防线失效（明文经工具输出常驻内存历史且无框架包裹）。命令名分类函数已删除，改为纯语义段判定。
 
-### 5. Subagent fork 丢弃哨兵 Token
+**替代方案**：命令名黑名单/白名单——`cp`/`mv`/重定向不在列表内即逃逸；脚本扩展名分类——`.md`/`.txt` 明文仍可读。均否决。
 
-在 `keep_forked_rollout_item`（`spawn.rs`）中过滤含 `<enc_skill>` 的 item，子 Agent 需要时自行重新提及 skill。
+### 5. Subagent fork 剥离哨兵 Token（不丢弃整条消息）
 
-**替代方案**：继承 Token + 子 Agent bwrap 绑定父会话 `/dev/shm`——跨进程共享解密内容有安全顾虑、沙箱配置复杂，已否决。丢弃方案与 ephemeral 设计哲学一致。
+`keep_forked_rollout_item`（`spawn.rs`）对 user 消息不再整体丢弃，而是在 fork 管线（`retain_forked_item`）中对 user 消息逐 content item 调用 `token::strip_tokens` 把哨兵替换为占位文本 `[encrypted-skill unavailable in this context]`，保留周围的用户指令。token 可能与用户正文同处一条消息，整体丢弃会丢失子 Agent 需要的用户指令；剥离只去掉解密句柄。
+
+**演进**：初版用「整体丢弃含 token 的 user item」，但会连带丢弃同消息的用户指令。改为 token 剥离 + 保留正文。`contains_encrypted_skill_token` 辅助函数已随该改动删除。
 
 ### 6. 生命周期：触发解密 + 两级 TTL + 幂等复用
 

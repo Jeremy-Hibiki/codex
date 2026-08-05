@@ -63,31 +63,6 @@ fn redact_leaves_other_text_unchanged() {
 }
 
 #[test]
-fn allowed_text_file_extensions() {
-    assert!(is_allowed_text_file("SKILL.md"));
-    assert!(is_allowed_text_file("resources/config.txt"));
-    assert!(is_allowed_text_file("x.MARKDOWN"));
-    assert!(!is_allowed_text_file("scripts/run.py"));
-    assert!(!is_allowed_text_file("scripts/build.sh"));
-}
-
-#[test]
-fn read_commands_detected() {
-    assert!(is_read_command("cat /x/run.py"));
-    assert!(is_read_command("head -5 /x/run.py"));
-    assert!(is_read_command("base64 /x/config.json"));
-    assert!(!is_read_command("python /x/run.py"));
-}
-
-#[test]
-fn search_commands_detected() {
-    assert!(is_search_command("grep -r secret /x"));
-    assert!(is_search_command("find /x -name '*.py'"));
-    assert!(is_search_command("ls /x"));
-    assert!(!is_search_command("bash /x/run.sh"));
-}
-
-#[test]
 fn redact_path_prefix_hides_custom_prefix() {
     let text = "dir at /tmp/mem-root/fm_skill_security_abc/SKILL.md end";
     let out = redact_path_prefix(text, "/tmp/mem-root");
@@ -105,51 +80,145 @@ fn script_execution_detected() {
 }
 
 #[test]
+fn script_file_detection() {
+    assert!(is_script_file("/x/scripts/run.py"));
+    assert!(is_script_file("/x/scripts/build.sh"));
+    assert!(!is_script_file("/x/SKILL.md"));
+    assert!(!is_script_file("/x/notes.txt"));
+}
+
+#[test]
 fn command_references_decrypted_dir() {
     let dirs = vec!["/dev/shm/fm-agent-security/fm_skill_security_abc".to_string()];
+    // The shared root constant is always treated as a reference.
     assert!(command_references_dir(
         "ls /dev/shm/fm-agent-security",
         &dirs
     ));
+    // A registered decrypted directory is a reference.
     assert!(command_references_dir(
         "bash /dev/shm/fm-agent-security/fm_skill_security_abc/scripts/run.sh",
         &dirs
     ));
+    // Glob wildcards still match by substring, so `p*/f*/SKILL.md` hits.
+    assert!(command_references_dir(
+        "cat /dev/shm/fm-agent-security/p*/f*/SKILL.md",
+        &dirs
+    ));
+    // Unrelated paths do not reference decrypted storage.
     assert!(!command_references_dir("bash /tmp/run.sh", &dirs));
 }
 
 #[test]
-fn file_targets_skip_flags_and_redirections() {
+fn split_at_semicolon() {
     assert_eq!(
-        file_targets("cat -n /x/a.md > /tmp/out.txt"),
-        vec!["/x/a.md"]
+        split_command_segments("cat /a; cat /b"),
+        vec!["cat /a", "cat /b"]
     );
-    assert_eq!(file_targets("head -5 /x/b.sh 2>/dev/null"), vec!["/x/b.sh"]);
 }
 
 #[test]
-fn command_targets_script_detects_script_files() {
-    assert!(command_targets_script("cat /x/scripts/run.py"));
-    assert!(command_targets_script("head /x/scripts/build.sh"));
-    assert!(!command_targets_script("cat /x/notes.md"));
-    assert!(!command_targets_script("ls /x/scripts"));
-    // Execution is excluded at the guard level, not at the token level.
-    assert!(command_targets_script("bash /x/scripts/run.py"));
+fn split_at_pipe() {
+    assert_eq!(
+        split_command_segments("cat /a | grep x"),
+        vec!["cat /a", "grep x"]
+    );
 }
 
 #[test]
-fn recursive_search_detected_for_grep_and_rg() {
-    assert!(is_recursive_search("grep -r secret /x"));
-    assert!(is_recursive_search("grep -rn secret /x"));
-    assert!(is_recursive_search("rg secret /x"));
-    assert!(!is_recursive_search("grep secret /x/notes.md"));
-    assert!(!is_recursive_search("ls /x"));
+fn split_at_logical_and() {
+    assert_eq!(
+        split_command_segments("bash run.sh && cat /b"),
+        vec!["bash run.sh", "cat /b"]
+    );
 }
 
 #[test]
-fn script_exclusions_injected_for_recursive_search() {
-    let out = inject_script_exclusions("grep -r secret /x");
-    assert!(out.contains("--exclude='*.sh'"));
-    assert!(out.contains("--exclude='*.py'"));
-    assert!(out.starts_with("grep -r secret /x"));
+fn split_at_logical_or() {
+    assert_eq!(
+        split_command_segments("bash run.sh || cat /b"),
+        vec!["bash run.sh", "cat /b"]
+    );
+}
+
+#[test]
+fn split_at_background_ampersand() {
+    assert_eq!(
+        split_command_segments("sleep 1 & cat /b"),
+        vec!["sleep 1", "cat /b"]
+    );
+}
+
+#[test]
+fn split_respects_single_quotes() {
+    // Operator inside single quotes is not a separator.
+    assert_eq!(
+        split_command_segments("bash -c 'cat /a; cat /b'"),
+        vec!["bash -c 'cat /a; cat /b'"]
+    );
+}
+
+#[test]
+fn split_respects_double_quotes() {
+    assert_eq!(
+        split_command_segments("echo \"a; b\" && cat /c"),
+        vec!["echo \"a; b\"", "cat /c"]
+    );
+}
+
+#[test]
+fn split_ignores_ampersand_in_redirection() {
+    // `2>&1` must NOT be treated as a separator.
+    assert_eq!(split_command_segments("cat /a 2>&1"), vec!["cat /a 2>&1"]);
+}
+
+#[test]
+fn split_drops_empty_segments() {
+    assert_eq!(split_command_segments("a ;; b"), vec!["a", "b"]);
+}
+
+#[test]
+fn split_respects_backslash_escaped_pipe() {
+    // `\|` is a literal pipe character, not a separator.
+    assert_eq!(split_command_segments("cat a\\|b"), vec!["cat a\\|b"]);
+}
+
+#[test]
+fn split_respects_backslash_escaped_semicolon() {
+    // `\;` is literal, not a separator.
+    assert_eq!(split_command_segments("echo a\\;b"), vec!["echo a\\;b"]);
+}
+
+#[test]
+fn split_at_newline_separator() {
+    // A bare newline is a command separator like `;`.
+    assert_eq!(
+        split_command_segments("cat /a\ncat /b"),
+        vec!["cat /a", "cat /b"]
+    );
+}
+
+#[test]
+fn split_at_stderr_pipe() {
+    // `|&` (bash stderr pipe) is a distinct two-char separator.
+    assert_eq!(
+        split_command_segments("bash run.sh |& cat /b"),
+        vec!["bash run.sh", "cat /b"]
+    );
+}
+
+#[test]
+fn split_adjacent_pipe_and_ampersand() {
+    // `;&` — `;` splits, `&` is background operator on the empty right
+    // segment (dropped). No panic, no mis-split.
+    assert_eq!(
+        split_command_segments("cat /a;& cat /b"),
+        vec!["cat /a", "cat /b"]
+    );
+}
+
+#[test]
+fn split_adjacent_semicolon_and_pipe() {
+    // `;|` — `;` then `|` both adjacent. Each splits independently.
+    assert_eq!(split_command_segments("a ;| b"), vec!["a", "b"]);
 }

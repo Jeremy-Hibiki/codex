@@ -1,11 +1,13 @@
 //! JSONL audit events for encrypted skill security actions.
 
-use std::fmt::Write as _;
 use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::SystemTime;
+
+use serde_json::json;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuditEvent {
@@ -63,46 +65,37 @@ pub fn write_event(writer: &mut impl Write, event: &AuditEvent) -> io::Result<()
 }
 
 pub fn serialize(event: &AuditEvent) -> String {
-    let mut out = String::new();
-    let _ = write!(
-        out,
-        "{{\"event\":\"{}\",\"session_id\":\"{}\"",
-        event.event_type(),
-        event.session_id()
-    );
-    match event {
+    let mut value = json!({
+        "event": event.event_type(),
+        "session_id": event.session_id(),
+        "timestamp_ms": SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|duration| duration.as_millis() as u64)
+            .unwrap_or(0),
+    });
+    let fields = match event {
         AuditEvent::Decryption {
             skill_name,
             cache_hit,
             ..
-        } => {
-            let _ = write!(
-                out,
-                ",\"skill_name\":\"{skill_name}\",\"cache_hit\":{cache_hit}"
-            );
-        }
-        AuditEvent::Tokenization { skill_name, .. } => {
-            let _ = write!(out, ",\"skill_name\":\"{skill_name}\"");
-        }
-        AuditEvent::Rehydration { token_count, .. } => {
-            let _ = write!(out, ",\"token_count\":{token_count}");
-        }
+        } => json!({ "skill_name": skill_name, "cache_hit": cache_hit }),
+        AuditEvent::Tokenization { skill_name, .. } => json!({ "skill_name": skill_name }),
+        AuditEvent::Rehydration { token_count, .. } => json!({ "token_count": token_count }),
         AuditEvent::Blocked { tool, reason, .. } => {
-            let _ = write!(out, ",\"tool\":\"{tool}\",\"reason\":\"{reason}\"");
+            json!({ "tool": tool, "reason": reason })
         }
         AuditEvent::Cleanup {
             dirs_removed,
             reason,
             ..
-        } => {
-            let _ = write!(
-                out,
-                ",\"dirs_removed\":{dirs_removed},\"reason\":\"{reason}\""
-            );
-        }
+        } => json!({ "dirs_removed": dirs_removed, "reason": reason }),
+    };
+    if let serde_json::Value::Object(map) = &mut value
+        && let serde_json::Value::Object(fields) = fields
+    {
+        map.extend(fields);
     }
-    let _ = write!(out, "}}");
-    out
+    value.to_string()
 }
 
 /// Destination for audit events. Implementations must never persist skill
@@ -131,10 +124,14 @@ impl FileAuditSink {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let writer = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)?;
+        let mut options = std::fs::OpenOptions::new();
+        options.create(true).append(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let writer = options.open(&path)?;
         Ok(Self {
             path,
             max_bytes,
@@ -144,14 +141,21 @@ impl FileAuditSink {
 
     fn rotate_locked(&self, writer: &mut std::fs::File) {
         let rotated = rotated_path(&self.path);
-        let _ = std::fs::remove_file(&rotated);
-        let _ = std::fs::rename(&self.path, &rotated);
+        if let Err(error) = std::fs::remove_file(&rotated) {
+            tracing::warn!(error = %error, path = %rotated.display(), "failed to remove rotated audit log");
+        }
+        if let Err(error) = std::fs::rename(&self.path, &rotated) {
+            tracing::warn!(error = %error, path = %self.path.display(), "failed to rotate audit log");
+            return;
+        }
         if let Ok(fresh) = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&self.path)
         {
             *writer = fresh;
+        } else {
+            tracing::error!(path = %self.path.display(), "failed to reopen audit log after rotation");
         }
     }
 }
@@ -169,8 +173,12 @@ impl AuditSink for FileAuditSink {
         if over_limit {
             self.rotate_locked(&mut writer);
         }
-        let _ = writeln!(writer, "{line}");
-        let _ = writer.flush();
+        if let Err(error) = writeln!(writer, "{line}") {
+            tracing::error!(error = %error, path = %self.path.display(), "failed to write audit event");
+        }
+        if let Err(error) = writer.flush() {
+            tracing::error!(error = %error, path = %self.path.display(), "failed to flush audit log");
+        }
     }
 }
 

@@ -2,6 +2,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::guardian::GuardianApprovalRequest;
 use codex_protocol::items::AgentMessageContent;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::AgentMessageInputContent;
@@ -22,6 +23,7 @@ use serde_json::json;
 
 use super::*;
 use crate::tools::hook_names::HookToolName;
+use codex_utils_absolute_path::AbsolutePathBuf;
 
 #[derive(Default)]
 struct GuardCollectingSink {
@@ -90,6 +92,46 @@ fn loaded_long_runtime() -> (EncryptedSkillRuntime, tempfile::TempDir) {
         )
         .unwrap();
     (runtime, tmp)
+}
+
+#[test]
+fn guardian_request_redacts_mem_root_paths() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decrypted_dir = runtime
+        .decrypted_dirs("t1")
+        .pop()
+        .expect("loaded skill should register a decrypted dir");
+    let mem_root = runtime.mem_root().to_string_lossy().into_owned();
+
+    let request = GuardianApprovalRequest::Shell {
+        id: "approval-1".to_string(),
+        command: vec![
+            "bash".to_string(),
+            decrypted_dir
+                .join("script.sh")
+                .to_string_lossy()
+                .into_owned(),
+        ],
+        cwd: AbsolutePathBuf::try_from(Path::new("/tmp")).expect("absolute cwd"),
+        sandbox_permissions: crate::sandboxing::SandboxPermissions::UseDefault,
+        additional_permissions: None,
+        justification: None,
+    };
+
+    let GuardianApprovalRequest::Shell { command, .. } =
+        redact_guardian_request(&runtime, "t1", request)
+    else {
+        panic!("expected Shell request after redaction");
+    };
+    let joined = command.join(" ");
+    assert!(
+        !joined.contains(&mem_root),
+        "reviewer command must not contain the memory root: {joined}"
+    );
+    assert!(
+        joined.contains("/skills/script.sh"),
+        "decrypted dir should be rewritten back to the original skill path: {joined}"
+    );
 }
 
 #[test]

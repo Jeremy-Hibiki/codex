@@ -28,6 +28,21 @@ design.
 | 20 | `b92c426f51` | runtime races | F1: touch inside registry lock on cache hit (TOCTOU); F3: lifecycle state_lock serializes store+register vs clear_session; F5: per-(session,skill) in-flight gate so concurrent loads decrypt once |
 | 21 | `2de0c3caa0` | audit sink | F4: process-wide per-(path, max_bytes) shared FileAuditSink (Weak registry) wired into Session::new; one writer per file, no concurrent rotation |
 | 22 | `5d9fae664c` | fmsh-ukey groundwork | Reserve `SdkKind::UKey`/`Local` and `sdk = "ukey"/"local"` config variants (fail-closed until `fmsh-ukey` feature is wired); schema regenerated |
+| 23 | `TBD` | guardian/review redaction | Reviewer models must not see the real decrypted `/dev/shm` location: `redact_guardian_request` rewrites registered decrypted dirs back to original skill paths and redacts remaining memory-root segments in every command-bearing `GuardianApprovalRequest` (Shell / ExecCommand / Execve / NetworkAccess trigger) before the review prompt is built; shared `redact_storage_paths` helper is now also used by `RedactingToolOutput` |
+
+## I23 补充说明：`/dev/shm` 路径的模型可见性
+
+审计确认：常规模型上下文不会暴露解密路径——工具调用历史保留模型原始参数，工具输出统一经过
+`RedactingToolOutput`（解密目录改写回原目录 + mem-root 前缀兜底红act）。但发现一条真实泄露通道：
+guardian / auto-review 的评审请求（`GuardianApprovalRequest::Shell` / `ExecCommand` / `Execve` /
+`NetworkAccess.trigger`）携带的是 guard 重写后的**真实 `/dev/shm` 命令**，会被序列化进评审模型的
+prompt。I23 在 `run_guardian_review` 入口统一红act，评审模型只看到逻辑技能路径。
+
+仍待处理（根因修复，非本条目范围）：
+- 用户审批 UI 与 permission hooks 仍会看到真实命令（不面向大模型）。
+- 默认 workspace-write 的 bwrap 沙箱把 `/dev/shm` 挂成私有空 tmpfs，重写后的真实路径在沙箱内
+  不可见，导致技能脚本执行与沙箱隔离存在张力；根治方案是把解密目录以只读 bind 挂到沙箱内的
+  逻辑技能路径（`--ro-bind <decrypted> <logical>`），使命令永不包含 `/dev/shm`。
 | 23 | `41c2632016` + `33f94b4371` | fmsh-ukey integration | Add `fmsh-ukey-cipher` as optional git dependency pinned to upstream `f09dc46` (openssl >= 0.10.76), add optional `fmsh-ukey` feature, implement `UKeySdk`/`LocalSdk`, wire `local_privkey` config; openssl lock bumped 0.10.75 -> 0.10.81; feature build verified with a stub SDK (`136 passed`) |
 
 ## Verification

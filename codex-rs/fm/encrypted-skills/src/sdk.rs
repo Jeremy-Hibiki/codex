@@ -1,5 +1,6 @@
 //! Digital-envelope SDK boundary.
 
+use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -19,9 +20,18 @@ pub enum EnvelopeError {
     Internal(String),
     #[error("invalid package entry `{path}`: {reason}")]
     InvalidEntry { path: String, reason: String },
+    #[error("encrypted package has too many entries (max {max})")]
+    TooManyEntries { max: usize },
+    #[error("decrypted package exceeds the {max_bytes} byte size limit")]
+    PackageTooLarge { max_bytes: u64 },
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }
+
+/// Hard cap on the number of entries a decrypted package may contain.
+pub const MAX_PACKAGE_ENTRIES: usize = 512;
+/// Hard cap on the total decompressed size of a decrypted package.
+pub const MAX_PACKAGE_BYTES: u64 = 16 * 1024 * 1024;
 
 /// One file inside a decrypted skill package, addressed relative to the
 /// package root.
@@ -76,18 +86,32 @@ impl EnvelopeSdk for TestZipSdk {
             .map_err(|_| EnvelopeError::PackageNotFound(package_path.display().to_string()))?;
         let mut archive = zip::ZipArchive::new(file)
             .map_err(|err| EnvelopeError::Decrypt(format!("invalid zip package: {err}")))?;
+        if archive.len() > MAX_PACKAGE_ENTRIES {
+            return Err(EnvelopeError::TooManyEntries {
+                max: MAX_PACKAGE_ENTRIES,
+            });
+        }
         let mut entries = Vec::new();
+        let mut total_bytes = 0u64;
         for index in 0..archive.len() {
-            let mut entry = archive
+            let entry = archive
                 .by_index(index)
                 .map_err(|err| EnvelopeError::Decrypt(format!("zip entry {index}: {err}")))?;
             if entry.is_dir() {
                 continue;
             }
             let rel_path = PathBuf::from(entry.name());
+            let remaining = MAX_PACKAGE_BYTES.saturating_sub(total_bytes);
             let mut contents = Vec::new();
-            std::io::Read::read_to_end(&mut entry, &mut contents)
+            let mut limited = entry.take(remaining + 1);
+            Read::read_to_end(&mut limited, &mut contents)
                 .map_err(|err| EnvelopeError::Decrypt(format!("zip read: {err}")))?;
+            if contents.len() as u64 > remaining {
+                return Err(EnvelopeError::PackageTooLarge {
+                    max_bytes: MAX_PACKAGE_BYTES,
+                });
+            }
+            total_bytes += contents.len() as u64;
             entries.push(PackageEntry { rel_path, contents });
         }
         Ok(entries)
@@ -128,6 +152,53 @@ mod tests {
         assert!(matches!(
             TestZipSdk.decrypt_package(Path::new("/nonexistent/secret.zip.enc")),
             Err(EnvelopeError::PackageNotFound(_))
+        ));
+    }
+
+    #[test]
+    fn test_zip_sdk_rejects_oversized_packages() {
+        let tmp = tempfile::tempdir().unwrap();
+        let package = tmp.path().join("big.zip.enc");
+        let file = std::fs::File::create(&package).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        writer
+            .start_file(
+                "big.bin",
+                zip::write::SimpleFileOptions::default()
+                    .compression_method(zip::CompressionMethod::Stored),
+            )
+            .unwrap();
+        writer
+            .write_all(&vec![0u8; (MAX_PACKAGE_BYTES + 1) as usize])
+            .unwrap();
+        writer.finish().unwrap();
+
+        assert!(matches!(
+            TestZipSdk.decrypt_package(&package),
+            Err(EnvelopeError::PackageTooLarge { .. })
+        ));
+    }
+
+    #[test]
+    fn test_zip_sdk_rejects_too_many_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let package = tmp.path().join("many.zip.enc");
+        let file = std::fs::File::create(&package).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        for index in 0..MAX_PACKAGE_ENTRIES + 1 {
+            writer
+                .start_file(
+                    format!("f{index}.txt"),
+                    zip::write::SimpleFileOptions::default(),
+                )
+                .unwrap();
+            writer.write_all(b"x").unwrap();
+        }
+        writer.finish().unwrap();
+
+        assert!(matches!(
+            TestZipSdk.decrypt_package(&package),
+            Err(EnvelopeError::TooManyEntries { .. })
         ));
     }
 

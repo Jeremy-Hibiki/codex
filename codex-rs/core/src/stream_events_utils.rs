@@ -289,6 +289,14 @@ pub(crate) async fn handle_output_item_done(
     item: ResponseItem,
     previously_active_item: Option<TurnItem>,
 ) -> Result<OutputItemResult> {
+    // Redact known skill plaintext at the model stream intake so the response
+    // item, derived turn item, and `last_agent_message` are all clean before
+    // any of them can be persisted.
+    let item = crate::encrypted_skills_guard::redact_assistant_reply_item(
+        &ctx.sess.services.encrypted_skills_runtime,
+        &ctx.sess.thread_id.to_string(),
+        item,
+    );
     let mut output = OutputItemResult::default();
     let plan_mode = ctx.turn_context.mode == ModeKind::Plan;
 

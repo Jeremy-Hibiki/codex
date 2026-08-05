@@ -10,6 +10,7 @@ pub use environment::load_environment_skills_from_discovery;
 pub use environment::load_environment_skills_from_root;
 
 use crate::model::SkillDependencies;
+use crate::model::SkillEncryption;
 use crate::model::SkillError;
 use crate::model::SkillInterface;
 use crate::model::SkillLoadOutcome;
@@ -75,6 +76,22 @@ struct SkillFrontmatter {
 struct SkillFrontmatterMetadata {
     #[serde(default, rename = "short-description")]
     short_description: Option<String>,
+    #[serde(default)]
+    encrypted: bool,
+    #[serde(default)]
+    encryption: Option<SkillEncryptionFrontmatter>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct SkillEncryptionFrontmatter {
+    #[serde(default)]
+    version: Option<u64>,
+    #[serde(default)]
+    key_id: Option<String>,
+    #[serde(default)]
+    algorithm: Option<String>,
+    #[serde(default)]
+    package: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -134,6 +151,8 @@ struct ParsedSkillFrontmatter {
     name: String,
     description: String,
     short_description: Option<String>,
+    encrypted: bool,
+    encryption: Option<SkillEncryption>,
 }
 
 const SKILLS_FILENAME: &str = "SKILL.md";
@@ -720,6 +739,8 @@ async fn parse_skill_file(
         name: base_name,
         description,
         short_description,
+        encrypted,
+        encryption,
     } = parse_skill_frontmatter_metadata_inner(&contents, || default_skill_name(path))?;
     let LoadedSkillMetadata {
         interface,
@@ -738,6 +759,8 @@ async fn parse_skill_file(
         scope,
         plugin_id: plugin_identity.map(|identity| identity.plugin_id.clone()),
         remote_plugin_id: plugin_identity.and_then(|identity| identity.remote_plugin_id.clone()),
+        encrypted,
+        encryption,
     })
 }
 
@@ -778,6 +801,27 @@ fn parse_skill_frontmatter_metadata_inner(
         .as_deref()
         .map(sanitize_single_line)
         .filter(|value| !value.is_empty());
+    let encryption = parsed
+        .metadata
+        .encryption
+        .map(|encryption| SkillEncryption {
+            version: encryption.version,
+            key_id: encryption
+                .key_id
+                .as_deref()
+                .map(sanitize_single_line)
+                .filter(|v| !v.is_empty()),
+            algorithm: encryption
+                .algorithm
+                .as_deref()
+                .map(sanitize_single_line)
+                .filter(|v| !v.is_empty()),
+            package: encryption
+                .package
+                .as_deref()
+                .map(sanitize_single_line)
+                .filter(|v| !v.is_empty()),
+        });
 
     validate_len(&name, MAX_NAME_LEN, "name")?;
     if description.is_empty() {
@@ -788,6 +832,8 @@ fn parse_skill_frontmatter_metadata_inner(
         name,
         description,
         short_description,
+        encrypted: parsed.metadata.encrypted,
+        encryption,
     })
 }
 

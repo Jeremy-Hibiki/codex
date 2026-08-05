@@ -5578,6 +5578,13 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         guardian_rejection_circuit_breaker: Mutex::new(Default::default()),
         runtime_handle: tokio::runtime::Handle::current(),
         skills_service,
+        encrypted_skills_runtime: Arc::new(
+            codex_encrypted_skills::runtime::EncryptedSkillRuntime::new(
+                Arc::new(codex_encrypted_skills::sdk::UnavailableSdk),
+                codex_encrypted_skills::registry::TtlConfig::default(),
+                std::path::PathBuf::from(codex_encrypted_skills::mem_root::DEFAULT_MEM_ROOT),
+            ),
+        ),
         agents_md_manager: Arc::new(AgentsMdManager::new(/*user_instructions*/ None)),
         plugins_manager,
         mcp_manager,
@@ -7751,6 +7758,13 @@ where
         guardian_rejection_circuit_breaker: Mutex::new(Default::default()),
         runtime_handle: tokio::runtime::Handle::current(),
         skills_service,
+        encrypted_skills_runtime: Arc::new(
+            codex_encrypted_skills::runtime::EncryptedSkillRuntime::new(
+                Arc::new(codex_encrypted_skills::sdk::UnavailableSdk),
+                codex_encrypted_skills::registry::TtlConfig::default(),
+                std::path::PathBuf::from(codex_encrypted_skills::mem_root::DEFAULT_MEM_ROOT),
+            ),
+        ),
         agents_md_manager: Arc::new(AgentsMdManager::new(/*user_instructions*/ None)),
         plugins_manager,
         mcp_manager,
@@ -8963,6 +8977,8 @@ async fn build_initial_context_trims_skill_metadata_from_context_window_budget()
             scope: SkillScope::Admin,
             plugin_id: None,
             remote_plugin_id: None,
+            encrypted: false,
+            encryption: None,
         },
         SkillMetadata {
             name: "repo-skill".to_string(),
@@ -8975,6 +8991,8 @@ async fn build_initial_context_trims_skill_metadata_from_context_window_budget()
             scope: SkillScope::Repo,
             plugin_id: None,
             remote_plugin_id: None,
+            encrypted: false,
+            encryption: None,
         },
     ];
     turn_context.model_info.context_window = Some(100);
@@ -9013,6 +9031,8 @@ fn emit_thread_start_skill_metrics_records_enabled_kept_and_truncated_values() {
         scope: SkillScope::Repo,
         plugin_id: None,
         remote_plugin_id: None,
+        encrypted: false,
+        encryption: None,
     }];
     let rendered = build_available_skills(
         &outcome,
@@ -9059,6 +9079,8 @@ fn emit_thread_start_skill_metrics_records_description_truncated_chars_without_o
         scope: SkillScope::Repo,
         plugin_id: None,
         remote_plugin_id: None,
+        encrypted: false,
+        encryption: None,
     };
     let beta = SkillMetadata {
         name: "beta-skill".to_string(),
@@ -9071,6 +9093,8 @@ fn emit_thread_start_skill_metrics_records_description_truncated_chars_without_o
         scope: SkillScope::Repo,
         plugin_id: None,
         remote_plugin_id: None,
+        encrypted: false,
+        encryption: None,
     };
     let minimum_skill_line_cost = |skill: &SkillMetadata| {
         let path = skill.path_to_skills_md.to_string_lossy().replace('\\', "/");
@@ -9120,6 +9144,8 @@ async fn build_initial_context_emits_thread_start_skill_warning_on_repeated_buil
             scope: SkillScope::Admin,
             plugin_id: None,
             remote_plugin_id: None,
+            encrypted: false,
+            encryption: None,
         },
         SkillMetadata {
             name: "repo-skill".to_string(),
@@ -9132,6 +9158,8 @@ async fn build_initial_context_emits_thread_start_skill_warning_on_repeated_buil
             scope: SkillScope::Repo,
             plugin_id: None,
             remote_plugin_id: None,
+            encrypted: false,
+            encryption: None,
         },
     ];
     turn_context.model_info.context_window = Some(100);

@@ -2655,6 +2655,8 @@ mod tests {
                 path: test_path_buf("/tmp/test-skill/SKILL.md").abs(),
                 scope: crate::test_support::skill_scope_user(),
                 enabled: true,
+                encrypted: false,
+                encryption: None,
             }]),
         });
 

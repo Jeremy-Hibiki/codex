@@ -5,6 +5,7 @@ pub use model::SkillConfigRule;
 pub use model::SkillConfigRuleSelector;
 pub use model::SkillConfigRules;
 pub use model::SkillDependencies;
+pub use model::SkillEncryption;
 pub use model::SkillInterface;
 pub use model::SkillMetadata;
 pub use model::SkillPolicy;

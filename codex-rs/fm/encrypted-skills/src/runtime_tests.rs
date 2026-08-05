@@ -302,7 +302,8 @@ fn ttl_reload_wipes_the_replaced_directory() {
 
 #[test]
 fn concurrent_loads_do_not_leave_orphaned_directories() {
-    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let calls = Arc::new(AtomicUsize::new(0));
+    let sdk = Arc::new(counting_sdk(Arc::clone(&calls), |_| SKILL_MD));
     let (runtime, _tmp) = test_runtime(sdk);
     let runtime = Arc::new(runtime);
     let first = Arc::clone(&runtime);
@@ -320,6 +321,11 @@ fn concurrent_loads_do_not_leave_orphaned_directories() {
     first.join().unwrap();
     second.join().unwrap();
 
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "concurrent loads of the same skill must share one decryption"
+    );
     let dirs = runtime.decrypted_dirs("t1");
     assert_eq!(dirs.len(), 1);
     assert!(

@@ -1,10 +1,14 @@
 //! JSONL audit events for encrypted skill security actions.
 
+use std::collections::HashMap;
 use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::OnceLock;
+use std::sync::Weak;
 use std::time::SystemTime;
 
 use serde_json::json;
@@ -181,6 +185,35 @@ impl AuditSink for FileAuditSink {
             tracing::error!(error = %error, path = %self.path.display(), "failed to flush audit log");
         }
     }
+}
+
+/// Process-level registry of shared audit sinks, keyed by `(path, max_bytes)`.
+///
+/// Sessions must not open the same audit file independently: concurrent
+/// rotation (`rename` to `<path>.1`) from multiple sinks can split or drop
+/// events. All callers that target the same file should go through
+/// [`shared_file_sink`] so writes and rotation are serialized by one writer.
+static SHARED_SINKS: OnceLock<Mutex<HashMap<(PathBuf, u64), Weak<FileAuditSink>>>> =
+    OnceLock::new();
+
+/// Returns the process-wide [`FileAuditSink`] for `path` and `max_bytes`,
+/// reusing the live instance when one already exists.
+///
+/// The key includes `max_bytes` so callers that configure a different rotation
+/// limit for the same path do not silently share a writer with the wrong
+/// threshold. The returned value is an `Arc<dyn AuditSink>`; the registry keeps
+/// only a `Weak` reference, so the sink is reclaimed when no caller holds it.
+pub fn shared_file_sink(path: PathBuf, max_bytes: u64) -> io::Result<Arc<dyn AuditSink>> {
+    let map = SHARED_SINKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut map = map.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    map.retain(|_, sink| sink.strong_count() > 0);
+    let key = (path.clone(), max_bytes);
+    if let Some(sink) = map.get(&key).and_then(Weak::upgrade) {
+        return Ok(sink as Arc<dyn AuditSink>);
+    }
+    let sink = Arc::new(FileAuditSink::new_with_limit(path, max_bytes)?);
+    map.insert(key, Arc::downgrade(&sink));
+    Ok(sink as Arc<dyn AuditSink>)
 }
 
 fn rotated_path(path: &Path) -> PathBuf {

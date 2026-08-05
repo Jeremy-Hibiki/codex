@@ -1095,10 +1095,11 @@ impl Session {
                 .unwrap_or_else(|| std::env::temp_dir().join("fm_skill_security_audit.log"));
             let encrypted_skills_audit: Option<
                 Arc<dyn fm_encrypted_skills::audit::AuditSink>,
-            > = match fm_encrypted_skills::audit::FileAuditSink::new(
+            > = match fm_encrypted_skills::audit::shared_file_sink(
                 encrypted_skills_audit_path.clone(),
+                fm_encrypted_skills::audit::FileAuditSink::DEFAULT_MAX_BYTES,
             ) {
-                Ok(sink) => Some(Arc::new(sink) as Arc<dyn fm_encrypted_skills::audit::AuditSink>),
+                Ok(sink) => Some(sink),
                 Err(error) => {
                     tracing::warn!(
                         error = %error,

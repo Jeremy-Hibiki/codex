@@ -96,6 +96,8 @@ fn test_skill(name: &str, path: PathBuf) -> SkillMetadata {
         scope: SkillScope::User,
         plugin_id: None,
         remote_plugin_id: None,
+        encrypted: false,
+        encryption: None,
     }
 }
 

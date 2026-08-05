@@ -55,6 +55,11 @@ impl HookToolName {
         Self::new("Bash")
     }
 
+    /// Returns the hook identity for the `view_image` tool.
+    pub(crate) fn view_image() -> Self {
+        Self::new("view_image")
+    }
+
     /// Returns the canonical hook name serialized into hook stdin.
     pub(crate) fn name(&self) -> &str {
         &self.name

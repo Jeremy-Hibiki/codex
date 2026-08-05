@@ -515,6 +515,43 @@ impl ToolRegistry {
         notify_tool_start(&invocation).await;
 
         if let Some(pre_tool_use_payload) = tool.pre_tool_use_payload(&invocation) {
+            match crate::encrypted_skills_guard::before_tool(
+                &invocation.session,
+                &pre_tool_use_payload.tool_name,
+                &pre_tool_use_payload.tool_input,
+            ) {
+                crate::encrypted_skills_guard::GuardDecision::Blocked { message, .. } => {
+                    let err = FunctionCallError::RespondToModel(message);
+                    dispatch_trace.record_failed(&err);
+                    notify_tool_finish_if_unclaimed(
+                        &invocation,
+                        terminal_outcome_reached.as_deref(),
+                        ToolCallOutcome::Blocked,
+                    )
+                    .await;
+                    return Err(err);
+                }
+                crate::encrypted_skills_guard::GuardDecision::Updated(updated_input) => {
+                    match tool.with_updated_hook_input(invocation.clone(), updated_input) {
+                        Ok(updated_invocation) => {
+                            invocation = updated_invocation;
+                        }
+                        Err(err) => {
+                            dispatch_trace.record_failed(&err);
+                            notify_tool_finish_if_unclaimed(
+                                &invocation,
+                                terminal_outcome_reached.as_deref(),
+                                ToolCallOutcome::Failed {
+                                    handler_executed: false,
+                                },
+                            )
+                            .await;
+                            return Err(err);
+                        }
+                    }
+                }
+                crate::encrypted_skills_guard::GuardDecision::Allow => {}
+            }
             match run_pre_tool_use_hooks(
                 &invocation.session,
                 &invocation.turn,
@@ -692,6 +729,11 @@ impl ToolRegistry {
                         });
                     }
                 }
+                result.result = Box::new(crate::encrypted_skills_guard::RedactingToolOutput {
+                    inner: result.result,
+                    runtime: Arc::clone(&invocation.session.services.encrypted_skills_runtime),
+                    session_id: invocation.session.thread_id.to_string(),
+                });
                 dispatch_trace.record_completed(
                     &invocation,
                     &result.call_id,

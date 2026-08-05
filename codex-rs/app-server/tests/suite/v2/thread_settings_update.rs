@@ -295,7 +295,12 @@ async fn thread_settings_update_rejects_sandbox_policy_with_permissions() -> Res
     let request_id = mcp
         .send_thread_settings_update_request(ThreadSettingsUpdateParams {
             thread_id: thread.id,
-            sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
+            sandbox_policy: Some(SandboxPolicy::WorkspaceWrite {
+                writable_roots: vec![],
+                network_access: false,
+                exclude_tmpdir_env_var: true,
+                exclude_slash_tmp: true,
+            }),
             permissions: Some(":workspace".to_string()),
             ..Default::default()
         })

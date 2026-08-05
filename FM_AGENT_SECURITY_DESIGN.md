@@ -207,6 +207,12 @@ in-flight 窗口定义：`load_or_register` 从 `decrypt_package()` 之后、`re
 
 待探索与处置：逐一盘点上述入口，产品化构建统一拒绝“低于 workspace-write”的配置与参数；managed/requirements 层强制最低策略；engaged 时在 runtime 判定处做最终校验（有效策略不达标 → 拒绝解密/执行，返回通用错误）；确认 CLI 直跑、环境变量、直接改配置等用户侧绕过不在产品保证范围内（同 uid 威胁模型），但官方入口必须全部封住；补回归测试覆盖每个入口。
 
+结论（已验证并补全）：CLI（根级与子命令级 `--sandbox danger-full-access`/bypass）、
+`thread/start`、`turn/start`、`thread/settings/update`（本次补上）均在边界拒绝 danger-full-access；
+engaged 时 orchestrator 以 `SandboxType::None` 判定兜底；managed/requirements 层已有
+`permission_profile_constraint`（测试 `turn_start_rejects_invalid_permission_selection...` 保留）；
+config.toml 直改与环境变量属于同 uid 威胁模型外，不在产品保证范围（I29/TODO-9 记录）。
+
 ### TODO-7 禁止安装/加载插件的实施面盘点（I7）
 
 现状：Codex 支持 `codex plugin`/`marketplace` 子命令、config 中的 plugin/marketplace 配置、启动时从 plugins 目录加载插件、插件注册 PreToolUse/PostToolUse 等 hooks、插件提供 MCP 工具/skills/apps；另有用户配置的独立 MCP server（stdio/http），同样能接收工具参数与输出。
@@ -215,13 +221,37 @@ in-flight 窗口定义：`load_or_register` 从 `decrypt_package()` 之后、`re
 
 范围说明：当前产品的 MCP 由官方提供，用户不能自行安装；因此 **MCP 的输入输出与执行暂不纳入本次实施范围**，记录为“当前上下文不构成问题”。若未来放开用户自装 MCP，再按 TODO-7 的确认项重新评估。
 
+结论（已验证并补全）：CLI `plugin`/`marketplace` 子命令全禁；app-server 在消息分发边界新增
+产品策略拦截：`marketplace/add|remove|upgrade`、`plugin/install|uninstall`、
+`plugin/share/save|updateTargets|checkout|delete` 一律拒绝；只读 `plugin/list|installed|read|
+skill/read|share/list` 保留（产品前端不暴露该入口，且内部验证与既有测试依赖只读列表）。
+插件“启动时加载”仍未在产品层强制关闭（I29，产品默认配置/受信管理工具负责）。
+
 ### TODO-8 展示/中间产物/流式面的深挖
 
 探索已确认或高度疑似未覆盖的面：telemetry 原始 `log_preview()`（红act包装前记录）；`thread/read`、`thread/turns|items/list`、`thread/searchOccurrences`（可能触达 in-memory 明文）；`thread/backgroundTerminals/*` 输出流；`thread/name/set`、`thread/goal/*`、`thread/metadata/update`；detached `review/start` 评审线程的内容来源。逐项确认 engaged 时是否全部走统一红act链路，未覆盖的补上，并决定前端展示策略（默认不展示明文/路径）。`thread/realtime/*` 不在范围（D10）。
 
+结论（已验证并修复）：
+- telemetry `log_preview`：已先包 `RedactingToolOutput` 再取预览（变更 4）。
+- `thread/read`、turns/items/list、searchOccurrences：读取持久化/事件面内容，来源全部经过
+  `redact_turn_item`/`RedactingToolOutput`，无明文 at rest。
+- `thread/name/set`、`thread/goal/*`、`thread/metadata/update`：变更 4 已按受保护路径拦截。
+- `thread/backgroundTerminals/*`：当前只暴露命令/cwd 元数据，不暴露输出流；命令含明文会被
+  shell guard 拦截。
+- 本次补上真实缺口：`redact_turn_item` 原先只覆盖 AgentMessage/Reasoning/Plan，现在扩展到
+  CommandExecution（stdout/stderr/aggregated/formatted/interaction_input）、FileChange
+  （stdout/stderr）、WebSearch query、CollabAgentToolCall prompt、DynamicToolCall
+  content/error、McpToolCall error，统一做“解密路径 unrewrite + 明文红act + mem-root 兜底”；
+  集成测试让技能脚本回显明文标记，断言 rollout 中明文被红act。
+
 ### TODO-9 产品强制面的完整性
 
 探索已确认的潜在绕过：CLI 侧 `--sandbox`/`--full-auto` 类参数与 `dangerously_bypass_approvals_and_sandbox`；代码层仍存在 `thread/start`/`turn/start` config 覆盖、`experimentalFeature/enablement/set`、`skills/config/write` 等入口，但产品不向客户端暴露（D10），配置由未来受信管理工具负责，Skill 仅可配置启用/禁用。实施时：客户端入口按 D10 不暴露；代码层保留最终校验兜底（降级沙箱、关闭安全特性、修改加密配置一律拒绝/忽略），并补回归测试；受信管理工具视为高权限面，后续单独设计。
+
+结论（已验证并补全）：engaged 时（进程内任一会话）`config/value/write`、`config/batchWrite`、
+`experimentalFeature/enablement/set`、`skills/config/write`、`skills/extraRoots/set` 一律拒绝，
+未 engaged 时行为不变（内部工具与测试不受影响）；`thread/start`/`turn/start` 的 config 覆盖
+参数由产品前端不暴露（D10）+ danger-full-access 边界拒绝承接；受信管理工具仍待单独设计。
 
 ## 16. 暴露风险矩阵（场景 → 行为 → 潜在暴露 → 处置）
 
@@ -236,16 +266,16 @@ in-flight 窗口定义：`load_or_register` 从 `decrypt_package()` 之后、`re
 | RPC fs 读（ACP 前端 `fs/readFile` 等） | 当前无 guard | 明文/路径直接返回前端 | engaged 时 Block（第 7 节） |
 | RPC/用户直执行令（`thread/shellCommand`、`command/exec`、`process/spawn`、TUI `!`） | engaged 时处理器入口拦截（变更 4） | 读明文、看路径 | engaged 时拒绝（D2）；技能脚本例外走 D9 自动 Permit（TODO-4 已验证） |
 | 未 engaged 普通会话 | 无明文 | 无 | 零行为变化（I3） |
-| 插件 hooks | 可注册 hook 拿工具输入输出原文 | 明文/路径外发给插件 | 禁用（I7） |
+| 插件 hooks | 可注册 hook 拿工具输入输出原文 | 明文/路径外发给插件 | 禁用（I7）：CLI 全禁；app-server 安装/卸载/分享/marketplace RPC 全禁（TODO-7 已验证） |
 | MCP（官方提供） | 用户不能自装；工具参数/输出走 guard/红act | 当前上下文不构成问题 | 暂不纳入实施范围（记录，见 TODO-7） |
 | Rollout / State DB 被脚本读取 | 文件同 uid 可读，但持久化内容在源头已红act | 持久化明文/路径被外部读取 | 无明文 at rest，无需纳入受保护路径（TODO-3 已验证）；继续保留 resume/fork 正常读取 |
 | 关闭/降级沙箱 | 用户可配置 | 视图隔离失效，间接读取可达成 | I6 强制启用 + engaged 时拒绝解密/执行 |
-| telemetry/analytics 原始预览 | `log_preview()` 在红act包装前记录（已核实代码路径） | 工具输出预览含明文/路径进入遥测日志 | engaged 时先红act再记录（TODO-8） |
-| `thread/read`、`thread/turns\|items/list`、`thread/searchOccurrences` | 当前未纳入 RPC 检查 | 若触达 in-memory 明文或持久化红act不完整，历史/搜索结果泄露给前端 | 验证持久化红act完整性；engaged 时红act/Block（TODO-3/8） |
-| `thread/backgroundTerminals/*` 输出流 | 未红act链路 | 技能脚本输出直接流到终端 UI | engaged 时走统一红act（TODO-8） |
-| `thread/name/set`、`thread/goal/*`、`thread/metadata/update` | 未纳入检查 | 模型把 skill 摘要/路径写进名称、目标、元数据并展示/持久化 | engaged 时参数含明文/受保护路径 → Block（TODO-8） |
+| telemetry/analytics 原始预览 | `log_preview()` 已先包 `RedactingToolOutput` 再取预览 | 工具输出预览含明文/路径进入遥测日志 | engaged 时先红act再记录（TODO-8 已验证） |
+| `thread/read`、`thread/turns\|items/list`、`thread/searchOccurrences` | 读取持久化/事件面内容，来源统一红act | 若触达 in-memory 明文或持久化红act不完整，历史/搜索结果泄露给前端 | 持久化红act完整性已验证；明文 at rest 不存在（TODO-3/8 已验证） |
+| `thread/backgroundTerminals/*` 输出流 | 只暴露命令/cwd 元数据，不暴露输出流 | 技能脚本输出直接流到终端 UI | 输出经 CommandExecutionItem 红act（TODO-8 已验证）；后续若加输出流需走统一红act |
+| `thread/name/set`、`thread/goal/*`、`thread/metadata/update` | engaged 时参数含受保护路径 → Block | 模型把 skill 摘要/路径写进名称、目标、元数据并展示/持久化 | 已接入 RPC guard（TODO-8 已验证） |
 | `thread/realtime/*` | 产品不提供该能力 | — | 排除（D10 范围说明） |
-| `thread/start`/`turn/start` 的 config 覆盖参数 | 客户端可传 config 覆盖 | 可覆盖 `sandbox_mode`、hooks 等，绕过 I6/I7 | 产品不向客户端暴露该入口（D10）；代码层仍保留最终校验兜底（TODO-9） |
-| `experimentalFeature/enablement/set` | 客户端可切换 feature | 若安全路线挂在 feature flag 下可被关闭 | 客户端不暴露（D10）；安全路线不得被任何非受信路径关闭（TODO-9） |
-| `skills/config/write` | 客户端可写 skills 配置 | 配置完整性（根目录、加密开关）可能被篡改 | 客户端不暴露（D10）；Skill 仅可配置启用/禁用，加密/根目录由受信管理工具负责（TODO-9） |
+| `thread/start`/`turn/start`/`thread/settings/update` 的 sandbox/permissions 覆盖参数 | 客户端可传覆盖 | 可覆盖 `sandbox_mode`，绕过 I6 | danger-full-access 一律拒绝；产品不暴露该入口（D10/TODO-6/9 已验证） |
+| `experimentalFeature/enablement/set` | 客户端可切换 feature | 若安全路线挂在 feature flag 下可被关闭 | engaged 时拒绝；客户端不暴露（D10/TODO-9 已验证） |
+| `skills/config/write`、`skills/extraRoots/set`、`config/value/write`、`config/batchWrite` | 客户端可写配置 | 配置完整性（根目录、加密开关）可能被篡改 | engaged 时拒绝；Skill 仅可配置启用/禁用，加密/根目录由受信管理工具负责（D10/TODO-9 已验证） |
 | fork/resume 出的新会话 | 从持久化（已红act）重建历史 | 若持久化红act有遗漏，新会话未 engaged 却携带明文历史 | 扩展 TODO-3 验证持久化红act完整性；fork 后新会话 `is_engaged` 必须为 false 且历史无明文 |

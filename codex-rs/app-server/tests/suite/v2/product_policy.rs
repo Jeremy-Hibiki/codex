@@ -6,6 +6,7 @@ use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::SandboxMode;
 use codex_app_server_protocol::SandboxPolicy;
+use codex_app_server_protocol::ThreadSettingsUpdateParams;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::TurnStartParams;
 use codex_app_server_protocol::UserInput as V2UserInput;
@@ -72,6 +73,28 @@ async fn turn_start_rejects_danger_full_access_sandbox() -> Result<()> {
                 text: "hello".to_string(),
                 text_elements: Vec::new(),
             }],
+            sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
+            ..Default::default()
+        })
+        .await?;
+    read_invalid_request_error(&mut mcp, RequestId::Integer(request_id)).await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn thread_settings_update_rejects_danger_full_access_sandbox() -> Result<()> {
+    let (mut mcp, _codex_home) = build_server().await?;
+
+    let thread = mcp
+        .start_thread(ThreadStartParams {
+            ..Default::default()
+        })
+        .await?
+        .thread;
+    let request_id = mcp
+        .send_thread_settings_update_request(ThreadSettingsUpdateParams {
+            thread_id: thread.id,
             sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
             ..Default::default()
         })

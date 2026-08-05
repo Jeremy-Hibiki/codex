@@ -29,6 +29,8 @@ const SKILL_NAME: &str = "rpc-guard-secret";
 const MARKER: &str = "RPC_GUARD_PLAINTEXT_MARKER_7f3c9a";
 const BLOCK_MESSAGE: &str =
     "Blocked by encrypted skill policy: operation is not allowed while encrypted skills are in use";
+const CONFIG_MUTATION_POLICY_ERROR: &str =
+    "configuration changes are disabled while encrypted skills are in use";
 
 fn stub_skill_md() -> String {
     format!(
@@ -290,6 +292,54 @@ async fn rpc_guard_allows_normal_fs_read_when_engaged() -> Result<()> {
     assert_eq!(response.data_base64, "aGVsbG8=");
 
     wait_for_turn_completed(&mut mcp).await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rpc_guard_blocks_config_mutation_when_engaged() -> Result<()> {
+    let (mut mcp, _server, _codex_home, _workspace, _thread_id) = build_engaged_server().await?;
+
+    for (method, params) in [
+        (
+            "skills/config/write",
+            serde_json::json!({ "enabled": true }),
+        ),
+        (
+            "experimentalFeature/enablement/set",
+            serde_json::json!({ "enablement": {} }),
+        ),
+        ("config/batchWrite", serde_json::json!({ "edits": [] })),
+    ] {
+        let request_id = mcp.send_raw_request(method, Some(params)).await?;
+        assert_eq!(
+            read_error_message(&mut mcp, request_id).await?,
+            CONFIG_MUTATION_POLICY_ERROR
+        );
+    }
+
+    wait_for_turn_completed(&mut mcp).await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rpc_guard_allows_config_mutation_when_unengaged() -> Result<()> {
+    let server = create_mock_responses_server_sequence_unchecked(Vec::new()).await;
+    let codex_home = TempDir::new()?;
+    MockResponsesConfig::new(&server.uri()).write(codex_home.path())?;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
+
+    let request_id = mcp
+        .send_raw_request(
+            "skills/config/write",
+            Some(serde_json::json!({ "enabled": true })),
+        )
+        .await?;
+    let message = read_error_message(&mut mcp, request_id).await?;
+    assert_ne!(message, CONFIG_MUTATION_POLICY_ERROR);
+
     Ok(())
 }
 

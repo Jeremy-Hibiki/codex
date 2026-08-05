@@ -771,6 +771,8 @@ impl MessageProcessor {
         request_context: RequestContext,
     ) -> Result<(), JSONRPCErrorError> {
         let connection_id = connection_request_id.connection_id;
+        crate::request_processors::rpc_guard::ensure_plugin_management_allowed(&codex_request)?;
+        crate::request_processors::rpc_guard::ensure_config_mutation_allowed(&codex_request)?;
         if let ClientRequest::Initialize { request_id, params } = codex_request {
             let connection_initialized = self
                 .initialize_processor

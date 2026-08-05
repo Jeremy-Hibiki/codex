@@ -79,7 +79,7 @@ async fn write_encrypted_skill(
     zip.start_file("SKILL.md", options)?;
     zip.write_all(REAL_SKILL_MD.as_bytes())?;
     zip.start_file("scripts/build.sh", options)?;
-    zip.write_all(b"#!/bin/sh\necho guarded\n")?;
+    zip.write_all(b"#!/bin/sh\necho guarded\necho '# REAL_SKILL_CONTENT_MARKER'\n")?;
     let bytes = zip.finish()?.into_inner();
 
     let package_uri =
@@ -709,6 +709,14 @@ async fn script_execution_rewrites_original_path_and_redacts_output() -> Result<
     assert!(
         rollout.contains("guarded"),
         "rewritten script should execute, got: {rollout}"
+    );
+    assert!(
+        !rollout.contains("REAL_SKILL_CONTENT_MARKER"),
+        "script output quoting skill plaintext must be redacted, got: {rollout}"
+    );
+    assert!(
+        rollout.contains("[REDACTED]"),
+        "script output quoting skill plaintext must be redacted, got: {rollout}"
     );
     assert!(
         !rollout.contains("/dev/shm/fm-agent-security"),

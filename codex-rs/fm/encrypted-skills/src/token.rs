@@ -1,5 +1,7 @@
 //! Sentinel token serialization/parsing for encrypted skill placeholders.
 
+use std::fmt::Write as _;
+
 use rand::RngCore;
 
 pub const TOKEN_PREFIX: &str = "[SENSITIVE_SKILL_TOKEN:";
@@ -22,13 +24,6 @@ impl Token {
         }
     }
 
-    /// Generates a token with a fresh 128-bit random hex key.
-    pub fn generate(session_id: impl Into<String>) -> Self {
-        let mut bytes = [0u8; TOKEN_HEX_BYTES];
-        rand::rng().fill_bytes(&mut bytes);
-        Self::new(session_id, hex_encode(&bytes))
-    }
-
     pub fn serialize(&self) -> String {
         format!(
             "{TOKEN_PREFIX}{}:{}{TOKEN_SUFFIX}",
@@ -43,11 +38,17 @@ impl Token {
         let (session_id, rest) = rest.split_once(':')?;
         let end = rest.find(TOKEN_SUFFIX)?;
         let hex = &rest[..end];
-        if session_id.is_empty() || !is_hex(hex) {
+        if !valid_session_id(session_id) || hex.len() != TOKEN_HEX_CHARS || !is_hex(hex) {
             return None;
         }
         Some(Token::new(session_id, hex))
     }
+}
+
+/// Session ids are embedded in sentinel tokens, so `:` and `]` would make the
+/// serialized form ambiguous to parse.
+fn valid_session_id(session_id: &str) -> bool {
+    !session_id.is_empty() && !session_id.contains([':', ']'])
 }
 
 pub fn random_hex() -> String {
@@ -82,7 +83,7 @@ pub fn is_hex(value: &str) -> bool {
 pub fn hex_encode(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
-        out.push_str(&format!("{byte:02x}"));
+        let _ = write!(out, "{byte:02x}");
     }
     out
 }

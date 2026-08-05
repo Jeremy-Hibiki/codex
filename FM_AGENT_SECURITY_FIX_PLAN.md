@@ -73,5 +73,8 @@ Skill 层 TTL 维持单层（by design），不实现 thread 级 TTL。
 
 ## 状态
 
-除 I11–I14 外均已在前面提交中完成（见 `FM_AGENT_SECURITY_FIX_LOG.md`）。
-I11–I13 为代码修复、I14 为规格对齐，按本计划在本轮完成并单独提交。
+全部完成。I1–I10、I17 在计划文档提交前完成（见
+`FM_AGENT_SECURITY_FIX_LOG.md`）；I11–I13 为代码修复、I14 为规格对齐，
+在本轮按计划完成并单独提交。I15 复核为“无需代码改动”（源类型无加密字段，
+真实 catalog 路径已携带）；I16 保留 `let` 模式（加变体时由编译器强制更新，
+`match + _` 会产生 unreachable pattern 警告）。

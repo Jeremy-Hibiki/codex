@@ -6188,8 +6188,10 @@ version = "0.146.0"
 dependencies = [
  "libc",
  "rand 0.9.3",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.18",
+ "tracing",
  "zip",
 ]
 

@@ -222,3 +222,53 @@ fn split_adjacent_semicolon_and_pipe() {
     // `;|` — `;` then `|` both adjacent. Each splits independently.
     assert_eq!(split_command_segments("a ;| b"), vec!["a", "b"]);
 }
+
+#[test]
+fn script_execution_avoids_plain_argument_paths() {
+    let dir = format!("{MEM_ROOT}/p1/fm_skill_security_abc");
+    let guarded = vec![dir.clone()];
+    assert!(script_execution_avoids_guarded_io(
+        &format!("bash {dir}/scripts/build.sh"),
+        &guarded,
+    ));
+    assert!(script_execution_avoids_guarded_io(
+        &format!("bash {dir}/scripts/build.sh --input {dir}/resources/config.json"),
+        &guarded,
+    ));
+    assert!(script_execution_avoids_guarded_io(
+        &format!("bash {dir}/scripts/build.sh > /tmp/out.log 2>&1"),
+        &guarded,
+    ));
+    assert!(script_execution_avoids_guarded_io(
+        &format!("bash {dir}/scripts/build.sh '$(cat /tmp/not-guarded.txt)'"),
+        &guarded,
+    ));
+}
+
+#[test]
+fn script_execution_blocks_guarded_io_channels() {
+    let dir = format!("{MEM_ROOT}/p1/fm_skill_security_abc");
+    let guarded = vec![dir.clone()];
+    let cases = [
+        format!("bash {dir}/scripts/build.sh < {dir}/SKILL.md"),
+        format!("bash {dir}/scripts/build.sh <{dir}/SKILL.md"),
+        format!("bash {dir}/scripts/build.sh \"$(cat {dir}/SKILL.md)\""),
+        format!("bash {dir}/scripts/build.sh `cat {dir}/SKILL.md`"),
+        format!("bash {dir}/scripts/build.sh <(cat {dir}/SKILL.md)"),
+        format!("bash {dir}/scripts/build.sh <<< \"$(cat {dir}/SKILL.md)\""),
+    ];
+    for command in cases {
+        assert!(
+            !script_execution_avoids_guarded_io(&command, &guarded),
+            "must block guarded read channel: {command}"
+        );
+    }
+}
+
+#[test]
+fn script_execution_blocks_heredoc_expansion() {
+    let dir = format!("{MEM_ROOT}/p1/fm_skill_security_abc");
+    let guarded = vec![dir.clone()];
+    let command = format!("bash {dir}/scripts/build.sh <<EOF\n$(cat {dir}/SKILL.md)\nEOF");
+    assert!(!script_execution_avoids_guarded_io(&command, &guarded));
+}

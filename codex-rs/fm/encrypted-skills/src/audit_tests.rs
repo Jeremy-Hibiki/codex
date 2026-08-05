@@ -12,6 +12,7 @@ fn serialize_contains_event_type_and_fields() {
     assert!(line.contains("\"session_id\":\"t1\""));
     assert!(line.contains("\"skill_name\":\"secret-skill\""));
     assert!(line.contains("\"cache_hit\":false"));
+    assert!(line.contains("\"timestamp_ms\":"));
 }
 
 #[test]
@@ -51,6 +52,19 @@ fn event_type_and_session_id_helpers() {
     };
     assert_eq!(event.event_type(), "blocked");
     assert_eq!(event.session_id(), "t1");
+}
+
+#[test]
+fn serialize_escapes_quotes_in_metadata() {
+    let event = AuditEvent::Blocked {
+        session_id: "t1".into(),
+        tool: "shell".into(),
+        reason: "path \"leak\" blocked".into(),
+    };
+    let line = serialize(&event);
+    assert!(line.contains("\\\"leak\\\""));
+    let parsed: serde_json::Value = serde_json::from_str(&line).unwrap();
+    assert_eq!(parsed["reason"], "path \"leak\" blocked");
 }
 
 #[test]

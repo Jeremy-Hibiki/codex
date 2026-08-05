@@ -95,14 +95,26 @@ fn guard_shell(
     // read hides after an allowed execution (`bash run.sh; cat SKILL.md`).
     for segment in paths::split_command_segments(&rewritten) {
         let references_dir = paths::command_references_dir(&segment, &guarded_paths);
-        // Execution of a skill script is allowed (the runner receives the
-        // rewritten decrypted path). Anything else that touches the decrypted
-        // storage — read, copy, redirect, pipe, glob — is blocked.
-        if references_dir && !paths::is_script_execution(&segment) {
-            return GuardDecision::Blocked {
-                message: BLOCK_MESSAGE.to_string(),
-                reason: "non_execution_access",
-            };
+        if references_dir {
+            // Execution of a skill script is allowed (the runner receives the
+            // rewritten decrypted path). Anything else that touches the
+            // decrypted storage — read, copy, redirect, pipe, glob — is
+            // blocked, including reads smuggled through redirections or
+            // command substitutions inside an otherwise-allowed script
+            // execution (`bash run.sh < SKILL.md`, `bash run.sh $(cat SKILL.md)`).
+            let script_execution = paths::is_script_execution(&segment);
+            if !script_execution
+                || !paths::script_execution_avoids_guarded_io(&segment, &guarded_paths)
+            {
+                return GuardDecision::Blocked {
+                    message: BLOCK_MESSAGE.to_string(),
+                    reason: if script_execution {
+                        "script_execution_io"
+                    } else {
+                        "non_execution_access"
+                    },
+                };
+            }
         }
         // A segment that does NOT reference decrypted storage is always
         // allowed on its own.

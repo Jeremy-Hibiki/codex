@@ -474,6 +474,52 @@ fn allows_script_execution_in_decrypted_storage() {
 }
 
 #[test]
+fn blocks_script_execution_reading_through_io_channels() {
+    let (runtime, _tmp) = loaded_runtime();
+    let dir = runtime.decrypted_dirs("t1")[0]
+        .to_string_lossy()
+        .into_owned();
+    let cases = [
+        format!("bash {dir}/scripts/build.sh < {dir}/SKILL.md"),
+        format!("bash {dir}/scripts/build.sh \"$(cat {dir}/SKILL.md)\""),
+        format!("bash {dir}/scripts/build.sh `cat {dir}/SKILL.md`"),
+        format!("bash {dir}/scripts/build.sh <(cat {dir}/SKILL.md)"),
+        format!("bash {dir}/scripts/build.sh <<< \"$(cat {dir}/SKILL.md)\""),
+    ];
+    for command in cases {
+        let decision = before_tool_with_runtime(
+            &runtime,
+            "t1",
+            &HookToolName::bash(),
+            &json!({ "command": command }),
+        );
+        assert!(
+            matches!(decision, GuardDecision::Blocked { .. }),
+            "script execution with a guarded io channel must be blocked: {decision:?}"
+        );
+    }
+}
+
+#[test]
+fn allows_script_execution_with_plain_guarded_arguments() {
+    let (runtime, _tmp) = loaded_runtime();
+    let dir = runtime.decrypted_dirs("t1")[0]
+        .to_string_lossy()
+        .into_owned();
+    let command = format!("bash {dir}/scripts/build.sh --input {dir}/resources/config.json");
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": command }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Updated(_) | GuardDecision::Allow),
+        "plain script arguments referencing decrypted storage must stay allowed: {decision:?}"
+    );
+}
+
+#[test]
 fn blocks_view_image_on_decrypted_directory() {
     let (runtime, _tmp) = loaded_runtime();
     let dirs = runtime.decrypted_dirs("t1");

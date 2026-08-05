@@ -66,12 +66,25 @@ pub enum SdkKind {
     Unavailable,
     /// Test-only SDK that decrypts plain ZIP packages (`.zip.enc` is a zip).
     TestZip,
+    /// Real FMSH UKey backend (CMS SM2/SM4 envelope via `fmsh-ukey-cipher`).
+    /// Reserved until the `fmsh-ukey` feature is wired in; without the
+    /// feature this kind stays fail-closed.
+    UKey,
+    /// Local X25519 + AES-256-GCM envelope backend (`fmsh-ukey-cipher`
+    /// `local` mode). Reserved for the same feature gate.
+    Local,
 }
 
 pub fn sdk_for(kind: SdkKind) -> Arc<dyn EnvelopeSdk> {
     match kind {
         SdkKind::Unavailable => Arc::new(UnavailableSdk),
         SdkKind::TestZip => Arc::new(TestZipSdk),
+        SdkKind::UKey | SdkKind::Local => {
+            tracing::warn!(
+                "encrypted-skill SDK kind is not compiled in; enable the fmsh-ukey feature (and provide FMSH_UKEY_SDK_DIR at build time) to use it"
+            );
+            Arc::new(UnavailableSdk)
+        }
     }
 }
 
@@ -209,5 +222,14 @@ mod tests {
             Err(EnvelopeError::SdkUnavailable)
         ));
         assert!(matches!(sdk_for(SdkKind::TestZip).as_ref(), _));
+        // UKey/Local are reserved and fail closed until the feature is wired.
+        assert!(matches!(
+            sdk_for(SdkKind::UKey).decrypt_package(Path::new("/x.zip.enc")),
+            Err(EnvelopeError::SdkUnavailable)
+        ));
+        assert!(matches!(
+            sdk_for(SdkKind::Local).decrypt_package(Path::new("/x.zip.enc")),
+            Err(EnvelopeError::SdkUnavailable)
+        ));
     }
 }

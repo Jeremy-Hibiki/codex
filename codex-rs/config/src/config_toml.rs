@@ -153,6 +153,14 @@ pub enum EncryptedSkillsSdkToml {
     Unavailable,
     /// Test-only SDK that decrypts plain ZIP `.zip.enc` packages.
     TestZip,
+    /// Real FMSH UKey backend (CMS SM2/SM4 envelope). Requires the
+    /// `fmsh-ukey` feature and `FMSH_UKEY_SDK_DIR` at build time plus
+    /// `FMSH_UKEY_PROVIDER`/`FMSH_UKEY_CONTAINER` at runtime.
+    #[serde(rename = "ukey")]
+    UKey,
+    /// Local X25519 + AES-256-GCM envelope backend (no hardware). Requires
+    /// the `fmsh-ukey` feature at build time.
+    Local,
 }
 
 /// Encrypted-skill settings.
@@ -1092,6 +1100,22 @@ command = "   "
         assert_eq!(
             parsed.audit_path.as_deref(),
             Some("/var/log/codex/encrypted-skills.log")
+        );
+    }
+
+    #[test]
+    fn encrypted_skills_toml_parses_ukey_and_local_sdks() {
+        assert_eq!(
+            toml::from_str::<EncryptedSkillsToml>("sdk = \"ukey\"")
+                .unwrap()
+                .sdk,
+            Some(EncryptedSkillsSdkToml::UKey)
+        );
+        assert_eq!(
+            toml::from_str::<EncryptedSkillsToml>("sdk = \"local\"")
+                .unwrap()
+                .sdk,
+            Some(EncryptedSkillsSdkToml::Local)
         );
     }
 }

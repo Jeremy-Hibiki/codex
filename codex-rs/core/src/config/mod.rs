@@ -618,6 +618,8 @@ pub struct Config {
     /// Audit log path for encrypted-skill security events (persistent
     /// deployments should point this at a mounted volume).
     pub encrypted_skills_audit_path: Option<std::path::PathBuf>,
+    /// Static X25519 private key for the `local` envelope backend.
+    pub encrypted_skills_local_privkey: Option<std::path::PathBuf>,
 
     /// Provenance for how this [`Config`] was derived (merged layers + enforced
     /// requirements).
@@ -3997,6 +3999,10 @@ impl Config {
             encrypted_skills_audit_path: cfg
                 .encrypted_skills
                 .audit_path
+                .map(std::path::PathBuf::from),
+            encrypted_skills_local_privkey: cfg
+                .encrypted_skills
+                .local_privkey
                 .map(std::path::PathBuf::from),
             model,
             service_tier,

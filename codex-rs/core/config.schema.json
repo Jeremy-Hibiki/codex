@@ -986,6 +986,10 @@
           "description": "Audit log path for encrypted-skill security events. Defaults to the process temp directory (ephemeral); persistent deployments should set this to a path on a mounted volume.",
           "type": "string"
         },
+        "local_privkey": {
+          "description": "Static X25519 private key (PEM) for the `local` envelope backend. Only used when `sdk = \"local\"`.",
+          "type": "string"
+        },
         "sdk": {
           "allOf": [
             {

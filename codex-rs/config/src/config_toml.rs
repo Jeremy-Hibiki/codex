@@ -179,6 +179,10 @@ pub struct EncryptedSkillsToml {
     /// this to a path on a mounted volume.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audit_path: Option<String>,
+    /// Static X25519 private key (PEM) for the `local` envelope backend.
+    /// Only used when `sdk = "local"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_privkey: Option<String>,
 }
 
 /// Base config deserialized from ~/.codex/config.toml.
@@ -1105,17 +1109,12 @@ command = "   "
 
     #[test]
     fn encrypted_skills_toml_parses_ukey_and_local_sdks() {
-        assert_eq!(
-            toml::from_str::<EncryptedSkillsToml>("sdk = \"ukey\"")
-                .unwrap()
-                .sdk,
-            Some(EncryptedSkillsSdkToml::UKey)
-        );
-        assert_eq!(
-            toml::from_str::<EncryptedSkillsToml>("sdk = \"local\"")
-                .unwrap()
-                .sdk,
-            Some(EncryptedSkillsSdkToml::Local)
-        );
+        let ukey: EncryptedSkillsToml = toml::from_str("sdk = \"ukey\"").unwrap();
+        assert_eq!(ukey.sdk, Some(EncryptedSkillsSdkToml::UKey));
+
+        let local: EncryptedSkillsToml =
+            toml::from_str("sdk = \"local\"\nlocal_privkey = \"/keys/enc.priv.pem\"").unwrap();
+        assert_eq!(local.sdk, Some(EncryptedSkillsSdkToml::Local));
+        assert_eq!(local.local_privkey.as_deref(), Some("/keys/enc.priv.pem"));
     }
 }

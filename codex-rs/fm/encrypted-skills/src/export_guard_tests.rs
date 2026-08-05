@@ -114,6 +114,60 @@ fn redact_middle_fragment_is_idempotent() {
 }
 
 #[test]
+fn normalized_variants_match() {
+    let plaintext = "The quick brown fox jumps over the lazy dog";
+    let variants = [
+        "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG",
+        "The.quick.brown.fox.jumps.over.the.lazy.dog",
+        "**The quick brown fox** jumps over the lazy dog",
+        "[The quick brown fox jumps over the lazy dog](https://example.com)",
+        "The  quick\tbrown fox jumps over the lazy dog!",
+        "The-quick-brown-fox-jumps-over-the-lazy-dog",
+    ];
+    for variant in variants {
+        assert!(
+            contains_known_plaintext(variant, &[plaintext]),
+            "normalized variant must match: {variant}"
+        );
+    }
+}
+
+#[test]
+fn fullwidth_variants_match() {
+    let plaintext = "skill content alpha";
+    assert!(contains_known_plaintext(
+        "ｓｋｉｌｌ ｃｏｎｔｅｎｔ ａｌｐｈａ",
+        &[plaintext]
+    ));
+}
+
+#[test]
+fn redact_normalized_line_variant() {
+    let plaintext = "The quick brown fox jumps over the lazy dog";
+    assert_eq!(
+        redact_known_plaintext("THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG", &[plaintext]),
+        "[REDACTED]"
+    );
+    assert_eq!(
+        redact_known_plaintext(
+            "see The.quick.brown.fox.jumps.over.the.lazy.dog",
+            &[plaintext]
+        ),
+        "[REDACTED]"
+    );
+}
+
+#[test]
+fn normalized_short_line_redacts_as_complete_line_only() {
+    let known = ["api_key=abc"];
+    assert_eq!(redact_known_plaintext("API_KEY=ABC", &known), "[REDACTED]");
+    assert_eq!(
+        redact_known_plaintext("value API_KEY=ABC here", &known),
+        "value API_KEY=ABC here"
+    );
+}
+
+#[test]
 fn redact_short_fragments_are_not_redacted() {
     let plaintext = "line one\napi_key=abc\nline three";
     assert_eq!(

@@ -940,6 +940,27 @@ fn blocks_shell_command_containing_known_plaintext() {
 }
 
 #[test]
+fn blocks_shell_command_with_normalized_plaintext_variant() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": "echo '**# Guarded content**'" }),
+    );
+    assert!(
+        matches!(
+            decision,
+            GuardDecision::Blocked {
+                reason: "shell_plaintext",
+                ..
+            }
+        ),
+        "normalized variants of skill plaintext must be blocked: {decision:?}"
+    );
+}
+
+#[test]
 fn blocks_sed_and_head_on_decrypted_storage() {
     let (runtime, _tmp) = loaded_long_runtime();
     let dir = runtime.decrypted_dirs("t1")[0]

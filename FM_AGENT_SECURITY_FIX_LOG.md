@@ -22,6 +22,8 @@ design.
 | 14 | `9119204ba7` | OpenSpec | Align access-control spec with shell-only decrypted-storage channel |
 | 15 | `cde71bb57e` | hook/tool-output redaction | Redact skill plaintext + decrypted paths from hook additional contexts (PostToolUse etc.) at the source and extend persistence redaction to developer-role messages |
 | 16 | `70d2ebabbd` | compaction trace | Redact known plaintext + paths on compaction trace input/replacement history before recording (remote-compaction only; local trace is disabled) |
+| 17 | `160bdbecfb` | fragment matching | Match and redact any ≥20-char contiguous skill fragment (sed/head/cut/tail middle excerpts), not just full lines or 20-char prefixes |
+| 18 | `3dca5c95e7` | tool-call handling | Block shell commands containing known skill plaintext (`shell_plaintext`) and redact FunctionCall/CustomToolCall arguments at durable surfaces |
 
 ## Verification
 
@@ -38,6 +40,10 @@ workspace and passed on the identical code in the previous run).
 
 After I15–I16: `codex-core` `encrypted_skills` filter 69 passed (3 new
 redaction tests), `spawn` filter 102 passed.
+
+After I17–I18: `fm-encrypted-skills` 127 passed (3 new fragment tests),
+`codex-core` `encrypted_skills` filter 73 passed (4 new tool-call tests),
+`spawn` filter 102 passed.
 
 Two pre-existing loader tests fail identically before and after these changes
 when run inside this git worktree (`non_git_repo_skills_search_does_not_walk_parents`,

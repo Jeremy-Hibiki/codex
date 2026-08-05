@@ -66,6 +66,9 @@ impl McpProcess {
         cmd.stderr(Stdio::piped());
         cmd.env("CODEX_HOME", codex_home);
         cmd.env("RUST_LOG", "debug");
+        // Debug/test-only bypass so the suite does not need a live FMSH
+        // license server; release binaries never honor this.
+        cmd.env("FMSH_CODEX_LIC_TEST_BYPASS", "1");
 
         for (k, v) in env_overrides {
             match v {
@@ -167,7 +170,7 @@ impl McpProcess {
                 "serverInfo": {
                     "name": "codex-mcp-server",
                     "title": "Codex",
-                    "version": "0.0.0",
+                    "version": build_version,
                     "user_agent": user_agent
                 },
                 "protocolVersion": ProtocolVersion::V_2025_03_26

@@ -1,6 +1,6 @@
 load("//:defs.bzl", "codex_rust_crate")
 
 codex_rust_crate(
-    name = "fm-encrypted-skills",
+    name = "encrypted-skills",
     crate_name = "fm_encrypted_skills",
 )

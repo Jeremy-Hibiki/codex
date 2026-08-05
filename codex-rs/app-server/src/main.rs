@@ -76,6 +76,9 @@ fn main() -> anyhow::Result<()> {
             disable_plugin_startup_tasks_for_tests,
             remote_control,
         } = AppServerArgs::parse();
+        // The standalone app-server binary is a product entry point that can
+        // start Codex work; it must hold a license for the process lifetime.
+        let _license_guard = fm_license::verify_at_startup()?;
         let loader_overrides = if disable_managed_config_from_debug_env() {
             LoaderOverrides::without_managed_config_for_tests()
         } else {

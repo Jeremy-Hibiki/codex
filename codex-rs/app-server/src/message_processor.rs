@@ -9,6 +9,7 @@ use crate::config_manager::ConfigManager;
 use crate::connection_rpc_gate::ConnectionRpcGate;
 use crate::current_time::app_server_time_provider;
 use crate::error_code::invalid_request;
+use crate::error_code::license_unavailable;
 use crate::extensions::ThreadExtensionDependencies;
 use crate::extensions::app_server_extension_event_sink;
 use crate::extensions::guardian_agent_spawner;
@@ -882,6 +883,25 @@ impl MessageProcessor {
             connection_id,
             request_id: codex_request.id().clone(),
         };
+
+        // Requests that start new Codex work are rejected while the license is
+        // unavailable, so users cannot initiate new work while already-running
+        // sessions continue to operate.
+        if !fm_license::is_active()
+            && matches!(
+                &codex_request,
+                ClientRequest::ThreadStart { .. }
+                    | ClientRequest::ThreadResume { .. }
+                    | ClientRequest::ThreadFork { .. }
+                    | ClientRequest::TurnStart { .. }
+                    | ClientRequest::TurnSteer { .. }
+                    | ClientRequest::ThreadInjectItems { .. }
+                    | ClientRequest::ThreadRealtimeStart { .. }
+                    | ClientRequest::ReviewStart { .. }
+            )
+        {
+            return Err(license_unavailable(fm_license::LICENSE_UNAVAILABLE_MESSAGE));
+        }
 
         let result: Result<Option<ClientResponsePayload>, JSONRPCErrorError> = match codex_request {
             ClientRequest::Initialize { .. } => {

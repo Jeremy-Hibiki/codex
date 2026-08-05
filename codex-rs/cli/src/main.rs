@@ -1008,19 +1008,39 @@ async fn cli_main(
     }
 
     // Verify the product license before entering any of the main product
-    // flows (interactive, exec, review). The FMSH LMCLIENT SDK only ships a
-    // CentOS 7 / x86_64 static library, so other targets skip the check.
+    // flows (interactive, exec, review, app-server, mcp-server, resume, fork,
+    // remote-control). The FMSH LMCLIENT SDK only ships a CentOS 7 / x86_64
+    // static library, so other targets skip the check.
     #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
-    let _license_guard = match subcommand.as_ref() {
-        None | Some(Subcommand::Exec(_)) | Some(Subcommand::Review(_)) => {
-            Some(fm_license::verify_at_startup()?)
-        }
-        _ => None,
+    let license_required = match subcommand.as_ref() {
+        None
+        | Some(Subcommand::Exec(_))
+        | Some(Subcommand::Review(_))
+        | Some(Subcommand::McpServer(_))
+        | Some(Subcommand::Resume(_))
+        | Some(Subcommand::Fork(_)) => true,
+        Some(Subcommand::AppServer(app_server)) => app_server.subcommand.is_none(),
+        Some(Subcommand::RemoteControl(remote_control)) => remote_control.starts_app_server(),
+        _ => false,
+    };
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    let _license_guard = if license_required {
+        Some(fm_license::verify_at_startup()?)
+    } else {
+        None
     };
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
     let _license_guard: Option<()> = None;
     #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
-    if _license_guard.is_some() {
+    if _license_guard.is_some()
+        && matches!(
+            subcommand.as_ref(),
+            None | Some(Subcommand::Exec(_))
+                | Some(Subcommand::Review(_))
+                | Some(Subcommand::Resume(_))
+                | Some(Subcommand::Fork(_))
+        )
+    {
         install_license_checkin_signal_handler()?;
     }
 

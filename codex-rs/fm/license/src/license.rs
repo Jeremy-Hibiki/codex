@@ -9,6 +9,8 @@ use lmclient_rust_sdk::RetryCallback;
 use std::ffi::CString;
 use std::ffi::c_int;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::Ordering;
 
 /// Environment variable overriding the licensed feature name.
 pub const FEATURE_ENV_VAR: &str = "FMSH_CODEX_LIC_FEATURE";
@@ -21,14 +23,81 @@ const RECHECK_INTERVAL_SECONDS: c_int = 30;
 const RETRY_COUNT: c_int = 10;
 const SLEEP_TIME_SECONDS: c_int = 1;
 
-/// Exit code when the license is lost at runtime (heartbeat retries exhausted).
-const EXIT_LICENSE_LOST: i32 = 2;
+/// License state while the process holds a checked-out license.
+const LICENSE_STATE_ACTIVE: u8 = 0;
+const LICENSE_STATE_LOST: u8 = 1;
+
+/// Message returned by [`ensure_active`] when the license is unavailable.
+pub const LICENSE_UNAVAILABLE_MESSAGE: &str =
+    "Codex license is unavailable; new requests are blocked until the license recovers";
+
+/// Debug/test-only environment variable that bypasses FMSH verification.
+///
+/// The bypass is only honored in `debug_assertions` builds; release builds are
+/// always fail-closed. Integration tests that spawn gated binaries set this so
+/// the repo test suite does not require a live FMSH license server.
+pub const TEST_BYPASS_ENV_VAR: &str = "FMSH_CODEX_LIC_TEST_BYPASS";
+
+/// Debug/test-only environment variable that starts the process with the
+/// license already lost so request gates can be exercised without a real
+/// license server. Only honored together with [`TEST_BYPASS_ENV_VAR`] in
+/// `debug_assertions` builds.
+pub const TEST_FORCE_LOST_ENV_VAR: &str = "FMSH_CODEX_LIC_TEST_FORCE_LOST";
+
+/// Process-wide license state, updated by the LMCLIENT heartbeat thread.
+///
+/// Starts active so library-only callers that never checked out a license are
+/// unaffected; request gates only matter after a checkout was lost.
+static LICENSE_STATE: AtomicU8 = AtomicU8::new(LICENSE_STATE_ACTIVE);
 
 /// Feature currently checked out; `None` once the license has been returned.
 ///
 /// The signal handler and the [`LicenseGuard`] share this so exactly one
 /// `check_in` happens no matter which path shuts the license down first.
 static ACTIVE_FEATURE: Mutex<Option<String>> = Mutex::new(None);
+
+/// Returns true while the checked-out license is active.
+///
+/// On platforms where the FMSH SDK is not available this always returns true
+/// because the crate compiles to a no-op stub.
+pub fn is_active() -> bool {
+    LICENSE_STATE.load(Ordering::Acquire) == LICENSE_STATE_ACTIVE
+}
+
+/// Returns an error when the license was lost at runtime.
+///
+/// Call this at request boundaries (new thread, new turn, steering, review,
+/// realtime session) so users can keep the process open but cannot start new
+/// work while the license is unavailable.
+pub fn ensure_active() -> Result<(), anyhow::Error> {
+    if is_active() {
+        Ok(())
+    } else {
+        anyhow::bail!(LICENSE_UNAVAILABLE_MESSAGE);
+    }
+}
+
+/// Marks the license lost from the LMCLIENT heartbeat thread.
+fn mark_license_lost() {
+    LICENSE_STATE.store(LICENSE_STATE_LOST, Ordering::Release);
+}
+
+/// Marks the license recovered after a successful heartbeat retry.
+fn mark_license_active() {
+    LICENSE_STATE.store(LICENSE_STATE_ACTIVE, Ordering::Release);
+}
+
+#[cfg(debug_assertions)]
+fn test_bypass_enabled() -> bool {
+    std::env::var(TEST_BYPASS_ENV_VAR)
+        .is_ok_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+}
+
+#[cfg(debug_assertions)]
+fn test_force_lost_enabled() -> bool {
+    std::env::var(TEST_FORCE_LOST_ENV_VAR)
+        .is_ok_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+}
 
 /// License settings resolved from the environment.
 #[derive(Debug, PartialEq, Eq)]
@@ -67,13 +136,17 @@ unsafe extern "C" fn on_retry() -> c_int {
 }
 
 unsafe extern "C" fn on_retry_success() -> c_int {
+    mark_license_active();
     tracing::warn!("license heartbeat recovered.");
     0
 }
 
 unsafe extern "C" fn on_license_lost() -> c_int {
-    tracing::error!("license lost: heartbeat retries exhausted; exiting");
-    std::process::exit(EXIT_LICENSE_LOST)
+    mark_license_lost();
+    tracing::error!(
+        "license lost: heartbeat retries exhausted; new requests are blocked until the license recovers"
+    );
+    0
 }
 
 /// Holds a checked-out license for the lifetime of a Codex session.
@@ -136,6 +209,25 @@ pub fn check_in_now() {
 /// This function reads `FMSH_CODEX_LIC_FEATURE` and `FMSH_CODEX_LIC_VERSION`
 /// (both required) and optionally `FMSH_CODEX_LIC_DISPLAY_NAME` (defaults to `"Codex"`).
 pub fn verify_at_startup() -> Result<LicenseGuard> {
+    #[cfg(debug_assertions)]
+    if test_bypass_enabled() {
+        if test_force_lost_enabled() {
+            mark_license_lost();
+            tracing::warn!(
+                "{TEST_FORCE_LOST_ENV_VAR} is set; starting with the license lost (debug builds only)"
+            );
+        } else {
+            tracing::warn!(
+                "{TEST_BYPASS_ENV_VAR} is set; skipping FMSH license verification (debug builds only)"
+            );
+        }
+        return Ok(LicenseGuard { client: None });
+    }
+
+    // A fresh checkout always starts active, even if a previous guard in this
+    // process observed a lost heartbeat.
+    LICENSE_STATE.store(LICENSE_STATE_ACTIVE, Ordering::Release);
+
     let config = resolve_config(
         std::env::var(FEATURE_ENV_VAR).ok().as_deref(),
         std::env::var(VERSION_ENV_VAR).ok().as_deref(),

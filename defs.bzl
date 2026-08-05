@@ -5,6 +5,9 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_proc_mac
 load("//bazel/rules/testing:foreign_platform_binary.bzl", "foreign_platform_binary")
 load("//bazel/rules/testing/wine:wine_runtime.bzl", "WINE_TEST_TARGET_COMPATIBLE_WITH", "wine_test_runtime")
 
+# Workspace version — injected via rules_rust version attr so env!("CARGO_PKG_VERSION")
+# resolves correctly under Bazel (rules_rust defaults to "0.0.0").
+WORKSPACE_VERSION = "0.146.0-fm.1"
 # Match Cargo's Windows linker behavior so Bazel-built binaries and tests use
 # the same stack reserve on both Windows ABIs and resolve UCRT imports on MSVC.
 WINDOWS_GNULLVM_RUSTC_LINK_FLAGS = [
@@ -202,6 +205,7 @@ def codex_rust_crate(
         unit_test_timeout = None,
         extra_binaries = [],
         extra_binaries_non_windows = [],
+        binary_test_target_compatible_with = [],
         run_tests_with_wine_exec = False):
     """Defines a Rust crate with library, binaries, and tests wired for Bazel + Cargo parity.
 
@@ -318,6 +322,7 @@ def codex_rust_crate(
             rustc_flags = rustc_flags_extra,
             rustc_env = rustc_env,
             visibility = ["//visibility:public"],
+            version = WORKSPACE_VERSION,
         )
 
         unit_test_name = name + "-unit-tests"
@@ -345,6 +350,7 @@ def codex_rust_crate(
             ],
             rustc_env = rustc_env,
             data = test_data_extra,
+            target_compatible_with = binary_test_target_compatible_with,
             tags = test_tags + ["manual"],
         )
 
@@ -385,6 +391,8 @@ def codex_rust_crate(
             edition = crate_edition,
             rustc_flags = rustc_flags_extra + WINDOWS_RUSTC_LINK_FLAGS,
             srcs = native.glob(["src/**/*.rs"]),
+            rustc_env = rustc_env,
+            version = WORKSPACE_VERSION,
             visibility = ["//visibility:public"],
         )
 

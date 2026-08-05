@@ -27,6 +27,7 @@ design.
 | 19 | `749c38982a` | normalization | Normalize both sides before matching: markdown links/HTML tags stripped, Unicode NFKC + lowercase, symbols dropped as separators, whitespace collapsed; normalized matched lines redacted whole |
 | 20 | `b92c426f51` | runtime races | F1: touch inside registry lock on cache hit (TOCTOU); F3: lifecycle state_lock serializes store+register vs clear_session; F5: per-(session,skill) in-flight gate so concurrent loads decrypt once |
 | 21 | `2de0c3caa0` | audit sink | F4: process-wide per-(path, max_bytes) shared FileAuditSink (Weak registry) wired into Session::new; one writer per file, no concurrent rotation |
+| 22 | `5d9fae664c` | fmsh-ukey groundwork | Reserve `SdkKind::UKey`/`Local` and `sdk = "ukey"/"local"` config variants (fail-closed until `fmsh-ukey` feature is wired); schema regenerated |
 
 ## Verification
 

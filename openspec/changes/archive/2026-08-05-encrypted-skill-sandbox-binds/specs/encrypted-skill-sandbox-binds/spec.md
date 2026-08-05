@@ -34,7 +34,7 @@ When building bubblewrap filesystem arguments, each `readonly_bind` SHALL be mou
 
 ### Requirement: Orchestrator injects skill binds only when bwrap applies
 
-`SandboxAttempt` SHALL carry the session's `(decrypted_dir, original_dir)` mappings as `skill_binds`, and `env_for`/`env_for_exec_server` SHALL add them to the permission profile used for sandboxing only when `sandbox_applies_binds` is true (Linux, non-legacy landlock, bwrap actually in effect). Otherwise `skill_binds` SHALL be empty.
+`SandboxAttempt` SHALL carry the session's `(decrypted_dir, original_dir)` mappings as `skill_binds`, and `env_for`/`env_for_exec_server` SHALL forward them on the sandboxing request/context used for sandboxing only when `sandbox_applies_binds` is true (Linux, non-legacy landlock, bwrap actually in effect). The helper receives them as `--ro-bind <source> <target>` CLI pairs and merges them into the sandbox policy; `FileSystemSandboxPolicy.readonly_binds` remains the in-memory carrier used by bubblewrap. Otherwise `skill_binds` SHALL be empty.
 
 #### Scenario: Binds active under bwrap
 - **WHEN** the effective sandbox uses bubblewrap and the session is engaged

@@ -84,6 +84,22 @@ fn guard_shell(
     // FIRST, so every downstream check operates on a single, canonical view
     // of what the shell will actually execute.
     let rewritten = runtime.rewrite_paths(session_id, command);
+    // A shell command that carries known skill plaintext is an outbound channel
+    // (echo/printf/heredoc writing to disk, pipes to other processes, ...).
+    // Block it the same way non-shell tools are blocked, before the path rules
+    // run, so partial fragments cannot be smuggled through command arguments.
+    let known = runtime.known_plaintexts(session_id);
+    if !known.is_empty() {
+        let known: Vec<&str> = known.iter().map(String::as_str).collect();
+        if export_guard::args_contain_plaintext(&[&rewritten], &known) {
+            return GuardDecision::Blocked {
+                message:
+                    "Blocked by encrypted skill policy: command contains encrypted skill content"
+                        .to_string(),
+                reason: "shell_plaintext",
+            };
+        }
+    }
     let guarded_paths = runtime
         .decrypted_dirs(session_id)
         .into_iter()
@@ -439,6 +455,12 @@ pub(crate) fn redact_tool_output_plaintext_for_persistence(
                 }
             }
         }
+        // Tool call arguments are model-generated and can echo skill content
+        // back into the transcript; redact them for durable surfaces.
+        ResponseItem::FunctionCall { arguments, .. } => {
+            redact_text_field(runtime, arguments, &known)
+        }
+        ResponseItem::CustomToolCall { input, .. } => redact_text_field(runtime, input, &known),
         ResponseItem::FunctionCallOutput { output, .. }
         | ResponseItem::CustomToolCallOutput { output, .. } => match &mut output.body {
             FunctionCallOutputBody::Text(text) => redact_text_field(runtime, text, &known),

@@ -51,6 +51,17 @@ impl EnvelopeSdk for GuardTestSdk {
     }
 }
 
+struct GuardLongTestSdk;
+
+impl EnvelopeSdk for GuardLongTestSdk {
+    fn decrypt_package(&self, _package_path: &Path) -> Result<Vec<PackageEntry>, EnvelopeError> {
+        Ok(vec![PackageEntry {
+            rel_path: PathBuf::from("SKILL.md"),
+            contents: b"line one\nabcdefghijklmnopqrstuvwxyzABCDEFGHIJ\nline three".to_vec(),
+        }])
+    }
+}
+
 fn loaded_runtime() -> (EncryptedSkillRuntime, tempfile::TempDir) {
     let tmp = tempfile::tempdir().unwrap();
     let runtime = EncryptedSkillRuntime::new(
@@ -61,6 +72,23 @@ fn loaded_runtime() -> (EncryptedSkillRuntime, tempfile::TempDir) {
     runtime
         .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
         .expect("load skill");
+    (runtime, tmp)
+}
+
+fn loaded_long_runtime() -> (EncryptedSkillRuntime, tempfile::TempDir) {
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime = EncryptedSkillRuntime::new(
+        Arc::new(GuardLongTestSdk),
+        TtlConfig::default(),
+        tmp.path().join("mem-root"),
+    );
+    runtime
+        .load_or_register(
+            "t1",
+            "long-secret",
+            Path::new("/skills/long-secret.zip.enc"),
+        )
+        .unwrap();
     (runtime, tmp)
 }
 
@@ -888,6 +916,94 @@ fn redact_all_response_item_text_covers_every_role() {
     }
     assert!(texts.iter().all(|text| !text.contains("# Guarded content")));
     assert!(texts.iter().all(|text| !text.contains(&mem_root)));
+}
+
+#[test]
+fn blocks_shell_command_containing_known_plaintext() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": "echo \"# Guarded content\" > /tmp/leak.txt" }),
+    );
+    assert!(
+        matches!(
+            decision,
+            GuardDecision::Blocked {
+                reason: "shell_plaintext",
+                ..
+            }
+        ),
+        "shell commands carrying skill plaintext must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn blocks_sed_and_head_on_decrypted_storage() {
+    let (runtime, _tmp) = loaded_long_runtime();
+    let dir = runtime.decrypted_dirs("t1")[0]
+        .to_string_lossy()
+        .into_owned();
+    for command in [
+        format!("sed -n '1,20p' {dir}/SKILL.md"),
+        format!("head -n 20 {dir}/SKILL.md"),
+        format!("head -c 40 {dir}/SKILL.md"),
+        format!("tail -c 100 {dir}/SKILL.md"),
+    ] {
+        let decision = before_tool_with_runtime(
+            &runtime,
+            "t1",
+            &HookToolName::bash(),
+            &json!({ "command": command }),
+        );
+        assert!(
+            matches!(decision, GuardDecision::Blocked { .. }),
+            "sed/head/tail reads of decrypted storage must be blocked: {decision:?}"
+        );
+    }
+}
+
+#[test]
+fn persistence_redacts_function_call_arguments() {
+    let (runtime, _tmp) = loaded_runtime();
+    let function_call = ResponseItem::FunctionCall {
+        id: None,
+        name: "shell".to_string(),
+        namespace: None,
+        arguments: json!({ "command": "echo \"# Guarded content\"" }).to_string(),
+        call_id: "call-1".to_string(),
+        internal_chat_message_metadata_passthrough: None,
+    };
+    let out = redact_tool_output_plaintext_for_persistence(&runtime, "t1", function_call);
+    let ResponseItem::FunctionCall { arguments, .. } = out else {
+        panic!("expected function call item");
+    };
+    assert!(!arguments.contains("# Guarded content"));
+    assert!(arguments.contains("[REDACTED]"));
+}
+
+#[test]
+fn persistence_redacts_middle_fragments_in_tool_output() {
+    let (runtime, _tmp) = loaded_long_runtime();
+    let line = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJ";
+    let middle = &line[8..28];
+    let item = ResponseItem::FunctionCallOutput {
+        id: None,
+        call_id: "call-1".to_string(),
+        output: FunctionCallOutputPayload {
+            body: FunctionCallOutputBody::Text(format!("script printed: {middle}")),
+            success: None,
+        },
+        internal_chat_message_metadata_passthrough: None,
+    };
+    let out = redact_tool_output_plaintext_for_persistence(&runtime, "t1", item);
+    let ResponseItem::FunctionCallOutput { output, .. } = out else {
+        panic!("expected function call output item");
+    };
+    let text = output.body.to_text().unwrap();
+    assert!(!text.contains(middle));
+    assert!(text.contains("[REDACTED]"));
 }
 
 #[test]

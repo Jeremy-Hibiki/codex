@@ -22,6 +22,17 @@ fn full_line_and_prefix_match() {
 }
 
 #[test]
+fn middle_fragment_matches() {
+    let line = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJ";
+    let plaintext = format!("first line\n{line}\nlast line");
+    let middle = &line[8..28]; // "ijklmnopqrstuvwxyzAB" — neither line start nor full line
+    assert!(contains_known_plaintext(
+        &format!("output: {middle} suffix"),
+        &[plaintext.as_str()]
+    ));
+}
+
+#[test]
 fn short_fragments_are_not_matched() {
     // A short line inside a known plaintext does not match on its own.
     let plaintext = "line one\napi_key=abc\nline three";
@@ -78,6 +89,28 @@ fn redact_full_line_and_prefix() {
         redact_known_plaintext("prefix this is a long sensi", &[plaintext]),
         "prefix [REDACTED]"
     );
+}
+
+#[test]
+fn redact_middle_fragment() {
+    let line = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJ";
+    let plaintext = format!("first line\n{line}\nlast line");
+    let middle = &line[8..28];
+    let out = redact_known_plaintext(&format!("output: {middle} suffix"), &[plaintext.as_str()]);
+    assert!(!out.contains(middle));
+    assert!(out.contains("[REDACTED]"));
+}
+
+#[test]
+fn redact_middle_fragment_is_idempotent() {
+    let line = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJ";
+    let plaintext = format!("first line\n{line}\nlast line");
+    let out = redact_known_plaintext(
+        &format!("output: {} suffix", &line[8..28]),
+        &[plaintext.as_str()],
+    );
+    let twice = redact_known_plaintext(&out, &[plaintext.as_str()]);
+    assert_eq!(out, twice);
 }
 
 #[test]

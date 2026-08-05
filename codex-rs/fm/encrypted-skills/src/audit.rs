@@ -164,6 +164,7 @@ impl AuditSink for FileAuditSink {
     fn emit(&self, event: AuditEvent) {
         let line = serialize(&event);
         let Ok(mut writer) = self.writer.lock() else {
+            tracing::error!(path = %self.path.display(), "audit sink mutex poisoned; event dropped");
             return;
         };
         let over_limit = writer

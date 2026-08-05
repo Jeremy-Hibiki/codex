@@ -27,6 +27,8 @@ design.
 | 19 | `749c38982a` | normalization | Normalize both sides before matching: markdown links/HTML tags stripped, Unicode NFKC + lowercase, symbols dropped as separators, whitespace collapsed; normalized matched lines redacted whole |
 | 20 | `b92c426f51` | runtime races | F1: touch inside registry lock on cache hit (TOCTOU); F3: lifecycle state_lock serializes store+register vs clear_session; F5: per-(session,skill) in-flight gate so concurrent loads decrypt once |
 | 21 | `2de0c3caa0` | audit sink | F4: process-wide per-(path, max_bytes) shared FileAuditSink (Weak registry) wired into Session::new; one writer per file, no concurrent rotation |
+| 22 | `5d9fae664c` | fmsh-ukey groundwork | Reserve `SdkKind::UKey`/`Local` and `sdk = "ukey"/"local"` config variants (fail-closed until `fmsh-ukey` feature is wired); schema regenerated |
+| 23 | `41c2632016` + `33f94b4371` | fmsh-ukey integration | Add `fmsh-ukey-cipher` as optional git dependency pinned to upstream `f09dc46` (openssl >= 0.10.76), add optional `fmsh-ukey` feature, implement `UKeySdk`/`LocalSdk`, wire `local_privkey` config; openssl lock bumped 0.10.75 -> 0.10.81; feature build verified with a stub SDK (`136 passed`) |
 
 ## Verification
 

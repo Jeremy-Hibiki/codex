@@ -1088,6 +1088,17 @@ impl Session {
                     );
                     fm_encrypted_skills::sdk::SdkKind::TestZip
                 }
+                codex_config::config_toml::EncryptedSkillsSdkToml::UKey => {
+                    fm_encrypted_skills::sdk::SdkKind::UKey
+                }
+                codex_config::config_toml::EncryptedSkillsSdkToml::Local => {
+                    fm_encrypted_skills::sdk::SdkKind::Local(
+                        config
+                            .encrypted_skills_local_privkey
+                            .clone()
+                            .unwrap_or_default(),
+                    )
+                }
             });
             let encrypted_skills_audit_path = config
                 .encrypted_skills_audit_path

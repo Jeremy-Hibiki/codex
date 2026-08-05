@@ -28,7 +28,7 @@ unicode-normalization = { workspace = true }
 zip = { workspace = true, features = ["deflate"] }
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
-fmsh-ukey-cipher = { workspace = true, optional = true }
+fmsh-ukey-cipher = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "f09dc46e977ad34f63275ff7a240f1533b9a58e3", optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

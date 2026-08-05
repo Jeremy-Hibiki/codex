@@ -523,6 +523,18 @@ impl Session {
         git_enrichment_policy: GitEnrichmentPolicy,
         windows_sandbox_proxy_settings_mode: codex_sandboxing::WindowsSandboxProxySettingsMode,
     ) -> anyhow::Result<Arc<Self>> {
+        // Process-level encrypted-skill memory root: wipe stale decrypted
+        // directories once per process, then recreate with mode 0700.
+        let encrypted_skills_mem_root = fm_encrypted_skills::mem_root::resolve_default_mem_root();
+        if let Err(error) =
+            fm_encrypted_skills::mem_root::init_mem_root_once(encrypted_skills_mem_root.as_path())
+        {
+            tracing::warn!(
+                error = %error,
+                root = %encrypted_skills_mem_root.display(),
+                "failed to initialize encrypted-skill memory root; encrypted skills will fail to load"
+            );
+        }
         debug!(
             "Configuring session: model={}; provider={:?}",
             session_configuration.collaboration_mode.model(),
@@ -1064,6 +1076,35 @@ impl Session {
             ));
             let session_extension_data =
                 codex_extension_api::ExtensionData::new(session_id.to_string());
+            let encrypted_skills_sdk = fm_encrypted_skills::sdk::sdk_for(match config
+                .encrypted_skills_sdk
+            {
+                codex_config::config_toml::EncryptedSkillsSdkToml::Unavailable => {
+                    fm_encrypted_skills::sdk::SdkKind::Unavailable
+                }
+                codex_config::config_toml::EncryptedSkillsSdkToml::TestZip => {
+                    fm_encrypted_skills::sdk::SdkKind::TestZip
+                }
+            });
+            let encrypted_skills_audit_path = config
+                .encrypted_skills_audit_path
+                .clone()
+                .unwrap_or_else(|| std::env::temp_dir().join("fm_skill_security_audit.log"));
+            let encrypted_skills_audit: Option<
+                Arc<dyn fm_encrypted_skills::audit::AuditSink>,
+            > = match fm_encrypted_skills::audit::FileAuditSink::new(
+                encrypted_skills_audit_path.clone(),
+            ) {
+                Ok(sink) => Some(Arc::new(sink) as Arc<dyn fm_encrypted_skills::audit::AuditSink>),
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        path = %encrypted_skills_audit_path.display(),
+                        "failed to open encrypted-skill audit log; security events will not be persisted"
+                    );
+                    None
+                }
+            };
             let mcp_resource_client = Arc::new(McpResourceClient::new(Arc::clone(&mcp_runtime)));
             for contributor in extensions.thread_lifecycle_contributors() {
                 contributor.on_thread_start(codex_extension_api::ThreadStartInput {
@@ -1100,6 +1141,12 @@ impl Session {
                 guardian_rejection_circuit_breaker: Mutex::new(Default::default()),
                 runtime_handle: tokio::runtime::Handle::current(),
                 skills_service,
+                encrypted_skills_runtime: Arc::new(fm_encrypted_skills::runtime::EncryptedSkillRuntime::new_with_audit(
+                    encrypted_skills_sdk,
+                    config.encrypted_skills_ttl.clone(),
+                    encrypted_skills_mem_root.clone(),
+                    encrypted_skills_audit,
+                )),
                 agents_md_manager,
                 plugins_manager: Arc::clone(&plugins_manager),
                 mcp_manager: Arc::clone(&mcp_manager),
@@ -1156,6 +1203,13 @@ impl Session {
                 tool_search_handler_cache: Default::default(),
                 turn_environments: Arc::clone(&turn_environments),
             };
+            // 常驻进程兜底：后台周期 TTL sweep，覆盖“进程活着但长时间无请求”
+            // 的空闲窗口；进程挂起仍需部署侧 healthcheck/restart 兜底。
+            crate::encrypted_skills_periodic::spawn_periodic_sweep(
+                services.runtime_handle.clone(),
+                Arc::clone(&services.encrypted_skills_runtime),
+                crate::encrypted_skills_periodic::PERIODIC_SWEEP_INTERVAL,
+            );
             let (mcp_prewarm_tx, mcp_prewarm_rx) = async_channel::bounded(1);
             let sess = Arc::new(Session {
                 thread_id,

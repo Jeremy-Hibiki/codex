@@ -156,6 +156,32 @@ pub(crate) async fn run_turn(
     prewarmed_client_session: Option<ModelClientSession>,
     cancellation_token: CancellationToken,
 ) -> CodexResult<Option<String>> {
+    let result = run_turn_inner(
+        Arc::clone(&sess),
+        turn_context,
+        turn_extension_data,
+        input,
+        prewarmed_client_session,
+        cancellation_token,
+    )
+    .await;
+    // Turn-end unload: encrypted-skill plaintext never outlives the turn that
+    // loaded it. The skill-level TTL sweep remains as a backstop for paths
+    // that bypass `run_turn` or terminate abnormally.
+    sess.services
+        .encrypted_skills_runtime
+        .unload_turn(&sess.thread_id.to_string());
+    result
+}
+
+async fn run_turn_inner(
+    sess: Arc<Session>,
+    turn_context: Arc<TurnContext>,
+    turn_extension_data: Arc<codex_extension_api::ExtensionData>,
+    input: Vec<TurnInput>,
+    prewarmed_client_session: Option<ModelClientSession>,
+    cancellation_token: CancellationToken,
+) -> CodexResult<Option<String>> {
     let mut client_session =
         prewarmed_client_session.unwrap_or_else(|| sess.services.model_client.new_session());
     // TODO(ccunningham): Pre-turn compaction runs before context updates and the
@@ -572,6 +598,9 @@ async fn build_skills_and_plugins(
     input: &[TurnInput],
     cancellation_token: &CancellationToken,
 ) -> Option<(Vec<ResponseItem>, HashSet<String>)> {
+    // Turn-boundary TTL sweep: evict skills idle beyond the skill TTL and
+    // threads idle beyond the thread TTL (decrypted state only).
+    sess.services.encrypted_skills_runtime.sweep();
     let turn_context = step_context.turn.as_ref();
     // Guardian input embeds the parent transcript as untrusted evidence. Do not interpret skill or
     // plugin mentions from that generated prompt as requests to inject additional instructions.
@@ -655,6 +684,8 @@ async fn build_skills_and_plugins(
     } = build_skill_injections(
         &mentioned_skills,
         Some(skills_outcome),
+        Some(&sess.services.encrypted_skills_runtime),
+        &sess.thread_id.to_string(),
         Some(&turn_context.session_telemetry),
         &sess.services.analytics_events_client,
         tracking.clone(),
@@ -1145,6 +1176,7 @@ pub(crate) fn build_prompt(
     router: &ToolRouter,
     turn_context: &TurnContext,
     base_instructions: BaseInstructions,
+    encrypted_skills: Option<crate::client_common::EncryptedSkillRehydrator>,
 ) -> Prompt {
     Prompt {
         input,
@@ -1155,6 +1187,7 @@ pub(crate) fn build_prompt(
         output_schema_strict: !crate::guardian::is_guardian_reviewer_source(
             &turn_context.session_source,
         ),
+        encrypted_skills,
     }
 }
 
@@ -1212,6 +1245,10 @@ async fn run_sampling_request(
             router.as_ref(),
             turn_context.as_ref(),
             base_instructions.clone(),
+            Some(crate::client_common::EncryptedSkillRehydrator {
+                runtime: Arc::clone(&sess.services.encrypted_skills_runtime),
+                session_id: sess.thread_id.to_string(),
+            }),
         );
         let err = match try_run_sampling_request(
             tool_runtime.clone(),

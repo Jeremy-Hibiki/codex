@@ -386,6 +386,7 @@ export type { ServerRequestResolvedNotification } from "./ServerRequestResolvedN
 export type { SessionMigration } from "./SessionMigration";
 export type { SessionSource } from "./SessionSource";
 export type { SkillDependencies } from "./SkillDependencies";
+export type { SkillEncryption } from "./SkillEncryption";
 export type { SkillErrorInfo } from "./SkillErrorInfo";
 export type { SkillInterface } from "./SkillInterface";
 export type { SkillMetadata } from "./SkillMetadata";

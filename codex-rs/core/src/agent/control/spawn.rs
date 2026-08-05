@@ -48,6 +48,10 @@ fn keep_forked_rollout_item(item: &RolloutItem, preserve_reference_context_item:
     match item {
         RolloutItem::ResponseItem(ResponseItem::Message { role, phase, .. }) => match role.as_str()
         {
+            // Encrypted skill tokens are stripped from user messages (see the
+            // fork loop below) rather than dropping the whole message: a token
+            // may share a user turn with legitimate instructions the child
+            // still needs.
             "system" | "developer" | "user" => true,
             "assistant" => *phase == Some(MessagePhase::FinalAnswer),
             _ => false,
@@ -644,7 +648,40 @@ impl AgentControl {
             } else {
                 Vec::new()
             };
-        let preserve_reference_context_item = matches!(fork_mode, SpawnAgentForkMode::FullHistory);
+        let mut preserve_reference_context_item =
+            matches!(fork_mode, SpawnAgentForkMode::FullHistory);
+        if preserve_reference_context_item {
+            for item in forked_rollout_items.iter().rev() {
+                let RolloutItem::Compacted(compacted) = item else {
+                    continue;
+                };
+                // Legacy checkpoints force the child to rebuild context regardless of the
+                // live parent's reference baseline; an older superseded checkpoint does not.
+                if compacted.replacement_history.is_none() {
+                    preserve_reference_context_item = false;
+                }
+                break;
+            }
+        }
+        // Strip encrypted-skill sentinel tokens from user messages so the
+        // child cannot resolve the parent's decryption handles, while
+        // preserving the surrounding user instructions.
+        for item in &mut forked_rollout_items {
+            if let RolloutItem::ResponseItem(ResponseItem::Message { role, content, .. }) = item
+                && role == "user"
+            {
+                for content_item in content.iter_mut() {
+                    if let ContentItem::InputText { text } = content_item
+                        && text.contains(fm_encrypted_skills::token::TOKEN_PREFIX)
+                    {
+                        *text = fm_encrypted_skills::token::strip_tokens(
+                            text,
+                            "[encrypted-skill unavailable in this context]",
+                        );
+                    }
+                }
+            }
+        }
         forked_rollout_items.retain(|item| {
             keep_forked_rollout_item(item, preserve_reference_context_item)
                 && !matches!(
@@ -897,3 +934,7 @@ impl AgentControl {
         Ok((resumed_thread.thread_id, multi_agent_version))
     }
 }
+
+#[cfg(test)]
+#[path = "spawn_tests.rs"]
+mod tests;

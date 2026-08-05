@@ -62,6 +62,7 @@ pub(crate) struct SessionServices {
     pub(crate) guardian_rejection_circuit_breaker: Mutex<GuardianRejectionCircuitBreaker>,
     pub(crate) runtime_handle: Handle,
     pub(crate) skills_service: Arc<SkillsService>,
+    pub(crate) encrypted_skills_runtime: Arc<fm_encrypted_skills::runtime::EncryptedSkillRuntime>,
     pub(crate) agents_md_manager: Arc<AgentsMdManager>,
     pub(crate) plugins_manager: Arc<PluginsManager>,
     pub(crate) mcp_manager: Arc<McpManager>,

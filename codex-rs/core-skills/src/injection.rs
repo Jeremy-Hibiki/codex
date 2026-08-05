@@ -16,6 +16,7 @@ use codex_protocol::user_input::UserInput;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::PathUri;
 use codex_utils_plugins::mention_syntax::TOOL_MENTION_SIGIL;
+use fm_encrypted_skills::runtime::EncryptedSkillRuntime;
 
 #[derive(Debug, Default)]
 pub struct SkillInjections {
@@ -23,11 +24,16 @@ pub struct SkillInjections {
     pub warnings: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SkillInjection {
     pub name: String,
     pub path: String,
     pub contents: String,
+    /// Set when the skill is encrypted; the body is then a sentinel token
+    /// instead of plaintext contents.
+    pub encrypted: bool,
+    /// Sentinel token placeholder injected into context for encrypted skills.
+    pub token: Option<String>,
 }
 
 /// Host skill prompts that have already been injected by an extension for this
@@ -72,6 +78,8 @@ impl InjectedHostSkillPrompts {
 pub async fn build_skill_injections(
     mentioned_skills: &[SkillMetadata],
     loaded_skills: Option<&SkillLoadOutcome>,
+    encrypted_skills: Option<&EncryptedSkillRuntime>,
+    session_id: &str,
     otel: Option<&SessionTelemetry>,
     analytics_client: &AnalyticsEventsClient,
     tracking: TrackEventsContext,
@@ -87,12 +95,18 @@ pub async fn build_skill_injections(
     let mut invocations = Vec::new();
 
     for skill in mentioned_skills {
-        let fs = loaded_skills
-            .and_then(|outcome| outcome.file_system_for_skill(skill))
-            .unwrap_or_else(|| Arc::clone(&LOCAL_FS));
-        let path = PathUri::from_abs_path(&skill.path_to_skills_md);
-        match fs.read_file_text(&path, /*sandbox*/ None).await {
-            Ok(contents) => {
+        let loaded = if skill.is_encrypted() {
+            match encrypted_skills {
+                Some(runtime) => load_encrypted_skill(runtime, session_id, skill),
+                None => Err(
+                    "encrypted skills require an envelope SDK runtime to be configured".to_string(),
+                ),
+            }
+        } else {
+            load_plaintext_skill(loaded_skills, skill).await
+        };
+        match loaded {
+            Ok((contents, token)) => {
                 emit_skill_injected_metric(otel, skill, "ok");
                 invocations.push(SkillInvocation {
                     skill_name: skill.name.clone(),
@@ -106,16 +120,17 @@ pub async fn build_skill_injections(
                     name: skill.name.clone(),
                     path: skill.path_to_skills_md.to_string_lossy().into_owned(),
                     contents,
+                    encrypted: skill.is_encrypted(),
+                    token,
                 });
             }
-            Err(err) => {
+            Err(message) => {
                 emit_skill_injected_metric(otel, skill, "error");
-                let message = format!(
-                    "Failed to load skill {name} at {path}: {err:#}",
+                result.warnings.push(format!(
+                    "Failed to load skill {name} at {path}: {message}",
                     name = skill.name,
                     path = skill.path_to_skills_md.display()
-                );
-                result.warnings.push(message);
+                ));
             }
         }
     }
@@ -123,6 +138,36 @@ pub async fn build_skill_injections(
     analytics_client.track_skill_invocations(tracking, invocations);
 
     result
+}
+
+async fn load_plaintext_skill(
+    loaded_skills: Option<&SkillLoadOutcome>,
+    skill: &SkillMetadata,
+) -> Result<(String, Option<String>), String> {
+    let fs = loaded_skills
+        .and_then(|outcome| outcome.file_system_for_skill(skill))
+        .unwrap_or_else(|| Arc::clone(&LOCAL_FS));
+    let path = PathUri::from_abs_path(&skill.path_to_skills_md);
+    fs.read_file_text(&path, /*sandbox*/ None)
+        .await
+        .map(|contents| (contents, None))
+        .map_err(|err| format!("{err:#}"))
+}
+
+fn load_encrypted_skill(
+    runtime: &EncryptedSkillRuntime,
+    session_id: &str,
+    skill: &SkillMetadata,
+) -> Result<(String, Option<String>), String> {
+    let package_path = skill
+        .path_to_skills_md
+        .parent()
+        .ok_or_else(|| "skill path has no parent directory".to_string())?
+        .join(format!("{}.zip.enc", skill.name));
+    let token = runtime
+        .load_or_register(session_id, &skill.name, &package_path)
+        .map_err(|err| format!("{err}"))?;
+    Ok((String::new(), Some(token)))
 }
 
 fn normalize_host_skill_path(path: &str) -> String {

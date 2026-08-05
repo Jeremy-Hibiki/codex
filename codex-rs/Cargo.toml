@@ -1,6 +1,7 @@
 [workspace]
 members = [
-    "fm-license",
+    "fm/encrypted-skills",
+    "fm/license",
     "aws-auth",
     "analytics",
     "agent-graph-store",
@@ -131,7 +132,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.146.0-fm-license"
+version = "0.146.0"
 # Track the edition for all workspace crates in one place. Individual
 # crates can still override this value, but keeping it here means new
 # crates created with `cargo new -w ...` automatically inherit the 2024
@@ -140,6 +141,9 @@ edition = "2024"
 license = "Apache-2.0"
 
 [workspace.dependencies]
+fm-license = { path = "fm/license" }
+fm-encrypted-skills = { path = "fm/encrypted-skills" }
+
 # Internal
 app_test_support = { path = "app-server/tests/common" }
 codex-analytics = { path = "analytics" }
@@ -202,7 +206,6 @@ codex-git-utils = { path = "git-utils" }
 codex-hooks = { path = "hooks" }
 codex-keyring-store = { path = "keyring-store" }
 codex-linux-sandbox = { path = "linux-sandbox" }
-fm-license = { path = "fm-license" }
 codex-lmstudio = { path = "lmstudio" }
 codex-login = { path = "login" }
 codex-message-history = { path = "message-history" }
@@ -473,7 +476,7 @@ which = "8"
 whoami = "1.6.1"
 wildmatch = "2.6.1"
 winapi-util = "0.1.11"
-zip = "2.4.2"
+zip = { version = "2.4.2", default-features = false }
 zstd = "0.13"
 
 wiremock = "0.6"

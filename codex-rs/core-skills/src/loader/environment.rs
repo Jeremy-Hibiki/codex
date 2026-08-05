@@ -9,6 +9,7 @@ use codex_utils_path_uri::PathUri;
 use futures::StreamExt;
 
 use crate::model::SkillDependencies;
+use crate::model::SkillEncryption;
 use crate::model::SkillPolicy;
 
 use super::MAX_QUALIFIED_NAME_LEN;
@@ -35,6 +36,8 @@ struct ParsedEnvironmentSkill {
     short_description: Option<String>,
     dependencies: Option<SkillDependencies>,
     policy: Option<SkillPolicy>,
+    encrypted: bool,
+    encryption: Option<SkillEncryption>,
 }
 
 /// Parsed executor skill plus the instructions already materialized by capability discovery.
@@ -72,6 +75,8 @@ impl ParsedEnvironmentSkill {
             name: base_name,
             description,
             short_description,
+            encrypted,
+            encryption,
         } = parse_skill_frontmatter_metadata_inner(&contents, || default_skill_name(&skill.path))
             .map_err(|err| err.to_string())?;
         let (dependencies, policy) = match &skill.metadata {
@@ -90,6 +95,8 @@ impl ParsedEnvironmentSkill {
             short_description,
             dependencies,
             policy,
+            encrypted,
+            encryption,
         })
     }
 }
@@ -175,6 +182,8 @@ pub async fn load_environment_skills_from_root(
                 short_description: skill.short_description,
                 dependencies: skill.dependencies,
                 policy: skill.policy,
+                encrypted: skill.encrypted,
+                encryption: skill.encryption,
             })
         });
         match result {
@@ -240,6 +249,8 @@ pub fn load_environment_skills_from_discovery(
             name: base_name,
             description,
             short_description,
+            encrypted,
+            encryption,
         } = match parse_skill_frontmatter_metadata_inner(&skill.instructions.contents, || {
             default_skill_name(&skill.instructions.path)
         }) {
@@ -289,6 +300,8 @@ pub fn load_environment_skills_from_discovery(
             short_description,
             dependencies,
             policy,
+            encrypted,
+            encryption,
         };
         if metadata.matches_product_restriction(restriction_product) {
             outcome.skills.push(EnvironmentSkillSnapshot {

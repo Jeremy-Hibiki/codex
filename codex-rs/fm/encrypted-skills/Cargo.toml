@@ -1,0 +1,22 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "fm-encrypted-skills"
+version.workspace = true
+
+[lib]
+name = "fm_encrypted_skills"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+libc = { workspace = true }
+rand = { workspace = true }
+thiserror = { workspace = true }
+zip = { workspace = true, features = ["deflate"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

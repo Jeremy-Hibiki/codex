@@ -5,6 +5,7 @@ use std::io;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::sync::OnceLock;
 
 use rand::RngCore;
@@ -17,6 +18,7 @@ pub const DECRYPTED_DIR_PREFIX: &str = "fm_skill_security_";
 pub const PROCESS_NAMESPACE_PREFIX: &str = "p";
 
 static INITIALIZED_ROOT: OnceLock<PathBuf> = OnceLock::new();
+static INIT_ROOT_LOCK: Mutex<()> = Mutex::new(());
 
 /// Resolves the platform-appropriate default memory root. Linux uses
 /// `/dev/shm`; other platforms fall back to the process temp directory.
@@ -73,6 +75,11 @@ pub fn available_bytes(_path: &Path) -> io::Result<Option<u64>> {
 /// longer alive are removed, together with legacy flat `fm_skill_security_*`
 /// directories. The current process's namespace is always kept.
 pub fn init_mem_root_once(root: &Path) -> io::Result<()> {
+    // Serialize first-time initialization so concurrent sessions cannot race
+    // the stale-directory cleanup or the root recreation.
+    let _guard = INIT_ROOT_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if INITIALIZED_ROOT.get().is_none() {
         init_mem_root(root)?;
         let _ = INITIALIZED_ROOT.set(root.to_path_buf());
@@ -144,6 +151,12 @@ pub fn decrypted_dir_name(hex: &str) -> String {
 /// Writes decrypted package entries into `target`, rejecting Zip-Slip style
 /// escapes (absolute paths or `..` traversal).
 pub fn write_package_entries(entries: &[PackageEntry], target: &Path) -> Result<(), EnvelopeError> {
+    // The per-process namespace parent must not be world-readable: it is
+    // created here (before the leaf) and holds the decrypted directory names.
+    if let Some(namespace) = target.parent() {
+        fs::create_dir_all(namespace)?;
+        set_dir_mode_0700(namespace)?;
+    }
     fs::create_dir_all(target)?;
     set_dir_mode_0700(target)?;
     for entry in entries {

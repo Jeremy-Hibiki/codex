@@ -515,10 +515,18 @@ impl ToolRegistry {
         notify_tool_start(&invocation).await;
 
         if let Some(pre_tool_use_payload) = tool.pre_tool_use_payload(&invocation) {
-            match crate::encrypted_skills_guard::before_tool(
-                &invocation.session,
+            let binds_active = crate::agent_security::sandbox_applies_binds(
+                &invocation.turn.file_system_sandbox_policy(),
+                invocation.turn.network_sandbox_policy(),
+                invocation.turn.config.features.use_legacy_landlock(),
+                invocation.turn.network.is_some(),
+            );
+            match crate::encrypted_skills_guard::before_tool_with_runtime_and_binds(
+                &invocation.session.services.encrypted_skills_runtime,
+                &invocation.session.thread_id.to_string(),
                 &pre_tool_use_payload.tool_name,
                 &pre_tool_use_payload.tool_input,
+                binds_active,
             ) {
                 crate::encrypted_skills_guard::GuardDecision::Blocked { message, .. } => {
                     let err = FunctionCallError::RespondToModel(message);

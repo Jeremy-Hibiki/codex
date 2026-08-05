@@ -282,6 +282,7 @@ impl ManagedFileSystemPermissions {
                 entries,
                 glob_scan_max_depth,
             } => FileSystemSandboxPolicy {
+                readonly_binds: Vec::new(),
                 kind: FileSystemSandboxKind::Restricted,
                 glob_scan_max_depth: glob_scan_max_depth.map(usize::from),
                 entries: entries.clone(),

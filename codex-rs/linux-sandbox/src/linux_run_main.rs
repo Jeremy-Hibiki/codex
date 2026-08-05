@@ -126,6 +126,11 @@ pub struct LandlockCommand {
     #[arg(long = "allow-network-for-proxy", hide = true, default_value_t = false)]
     pub allow_network_for_proxy: bool,
 
+    /// Read-only bind mounts applied inside the sandbox, as repeated
+    /// `--ro-bind <source> <target>` pairs.
+    #[arg(long = "ro-bind", value_names = ["SOURCE", "TARGET"], num_args = 2, action = clap::ArgAction::Append, hide = true)]
+    pub readonly_binds: Vec<PathBuf>,
+
     /// Internal route spec used for managed proxy routing in bwrap mode.
     #[arg(long = "proxy-route-spec", hide = true)]
     pub proxy_route_spec: Option<String>,
@@ -156,6 +161,7 @@ pub fn run_main() -> ! {
         use_legacy_landlock,
         apply_seccomp_then_exec,
         allow_network_for_proxy,
+        readonly_binds,
         proxy_route_spec,
         no_proc,
         command,
@@ -170,6 +176,14 @@ pub fn run_main() -> ! {
         mut file_system_sandbox_policy,
         network_sandbox_policy,
     } = resolve_permission_profile(permission_profile).unwrap_or_else(|err| panic!("{err}"));
+    for pair in readonly_binds.chunks_exact(2) {
+        file_system_sandbox_policy
+            .readonly_binds
+            .push(codex_protocol::permissions::ReadonlyBind {
+                source: pair[0].clone(),
+                target: pair[1].clone(),
+            });
+    }
     ensure_legacy_landlock_mode_supports_policy(
         use_legacy_landlock,
         &file_system_sandbox_policy,

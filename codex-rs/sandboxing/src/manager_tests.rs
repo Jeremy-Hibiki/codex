@@ -104,6 +104,7 @@ fn unsandboxed_transform_preserves_foreign_cwd_and_unrestricted_file_system_poli
             sandbox_policy_cwd: &cwd_uri,
             codex_linux_sandbox_exe: None,
             use_legacy_landlock: false,
+            readonly_binds: Vec::new(),
             windows_sandbox_level: WindowsSandboxLevel::Disabled,
             windows_sandbox_private_desktop: false,
         })
@@ -160,6 +161,7 @@ fn transform_additional_permissions_enable_network_for_external_sandbox() {
             sandbox_policy_cwd: &cwd_uri,
             codex_linux_sandbox_exe: None,
             use_legacy_landlock: false,
+            readonly_binds: Vec::new(),
             windows_sandbox_level: WindowsSandboxLevel::Disabled,
             windows_sandbox_private_desktop: false,
         })
@@ -233,6 +235,7 @@ fn transform_additional_permissions_preserves_denied_entries() {
             sandbox_policy_cwd: &cwd_uri,
             codex_linux_sandbox_exe: None,
             use_legacy_landlock: false,
+            readonly_binds: Vec::new(),
             windows_sandbox_level: WindowsSandboxLevel::Disabled,
             windows_sandbox_private_desktop: false,
         })
@@ -337,6 +340,7 @@ fn transform_linux_seccomp_request(
             sandbox_policy_cwd: &cwd_uri,
             codex_linux_sandbox_exe: Some(codex_linux_sandbox_exe),
             use_legacy_landlock: false,
+            readonly_binds: Vec::new(),
             windows_sandbox_level: WindowsSandboxLevel::Disabled,
             windows_sandbox_private_desktop: false,
         })
@@ -535,6 +539,7 @@ fn transform_for_direct_spawn_windows_materializes_inner_helper() {
                     sandbox_policy_cwd: &cwd_uri,
                     codex_linux_sandbox_exe: None,
                     use_legacy_landlock: false,
+                    readonly_binds: Vec::new(),
                     windows_sandbox_level: WindowsSandboxLevel::Elevated,
                     windows_sandbox_private_desktop: false,
                 },

@@ -14,6 +14,7 @@ use codex_protocol::permissions::FileSystemSandboxKind;
 use codex_protocol::permissions::FileSystemSandboxPolicy;
 use codex_protocol::permissions::FileSystemSpecialPath;
 use codex_protocol::permissions::NetworkSandboxPolicy;
+use codex_protocol::permissions::ReadonlyBind;
 use codex_protocol::protocol::SandboxPolicy;
 use codex_utils_path_uri::PathUri;
 pub use find_up::FindUpErrorPolicy;
@@ -296,6 +297,8 @@ pub struct FileSystemSandboxContext {
     pub windows_sandbox_proxy_settings_mode: Option<WindowsSandboxProxySettingsMode>,
     #[serde(default)]
     pub use_legacy_landlock: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub readonly_binds: Vec<ReadonlyBind>,
 }
 
 impl FileSystemSandboxContext {
@@ -337,6 +340,7 @@ impl FileSystemSandboxContext {
             windows_sandbox_private_desktop: false,
             windows_sandbox_proxy_settings_mode: None,
             use_legacy_landlock: false,
+            readonly_binds: Vec::new(),
         }
     }
 

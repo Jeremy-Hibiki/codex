@@ -1,6 +1,8 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use codex_protocol::permissions::FileSystemSandboxPolicy;
+use codex_protocol::permissions::NetworkSandboxPolicy;
 use fm_encrypted_skills::registry::TtlConfig;
 use fm_encrypted_skills::runtime::EncryptedSkillRuntime;
 use fm_encrypted_skills::sdk::EnvelopeError;
@@ -8,6 +10,7 @@ use fm_encrypted_skills::sdk::EnvelopeSdk;
 use fm_encrypted_skills::sdk::PackageEntry;
 
 use super::AgentSecurityContext;
+use super::sandbox_applies_binds;
 
 struct TestSdk;
 
@@ -35,4 +38,39 @@ fn agent_security_context_reflects_live_engagement() {
         .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
         .unwrap();
     assert!(context.engaged());
+}
+
+#[test]
+fn sandbox_applies_binds_under_bwrap_profiles() {
+    let restricted = FileSystemSandboxPolicy::restricted(Vec::new());
+    assert!(sandbox_applies_binds(
+        &restricted,
+        NetworkSandboxPolicy::Enabled,
+        /*use_legacy_landlock*/ false,
+        /*enforce_managed_network*/ false,
+    ));
+    assert!(sandbox_applies_binds(
+        &restricted,
+        NetworkSandboxPolicy::Restricted,
+        /*use_legacy_landlock*/ false,
+        /*enforce_managed_network*/ false,
+    ));
+}
+
+#[test]
+fn sandbox_applies_binds_false_without_bwrap() {
+    let unrestricted = FileSystemSandboxPolicy::unrestricted();
+    assert!(!sandbox_applies_binds(
+        &unrestricted,
+        NetworkSandboxPolicy::Enabled,
+        /*use_legacy_landlock*/ false,
+        /*enforce_managed_network*/ false,
+    ));
+    let restricted = FileSystemSandboxPolicy::restricted(Vec::new());
+    assert!(!sandbox_applies_binds(
+        &restricted,
+        NetworkSandboxPolicy::Enabled,
+        /*use_legacy_landlock*/ true,
+        /*enforce_managed_network*/ false,
+    ));
 }

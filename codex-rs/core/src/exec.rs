@@ -395,6 +395,7 @@ pub fn build_exec_request(
             sandbox_policy_cwd: &sandbox_policy_cwd_uri,
             codex_linux_sandbox_exe: codex_linux_sandbox_exe.as_deref(),
             use_legacy_landlock,
+            readonly_binds: Vec::new(),
             windows_sandbox_level,
             windows_sandbox_private_desktop,
         })

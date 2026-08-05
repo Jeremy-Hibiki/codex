@@ -156,3 +156,10 @@ and unrelated to this fix set.
 - 测试策略：插件/marketplace CLI 集成测试改为断言产品策略拒绝；core-plugins 单元测试仍覆盖
   底层插件逻辑；app-server 新增 `product_policy` 集成测试覆盖 thread/turn start 的
   danger-full-access 拒绝。
+
+## TODO-1 验证记录：bwrap 只读 bind 真实执行
+
+新增 `codex-linux-sandbox` 真实执行测试 `readonly_binds_are_visible_in_real_bwrap_and_dev_shm_stays_private`：
+在宿主 `/dev/shm` 放置标记文件、把临时解密目录 `--ro-bind` 到逻辑技能路径后启动真实 bwrap，
+断言（1）逻辑路径下能读到绑定内容；（2）沙箱内 `/dev/shm` 为空；（3）宿主 `/dev/shm` 标记
+在沙箱内不可见。该测试在 bwrap 不可用或无法创建用户命名空间时自动跳过。

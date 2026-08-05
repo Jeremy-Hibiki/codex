@@ -2890,4 +2890,96 @@ mod tests {
             args.args
         );
     }
+
+    #[test]
+    fn readonly_binds_are_visible_in_real_bwrap_and_dev_shm_stays_private() {
+        let probe = Command::new("bwrap")
+            .args([
+                "--ro-bind",
+                "/",
+                "/",
+                "--dev",
+                "/dev",
+                "--unshare-user",
+                "--unshare-pid",
+                "--",
+                "/bin/sh",
+                "-c",
+                "exit 0",
+            ])
+            .output();
+        let Ok(probe) = probe else {
+            eprintln!("skipping readonly bind integration test: bubblewrap unavailable");
+            return;
+        };
+        if !probe.status.success() {
+            eprintln!(
+                "skipping readonly bind integration test: bubblewrap cannot run here: {}",
+                String::from_utf8_lossy(&probe.stderr)
+            );
+            return;
+        }
+
+        let temp = TempDir::new().expect("tempdir");
+        let source = temp.path().join("decrypted-skill");
+        fs::create_dir_all(&source).expect("source dir");
+        fs::write(source.join("SKILL.md"), "secret").expect("source file");
+        let logical_home = TempDir::new().expect("logical home");
+        let logical_target = logical_home.path().join("rpc-guard-skill");
+        fs::create_dir_all(&logical_target).expect("logical target");
+        let mut policy = FileSystemSandboxPolicy::workspace_write(
+            &[AbsolutePathBuf::try_from(temp.path().to_path_buf()).expect("writable root")],
+            /*exclude_tmpdir_env_var*/ false,
+            /*exclude_slash_tmp*/ false,
+        );
+        policy.readonly_binds = vec![ReadonlyBind {
+            source: source.clone(),
+            target: logical_target.clone(),
+        }];
+
+        let marker_name = format!("fm_skill_security_rpc_bwrap_{}", std::process::id());
+        let host_marker = PathBuf::from("/dev/shm").join(&marker_name);
+        if fs::create_dir_all(&host_marker).is_err() {
+            eprintln!("skipping readonly bind integration test: /dev/shm unavailable");
+            return;
+        }
+        fs::write(host_marker.join("marker"), "host-secret").expect("host marker");
+
+        let inner = format!(
+            "test \"$(cat {logical_display}/SKILL.md)\" = secret \
+             && [ -z \"$(ls -A /dev/shm 2>/dev/null)\" ] \
+             && ! test -e /dev/shm/{marker_name}/marker \
+             && echo BIND_OK",
+            logical_display = logical_target.display()
+        );
+        let args = create_bwrap_command_args(
+            vec!["/bin/sh".to_string(), "-c".to_string(), inner],
+            &policy,
+            temp.path(),
+            temp.path(),
+            BwrapOptions {
+                mount_proc: false,
+                network_mode: BwrapNetworkMode::FullAccess,
+                glob_scan_max_depth: None,
+            },
+        )
+        .expect("bwrap args");
+        let output = Command::new("bwrap")
+            .args(&args.args)
+            .output()
+            .expect("run bwrap");
+        let _ = fs::remove_dir_all(&host_marker);
+        assert!(
+            output.status.success(),
+            "bwrap execution failed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("BIND_OK"),
+            "logical bind or /dev/shm isolation not observed: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 }

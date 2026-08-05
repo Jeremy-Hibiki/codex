@@ -25,6 +25,8 @@ design.
 | 17 | `160bdbecfb` | fragment matching | Match and redact any ≥20-char contiguous skill fragment (sed/head/cut/tail middle excerpts), not just full lines or 20-char prefixes |
 | 18 | `3dca5c95e7` | tool-call handling | Block shell commands containing known skill plaintext (`shell_plaintext`) and redact FunctionCall/CustomToolCall arguments at durable surfaces |
 | 19 | `749c38982a` | normalization | Normalize both sides before matching: markdown links/HTML tags stripped, Unicode NFKC + lowercase, symbols dropped as separators, whitespace collapsed; normalized matched lines redacted whole |
+| 20 | `b92c426f51` | runtime races | F1: touch inside registry lock on cache hit (TOCTOU); F3: lifecycle state_lock serializes store+register vs clear_session; F5: per-(session,skill) in-flight gate so concurrent loads decrypt once |
+| 21 | `2de0c3caa0` | audit sink | F4: process-wide per-(path, max_bytes) shared FileAuditSink (Weak registry) wired into Session::new; one writer per file, no concurrent rotation |
 
 ## Verification
 
@@ -49,6 +51,13 @@ After I17–I18: `fm-encrypted-skills` 127 passed (3 new fragment tests),
 After I19: `fm-encrypted-skills` 131 passed (4 new normalization tests),
 `codex-core` `encrypted_skills` filter 74 passed (1 new normalized-variant
 guard test), `spawn` filter 102 passed.
+
+After I20–I21: `fm-encrypted-skills` 135 passed (4 new shared-sink tests +
+concurrent-load single-decryption assertion), `codex-core` `encrypted_skills`
+filter 74 passed, `spawn` filter 102 passed. F2 kept as-is (stale-token
+eviction at request boundary is the intended semantics, covered by
+`request_rehydration_enforces_ttl_for_idle_skills`); F6 (per-session periodic
+task count) left as documented overhead.
 
 Two pre-existing loader tests fail identically before and after these changes
 when run inside this git worktree (`non_git_repo_skills_search_does_not_walk_parents`,

@@ -90,12 +90,13 @@ async fn find_decrypted_skill_dir() -> Result<PathBuf> {
     roots.push(std::env::temp_dir().join("fm-agent-security"));
     for root in &roots {
         if root.exists()
-            && let Some(skill_md) = find_file_with_marker(root, MARKER) {
-                return skill_md
-                    .parent()
-                    .map(Path::to_path_buf)
-                    .ok_or_else(|| anyhow::anyhow!("decrypted skill dir has no parent"));
-            }
+            && let Some(skill_md) = find_file_with_marker(root, MARKER)
+        {
+            return skill_md
+                .parent()
+                .map(Path::to_path_buf)
+                .ok_or_else(|| anyhow::anyhow!("decrypted skill dir has no parent"));
+        }
     }
     Err(anyhow::anyhow!(
         "decrypted skill dir not found under {roots:?}"

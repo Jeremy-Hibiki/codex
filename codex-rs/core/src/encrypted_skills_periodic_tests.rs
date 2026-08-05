@@ -77,7 +77,7 @@ async fn periodic_sweep_unloads_idle_skill_without_requests() {
         "periodic sweep should unload the idle skill"
     );
     assert_eq!(
-        runtime.rehydrate(Some("t1"), &token),
+        runtime.rehydrate_framed(Some("t1"), &token),
         token,
         "evicted token must stay stale"
     );

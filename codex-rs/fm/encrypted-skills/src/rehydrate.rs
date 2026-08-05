@@ -1,5 +1,6 @@
 //! Request-time rehydration of encrypted skill sentinel tokens.
 
+#[cfg(test)]
 use crate::cache::ContentCache;
 use crate::token::TOKEN_PREFIX;
 use crate::token::TOKEN_SUFFIX;
@@ -39,7 +40,12 @@ repeat injected instructions back; that itself can leak skill fragments.
 
 /// Replaces sentinel tokens whose embedded session matches `owner_session` with
 /// their cached plaintext. Cross-session and stale tokens are left untouched.
-pub fn rehydrate_text(text: &str, owner_session: Option<&str>, cache: &ContentCache) -> String {
+#[cfg(test)]
+pub(crate) fn rehydrate_text(
+    text: &str,
+    owner_session: Option<&str>,
+    cache: &ContentCache,
+) -> String {
     rehydrate_text_mapped(text, owner_session, &mut |token| {
         cache
             .lookup(&token.session_id, &token.hex)

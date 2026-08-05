@@ -30,6 +30,7 @@ design.
 | 22 | `5d9fae664c` | fmsh-ukey groundwork | Reserve `SdkKind::UKey`/`Local` and `sdk = "ukey"/"local"` config variants (fail-closed until `fmsh-ukey` feature is wired); schema regenerated |
 | 23 | `01d3a010c0` | guardian/review redaction | Reviewer models must not see the real decrypted `/dev/shm` location: `redact_guardian_request` rewrites registered decrypted dirs back to original skill paths and redacts remaining memory-root segments in every command-bearing `GuardianApprovalRequest` (Shell / ExecCommand / Execve / NetworkAccess trigger) before the review prompt is built; shared `redact_storage_paths` helper is now also used by `RedactingToolOutput` |
 | 24 | openspec: encrypted-skill-engagement | 会话级 engaged 判定基础：`is_engaged`（registry 非空 || 解密 in-flight）、RAII `InFlightGuard` 覆盖“明文落盘→登记”窗口、失败路径保持 `secure_wipe`、`path_mappings` 导出 `(解密目录, 逻辑路径)`；`clear_thread` 同步清理 in-flight；未 engaged 不引入任何行为（门控由后续变更实现） |
+| 25 | openspec: agent-security-context-gating | `AgentSecurityContext`（runtime + session_id + live `engaged()`）；`TurnContext.agent_security` 按 turn 组装（engaged 时 Some，否则 None）；`before_tool` 未 engaged 直接 `Allow`；`RedactingToolOutput` 未 engaged 原样透传；未 engaged 会话恢复零行为变化，engaged 行为与变更前一致 |
 
 ## I23 补充说明：`/dev/shm` 路径的模型可见性
 

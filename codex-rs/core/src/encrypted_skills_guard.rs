@@ -57,6 +57,12 @@ pub(crate) fn before_tool_with_runtime(
     tool_name: &HookToolName,
     tool_input: &Value,
 ) -> GuardDecision {
+    // Unengaged sessions have no plaintext and no decrypted paths: every
+    // guard rule passes through unchanged so normal Codex behavior is
+    // preserved exactly.
+    if !runtime.is_engaged(session_id) {
+        return GuardDecision::Allow;
+    }
     let decision = match tool_name {
         name if name == &HookToolName::bash() => guard_shell(runtime, session_id, tool_input),
         name if name == &HookToolName::view_image() => guard_read(runtime, session_id, tool_input),
@@ -651,10 +657,14 @@ pub(crate) struct RedactingToolOutput {
     pub(crate) inner: Box<dyn ToolOutput>,
     pub(crate) runtime: Arc<EncryptedSkillRuntime>,
     pub(crate) session_id: String,
+    pub(crate) engaged: bool,
 }
 
 impl RedactingToolOutput {
     fn redact_text(&self, text: &str) -> String {
+        if !self.engaged {
+            return text.to_string();
+        }
         redact_storage_paths(&self.runtime, &self.session_id, text)
     }
 

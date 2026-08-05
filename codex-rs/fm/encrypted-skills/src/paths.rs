@@ -105,10 +105,10 @@ pub fn script_execution_avoids_guarded_io(command: &str, guarded: &[String]) -> 
                     index += 1;
                 }
                 ')' if substitution_depth > 0 => substitution_depth -= 1,
-                _ if substitution_depth > 0 || in_backtick => {
-                    if guarded_at(&chars, index, guarded) {
-                        return false;
-                    }
+                _ if (substitution_depth > 0 || in_backtick)
+                    && guarded_at(&chars, index, guarded) =>
+                {
+                    return false;
                 }
                 _ => {}
             }
@@ -143,10 +143,8 @@ pub fn script_execution_avoids_guarded_io(command: &str, guarded: &[String]) -> 
                 index = end;
             }
             ')' if substitution_depth > 0 => substitution_depth -= 1,
-            _ if substitution_depth > 0 || in_backtick => {
-                if guarded_at(&chars, index, guarded) {
-                    return false;
-                }
+            _ if (substitution_depth > 0 || in_backtick) && guarded_at(&chars, index, guarded) => {
+                return false;
             }
             _ => {}
         }

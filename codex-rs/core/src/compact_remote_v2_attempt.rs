@@ -116,7 +116,11 @@ pub(super) async fn run_remote_compact_v2_attempt(
             std::slice::from_ref(&output.compaction_output),
         )
     });
-    trace_attempt.record_result(redacted_output.as_deref().map_err(|err| err.to_string()));
+    trace_attempt.record_result(
+        redacted_output
+            .as_deref()
+            .map_err(std::string::ToString::to_string),
+    );
     let RemoteCompactionV2Output {
         compaction_output,
         response_id,

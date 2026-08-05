@@ -96,8 +96,9 @@ single_version_override(
     patch_strip = 1,
     patches = [
         "//patches:rules_rs_build_script_deps_annotation.patch",
+        "//patches:rules_rs_rust_archive_url.patch",
+        "//patches:rules_rs_dedupe_build_script_deps.patch",
     ],
-    version = "0.0.96",
 )
 
 rules_rust = use_extension("@rules_rs//rs:rules_rust.bzl", "rules_rust")
@@ -246,6 +247,19 @@ crate.from_cargo(
 
 bazel_dep(name = "zstd", version = "1.5.7")
 
+crate.annotation(
+    additive_build_file = "//third_party/lmclient:additive.BUILD.bazel",
+    # lmclient-rust-sdk vendors liblmclient.a inside its own source tree and
+    # emits `cargo:rustc-link-search` pointing into the build script's
+    # ephemeral runfiles tree (`.crf/m/`), which is invisible to the separate
+    # rustc compilation action in a sandboxed build.  Disable the build script
+    # and provide the static library via cc_import instead, then declare the
+    # system libraries it transitively needs.
+    crate = "lmclient-rust-sdk",
+    extra_aliased_targets = {"lmclient_native": "lmclient_native"},
+    gen_build_script = "off",
+    deps = ["@crates//:lmclient_native"],
+)
 crate.annotation(
     # The Windows lint toolchain cannot reliably materialize blake3's native x86 assembly archives.
     crate = "blake3",
@@ -480,7 +494,7 @@ archive_override(
         "//patches:v8_source_portability.patch",
     ],
     strip_prefix = "v8-14.9.207.2",
-    urls = ["https://github.com/v8/v8/archive/refs/tags/14.9.207.2.tar.gz"],
+    urls = ["https://ghfast.top/github.com/v8/v8/archive/refs/tags/14.9.207.2.tar.gz"],
 )
 
 http_archive(
@@ -489,7 +503,7 @@ http_archive(
     sha256 = "d97bcac5cdc5a195a4813f1855a6bc658f240452aac36caa12fd6c6f16026ab1",
     strip_prefix = "v8-146.4.0",
     type = "tar.gz",
-    urls = ["https://static.crates.io/crates/v8/v8-146.4.0.crate"],
+    urls = ["https://rsproxy.cn/api/v1/crates/v8/146.4.0/download"],
 )
 
 http_archive(
@@ -498,7 +512,7 @@ http_archive(
     sha256 = "46dccf61a364b61bbaac70a8ba64a1a1006e87123b7d62eaeec999a3ba31ecdb",
     strip_prefix = "v8-149.2.0",
     type = "tar.gz",
-    urls = ["https://static.crates.io/crates/v8/v8-149.2.0.crate"],
+    urls = ["https://rsproxy.cn/api/v1/crates/v8/149.2.0/download"],
 )
 
 git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
@@ -507,21 +521,21 @@ git_repository(
     name = "rusty_v8_libcxx",
     build_file = "//third_party/v8:libcxx.BUILD.bazel",
     commit = "99457fa555797f8c5ac3c076ca288d8481d3b23a",
-    remote = "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxx.git",
+    remote = "https://ghfast.top/github.com/Jeremy-Hibiki/libcxx.git",
 )
 
 git_repository(
     name = "rusty_v8_libcxxabi",
     build_file = "//third_party/v8:libcxxabi.BUILD.bazel",
     commit = "8f11bb1d4438d0239d0dfc1bd9456a9f31629dda",
-    remote = "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxxabi.git",
+    remote = "https://ghfast.top/github.com/Jeremy-Hibiki/libcxxabi.git",
 )
 
 git_repository(
     name = "rusty_v8_llvm_libc",
     build_file = "//third_party/v8:llvm_libc.BUILD.bazel",
     commit = "cb952785ccee13811f293f3c419958d1e3ddafbf",
-    remote = "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libc.git",
+    remote = "https://ghfast.top/github.com/Jeremy-Hibiki/libc.git",
 )
 
 http_file(
@@ -529,7 +543,7 @@ http_file(
     downloaded_file_path = "rusty_v8_release_aarch64-pc-windows-msvc.lib.gz",
     sha256 = "923f2b6ccdc14526b814e171e34c9aafd7969f12304948857c6696d022f0fb3c",
     urls = [
-        "https://github.com/denoland/rusty_v8/releases/download/v149.2.0/rusty_v8_release_aarch64-pc-windows-msvc.lib.gz",
+        "https://ghfast.top/github.com/denoland/rusty_v8/releases/download/v149.2.0/rusty_v8_release_aarch64-pc-windows-msvc.lib.gz",
     ],
 )
 
@@ -538,7 +552,7 @@ http_file(
     downloaded_file_path = "rusty_v8_release_x86_64-pc-windows-msvc.lib.gz",
     sha256 = "12b5a791b54e92f748738ad8d0d12dad8d281a2d836638ad1aa6678e3b855d9a",
     urls = [
-        "https://github.com/denoland/rusty_v8/releases/download/v149.2.0/rusty_v8_release_x86_64-pc-windows-msvc.lib.gz",
+        "https://ghfast.top/github.com/denoland/rusty_v8/releases/download/v149.2.0/rusty_v8_release_x86_64-pc-windows-msvc.lib.gz",
     ],
 )
 

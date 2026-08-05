@@ -236,6 +236,9 @@ impl TestAppServer {
         cmd.current_dir(codex_home);
         cmd.env("CODEX_HOME", codex_home);
         cmd.env("RUST_LOG", "warn");
+        // Debug/test-only bypass so the suite does not need a live FMSH
+        // license server; release binaries never honor this.
+        cmd.env("FMSH_CODEX_LIC_TEST_BYPASS", "1");
         // Keep integration tests isolated from host managed configuration.
         cmd.env(
             "CODEX_APP_SERVER_MANAGED_CONFIG_PATH",

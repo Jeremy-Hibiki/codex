@@ -63,6 +63,12 @@ pub async fn run_codex_tool_session(
     thread_manager: Arc<ThreadManager>,
     running_requests_id_to_codex_uuid: Arc<Mutex<HashMap<RequestId, ThreadId>>>,
 ) {
+    if let Err(error) = fm_license::ensure_active() {
+        let result = CallToolResult::error(vec![Content::text(error.to_string())]);
+        outgoing.send_response(id.clone(), result).await;
+        return;
+    }
+
     let NewThread {
         thread_id,
         thread,
@@ -152,6 +158,12 @@ pub async fn run_codex_tool_session_reply(
     prompt: String,
     running_requests_id_to_codex_uuid: Arc<Mutex<HashMap<RequestId, ThreadId>>>,
 ) {
+    if let Err(error) = fm_license::ensure_active() {
+        let result = CallToolResult::error(vec![Content::text(error.to_string())]);
+        outgoing.send_response(request_id.clone(), result).await;
+        return;
+    }
+
     running_requests_id_to_codex_uuid
         .lock()
         .await

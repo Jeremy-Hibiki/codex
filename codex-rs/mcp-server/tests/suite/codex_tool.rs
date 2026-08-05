@@ -492,6 +492,53 @@ async fn codex_tool_passes_base_instructions() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_license_lost_blocks_codex_tool_call() {
+    license_lost_blocks_codex_tool_call()
+        .await
+        .expect("license-lost codex tool call should be blocked");
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+async fn license_lost_blocks_codex_tool_call() -> anyhow::Result<()> {
+    let codex_home = TempDir::new()?;
+    let mut mcp_process = McpProcess::new_with_env(
+        codex_home.path(),
+        &[
+            (fm_license::TEST_BYPASS_ENV_VAR, Some("1")),
+            (fm_license::TEST_FORCE_LOST_ENV_VAR, Some("1")),
+        ],
+    )
+    .await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp_process.initialize()).await??;
+
+    let codex_request_id = mcp_process
+        .send_codex_tool_call(CodexToolCallParam {
+            prompt: "Hello?".to_string(),
+            ..Default::default()
+        })
+        .await?;
+
+    let response = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp_process.read_stream_until_response_message(RequestId::Number(codex_request_id)),
+    )
+    .await??;
+    assert_eq!(response.jsonrpc, JsonRpcVersion2_0);
+    assert_eq!(response.id, RequestId::Number(codex_request_id));
+    let content = response.result["content"]
+        .as_array()
+        .expect("tool response should include content");
+    assert!(content.iter().any(|item| {
+        item["text"]
+            .as_str()
+            .is_some_and(|text| text.contains(fm_license::LICENSE_UNAVAILABLE_MESSAGE))
+    }));
+    assert_eq!(response.result["isError"], json!(true));
+    Ok(())
+}
+
 fn create_expected_patch_approval_elicitation_request_params(
     changes: HashMap<PathBuf, FileChange>,
     grant_root: Option<PathBuf>,

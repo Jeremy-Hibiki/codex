@@ -120,6 +120,10 @@ fn run_cli_command(command: &mut Command) -> io::Result<Output> {
     #[cfg(unix)]
     command.process_group(0);
 
+    // Debug/test-only bypass so the suite does not need a live FMSH license
+    // server; release binaries never honor this.
+    command.env("FMSH_CODEX_LIC_TEST_BYPASS", "1");
+
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

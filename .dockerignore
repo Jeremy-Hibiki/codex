@@ -1,0 +1,11 @@
+codex-rs/target/
+target/
+bazel-bin/
+bazel-out/
+bazel-testlogs/
+bazel-license/
+bazel-code*
+.codegraph/
+.git/
+output/
+**/node_modules/

@@ -1,0 +1,54 @@
+# What: dedupe canonical-equivalent labels in cargo_build_script deps.
+# Scope: rules_rs rust_crate macro. cargo-bazel can render the same build
+# dependency twice (once as the canonical external-repo label and once through
+# the `@crates//` alias), which makes Bazel reject the generated `_bs_`
+# build-script rule with "Label ... is duplicated in the 'deps' attribute".
+
+diff --git a/rs/rust_crate.bzl b/rs/rust_crate.bzl
+--- a/rs/rust_crate.bzl
++++ b/rs/rust_crate.bzl
+@@ -14,6 +14,35 @@
+         return "@rules_rust//rust/platform:" + triple.replace("-musl", "-gnu").replace("-gnullvm", "-msvc")
+     return "@rules_rs//rs/platforms/config:" + triple
+ 
++def _canonical_label_key(label):
++    # `@crates` is an alias defined in the root module's repo mapping; inside
++    # this external repo it is unknown, so normalize it to the canonical crate
++    # hub label before comparing.
++    if label.startswith("@crates//"):
++        return "@@rules_rs++crate+crates//" + label[len("@crates//"):]
++    return str(Label(label))
++
++
++def _dedupe_labels(labels):
++    """Deduplicate labels that canonicalize to the same target.
++
++    cargo-bazel can render the same dependency twice (once as the canonical
++    external-repo label and once through the `@crates//` alias). Bazel rejects
++    duplicate labels in a single attribute, so collapse them before creating
++    the build-script rule.
++    """
++
++    seen = {}
++    deduped = []
++    for label in labels:
++        key = _canonical_label_key(label)
++        if key not in seen:
++            seen[key] = True
++            deduped.append(label)
++    return deduped
++
++
++
+ def rust_crate(
+         name,
+         crate_name,
+@@ -46,6 +75,8 @@
+         extra_compile_data = [],
+         rustc_env = {},
+         skip_deps_verification = False):
++    build_deps = _dedupe_labels(build_deps)
++
+     package_metadata(
+         name = name + "_package_metadata",
+         purl = purl,

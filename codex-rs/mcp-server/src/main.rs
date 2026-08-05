@@ -7,6 +7,9 @@ use codex_utils_cli::CliConfigOverrides;
 
 fn main() -> anyhow::Result<()> {
     arg0_dispatch_or_else(|arg0_paths: Arg0DispatchPaths| async move {
+        // The standalone MCP server is a product entry point that can start
+        // Codex work; it must hold a license for the process lifetime.
+        let _license_guard = fm_license::verify_at_startup()?;
         run_main(
             arg0_paths,
             CliConfigOverrides::default(),

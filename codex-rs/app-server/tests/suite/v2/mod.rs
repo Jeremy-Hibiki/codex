@@ -33,6 +33,8 @@ mod hooks_list;
 mod host_skills;
 mod imagegen_extension;
 mod initialize;
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+mod license_gate;
 mod marketplace_add;
 mod marketplace_remove;
 mod marketplace_upgrade;

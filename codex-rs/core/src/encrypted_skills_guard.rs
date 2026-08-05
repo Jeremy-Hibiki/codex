@@ -20,6 +20,7 @@ use fm_encrypted_skills::paths;
 use fm_encrypted_skills::runtime::EncryptedSkillRuntime;
 use serde_json::Value;
 
+use crate::guardian::GuardianApprovalRequest;
 use crate::session::session::Session;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
@@ -332,6 +333,110 @@ pub(crate) fn redact_text(runtime: &EncryptedSkillRuntime, session_id: &str, tex
     runtime.redact(&out)
 }
 
+/// Rewrites decrypted storage paths back to their original skill paths and
+/// redacts any remaining memory-root path segments. This is the model-facing
+/// projection used for tool output and for approval/review payloads: reviewers
+/// must never see the real `/dev/shm` location.
+pub(crate) fn redact_storage_paths(
+    runtime: &EncryptedSkillRuntime,
+    session_id: &str,
+    text: &str,
+) -> String {
+    let mut out = runtime.unrewrite_paths(session_id, text);
+    let root = runtime.mem_root().to_string_lossy();
+    out = paths::redact_path_prefix(&out, root.as_ref());
+    if root.as_ref() != paths::MEM_ROOT {
+        out = paths::redact_path_prefix(&out, paths::MEM_ROOT);
+    }
+    out
+}
+
+/// Redacts decrypted storage paths from every command-bearing guardian
+/// approval request before the request reaches a reviewer model.
+pub(crate) fn redact_guardian_request(
+    runtime: &EncryptedSkillRuntime,
+    session_id: &str,
+    request: GuardianApprovalRequest,
+) -> GuardianApprovalRequest {
+    let redact = |arg: String| redact_storage_paths(runtime, session_id, &arg);
+    let redact_args = |args: Vec<String>| args.into_iter().map(redact).collect();
+    match request {
+        GuardianApprovalRequest::Shell {
+            id,
+            command,
+            cwd,
+            sandbox_permissions,
+            additional_permissions,
+            justification,
+        } => GuardianApprovalRequest::Shell {
+            id,
+            command: redact_args(command),
+            cwd,
+            sandbox_permissions,
+            additional_permissions,
+            justification,
+        },
+        GuardianApprovalRequest::ExecCommand {
+            id,
+            command,
+            cwd,
+            sandbox_permissions,
+            additional_permissions,
+            justification,
+            tty,
+        } => GuardianApprovalRequest::ExecCommand {
+            id,
+            command: redact_args(command),
+            cwd,
+            sandbox_permissions,
+            additional_permissions,
+            justification,
+            tty,
+        },
+        #[cfg(unix)]
+        GuardianApprovalRequest::Execve {
+            id,
+            source,
+            program,
+            argv,
+            cwd,
+            additional_permissions,
+        } => GuardianApprovalRequest::Execve {
+            id,
+            source,
+            program: redact(program),
+            argv: redact_args(argv),
+            cwd,
+            additional_permissions,
+        },
+        GuardianApprovalRequest::NetworkAccess {
+            id,
+            turn_id,
+            target,
+            host,
+            protocol,
+            port,
+            trigger,
+        } => GuardianApprovalRequest::NetworkAccess {
+            id,
+            turn_id,
+            target,
+            host,
+            protocol,
+            port,
+            trigger: trigger.map(|mut trigger| {
+                trigger.command = trigger
+                    .command
+                    .into_iter()
+                    .map(|arg| redact_storage_paths(runtime, session_id, &arg))
+                    .collect();
+                trigger
+            }),
+        },
+        other => other,
+    }
+}
+
 /// Clones and redacts every text-bearing field of `items` (all roles), for
 /// diagnostic surfaces such as compaction traces that may contain model output
 /// derived from rehydrated skill content.
@@ -550,15 +655,7 @@ pub(crate) struct RedactingToolOutput {
 
 impl RedactingToolOutput {
     fn redact_text(&self, text: &str) -> String {
-        // 解密目录路径改写回原目录（agent 可读脚本名/原路径，不暴露 /dev/shm）；
-        // 未知 mem root 子路径仍以 [REDACTED] 兜底。
-        let mut out = self.runtime.unrewrite_paths(&self.session_id, text);
-        let root = self.runtime.mem_root().to_string_lossy();
-        out = paths::redact_path_prefix(&out, root.as_ref());
-        if root.as_ref() != paths::MEM_ROOT {
-            out = paths::redact_path_prefix(&out, paths::MEM_ROOT);
-        }
-        out
+        redact_storage_paths(&self.runtime, &self.session_id, text)
     }
 
     fn redact_payload(&self, payload: &mut FunctionCallOutputPayload) {

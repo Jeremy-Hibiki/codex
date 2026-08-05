@@ -298,6 +298,15 @@ async fn run_guardian_review(
     retry_reason: Option<String>,
     options: GuardianReviewOptions,
 ) -> ReviewDecision {
+    // Reviewer models must never observe the real decrypted `/dev/shm`
+    // location: rewrite registered decrypted dirs back to their original skill
+    // paths and redact any remaining memory-root segments before the request
+    // is serialized into the review prompt.
+    let request = crate::encrypted_skills_guard::redact_guardian_request(
+        &session.services.encrypted_skills_runtime,
+        &session.thread_id.to_string(),
+        request,
+    );
     let GuardianReviewOptions {
         plugin_attribution_override,
         approval_request_source,

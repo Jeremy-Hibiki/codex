@@ -25,7 +25,6 @@ cc_import(
 
 cc_library(
     name = "lmclient_native",
-    deps = [":lmclient_static"],
     linkopts = [
         # Debian/Ubuntu multiarch
         "-L/usr/lib/x86_64-linux-gnu",
@@ -39,4 +38,5 @@ cc_library(
         "-lm",
     ],
     visibility = ["//visibility:public"],
+    deps = [":lmclient_static"],
 )

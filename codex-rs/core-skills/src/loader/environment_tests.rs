@@ -69,6 +69,8 @@ policy:
                 allow_implicit_invocation: Some(false),
                 products: vec![Product::Codex],
             }),
+            encrypted: false,
+            encryption: None,
         }]
     );
     let filtered =

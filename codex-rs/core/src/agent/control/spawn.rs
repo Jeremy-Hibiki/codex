@@ -48,6 +48,10 @@ fn keep_forked_rollout_item(item: &RolloutItem, preserve_reference_context_item:
     match item {
         RolloutItem::ResponseItem(ResponseItem::Message { role, phase, .. }) => match role.as_str()
         {
+            // Encrypted skill tokens are stripped from user messages (see
+            // `retain_forked_item`) rather than dropping the whole message:
+            // a token may share a user turn with legitimate instructions the
+            // child still needs.
             "system" | "developer" | "user" => true,
             "assistant" => *phase == Some(MessagePhase::FinalAnswer),
             _ => false,
@@ -79,6 +83,7 @@ fn keep_forked_rollout_item(item: &RolloutItem, preserve_reference_context_item:
         RolloutItem::Compacted(_) | RolloutItem::EventMsg(_) | RolloutItem::SessionMeta(_) => true,
     }
 }
+
 
 fn is_multi_agent_v2_usage_hint_message(item: &ResponseItem, usage_hint_texts: &[String]) -> bool {
     let ResponseItem::Message { role, content, .. } = item else {
@@ -733,6 +738,23 @@ impl AgentControl {
                 return !content.is_empty();
             }
 
+            // Strip encrypted-skill sentinel tokens from user messages so the
+            // child cannot resolve the parent's decryption handles, while
+            // preserving the surrounding user instructions.
+            if let ResponseItem::Message { role, content, .. } = response_item
+                && role == "user"
+            {
+                for content_item in content.iter_mut() {
+                    if let ContentItem::InputText { text } = content_item
+                        && text.contains(codex_encrypted_skills::token::TOKEN_PREFIX)
+                    {
+                        *text = codex_encrypted_skills::token::strip_tokens(
+                            text,
+                            "[encrypted-skill unavailable in this context]",
+                        );
+                    }
+                }
+            }
             true
         };
         forked_rollout_items.retain_mut(|item| {
@@ -1011,3 +1033,7 @@ impl AgentControl {
         Ok((resumed_thread.thread_id, multi_agent_version))
     }
 }
+
+#[cfg(test)]
+#[path = "spawn_tests.rs"]
+mod tests;

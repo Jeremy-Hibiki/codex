@@ -5735,6 +5735,13 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         guardian_rejection_circuit_breaker: Mutex::new(Default::default()),
         runtime_handle: tokio::runtime::Handle::current(),
         skills_service,
+        encrypted_skills_runtime: Arc::new(
+            codex_encrypted_skills::runtime::EncryptedSkillRuntime::new(
+                Arc::new(codex_encrypted_skills::sdk::UnavailableSdk),
+                codex_encrypted_skills::registry::TtlConfig::default(),
+                std::path::PathBuf::from(codex_encrypted_skills::mem_root::DEFAULT_MEM_ROOT),
+            ),
+        ),
         agents_md_manager: Arc::new(AgentsMdManager::new(/*user_instructions*/ None)),
         plugins_manager,
         mcp_manager,
@@ -7924,6 +7931,13 @@ where
         guardian_rejection_circuit_breaker: Mutex::new(Default::default()),
         runtime_handle: tokio::runtime::Handle::current(),
         skills_service,
+        encrypted_skills_runtime: Arc::new(
+            codex_encrypted_skills::runtime::EncryptedSkillRuntime::new(
+                Arc::new(codex_encrypted_skills::sdk::UnavailableSdk),
+                codex_encrypted_skills::registry::TtlConfig::default(),
+                std::path::PathBuf::from(codex_encrypted_skills::mem_root::DEFAULT_MEM_ROOT),
+            ),
+        ),
         agents_md_manager: Arc::new(AgentsMdManager::new(/*user_instructions*/ None)),
         plugins_manager,
         mcp_manager,

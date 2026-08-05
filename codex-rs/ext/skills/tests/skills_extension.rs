@@ -123,6 +123,8 @@ async fn installed_extension_uses_host_service_snapshot() -> TestResult {
         scope: SkillScope::User,
         plugin_id: None,
         remote_plugin_id: None,
+        encrypted: false,
+        encryption: None,
     });
     let loaded_skills = Arc::new(outcome);
     let skill_prompt_path = skill_path_string.replace('\\', "/");
@@ -204,6 +206,8 @@ async fn host_world_state_records_catalog_metrics_on_publish_and_change() -> Tes
         scope: SkillScope::User,
         plugin_id: None,
         remote_plugin_id: None,
+        encrypted: false,
+        encryption: None,
     });
     let turn_store = ExtensionData::new("turn-1");
     turn_store.insert(HostSkillsSnapshot::new(Arc::new(outcome.clone())));
@@ -276,6 +280,8 @@ async fn host_world_state_records_catalog_metrics_on_publish_and_change() -> Tes
         scope: SkillScope::User,
         plugin_id: None,
         remote_plugin_id: None,
+        encrypted: false,
+        encryption: None,
     });
     turn_store.insert(HostSkillsSnapshot::new(Arc::new(outcome)));
     let sections = registry.context_contributors()[0]
@@ -332,6 +338,8 @@ async fn persisted_host_snapshot_deduplicates_warning_after_reinitialization() -
         scope: SkillScope::User,
         plugin_id: None,
         remote_plugin_id: None,
+        encrypted: false,
+        encryption: None,
     });
     let host_snapshot = HostSkillsSnapshot::new(Arc::new(outcome));
 

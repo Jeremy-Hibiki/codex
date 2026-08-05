@@ -17781,6 +17781,37 @@
         ],
         "type": "object"
       },
+      "SkillEncryption": {
+        "properties": {
+          "algorithm": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "keyId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "package": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "format": "uint64",
+            "minimum": 0.0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "SkillErrorInfo": {
         "properties": {
           "message": {
@@ -17876,6 +17907,20 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "encrypted": {
+            "description": "Set when the skill's SKILL.md frontmatter declares `metadata.encrypted: true`.",
+            "type": "boolean"
+          },
+          "encryption": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/v2/SkillEncryption"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "interface": {
             "anyOf": [

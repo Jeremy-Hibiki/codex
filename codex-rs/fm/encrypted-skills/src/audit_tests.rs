@@ -104,3 +104,47 @@ fn file_audit_sink_rotates_at_size_limit() {
     let rotated = tmp.path().join("audit.log.1");
     assert!(rotated.exists(), "expected rotated audit file");
 }
+
+#[test]
+fn shared_file_sink_reuses_instance_for_same_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("audit.log");
+    let first = shared_file_sink(path.clone(), FileAuditSink::DEFAULT_MAX_BYTES).unwrap();
+    let second = shared_file_sink(path, FileAuditSink::DEFAULT_MAX_BYTES).unwrap();
+    assert!(Arc::ptr_eq(&first, &second));
+}
+
+#[test]
+fn shared_file_sink_returns_distinct_instances_for_different_paths() {
+    let tmp = tempfile::tempdir().unwrap();
+    let first =
+        shared_file_sink(tmp.path().join("a.log"), FileAuditSink::DEFAULT_MAX_BYTES).unwrap();
+    let second =
+        shared_file_sink(tmp.path().join("b.log"), FileAuditSink::DEFAULT_MAX_BYTES).unwrap();
+    assert!(!Arc::ptr_eq(&first, &second));
+}
+
+#[test]
+fn shared_file_sink_distinguishes_rotation_limits() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("audit.log");
+    let default = shared_file_sink(path.clone(), FileAuditSink::DEFAULT_MAX_BYTES).unwrap();
+    let small = shared_file_sink(path, 64).unwrap();
+    assert!(!Arc::ptr_eq(&default, &small));
+}
+
+#[test]
+fn shared_file_sink_recreates_instance_after_last_reference_drops() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("audit.log");
+    let first = shared_file_sink(path.clone(), FileAuditSink::DEFAULT_MAX_BYTES).unwrap();
+    drop(first);
+    let second = shared_file_sink(path, FileAuditSink::DEFAULT_MAX_BYTES).unwrap();
+    second.emit(AuditEvent::Decryption {
+        session_id: "t1".into(),
+        skill_name: "secret".into(),
+        cache_hit: false,
+    });
+    let text = std::fs::read_to_string(tmp.path().join("audit.log")).unwrap();
+    assert_eq!(text.lines().count(), 1);
+}

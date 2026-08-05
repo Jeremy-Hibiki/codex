@@ -1,10 +1,20 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::guardian::GuardianApprovalRequest;
 use codex_protocol::items::AgentMessageContent;
+use codex_protocol::items::CommandExecutionItem;
+use codex_protocol::items::CommandExecutionStatus;
+use codex_protocol::items::DynamicToolCallItem;
+use codex_protocol::items::DynamicToolCallStatus;
+use codex_protocol::items::FileChangeItem;
+use codex_protocol::items::McpToolCallError;
+use codex_protocol::items::McpToolCallItem;
+use codex_protocol::items::McpToolCallStatus;
 use codex_protocol::items::TurnItem;
+use codex_protocol::items::WebSearchItem;
 use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputBody;
@@ -12,6 +22,8 @@ use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ReasoningItemContent;
 use codex_protocol::models::ReasoningItemReasoningSummary;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::models::WebSearchAction;
+use codex_protocol::protocol::ExecCommandSource;
 use fm_encrypted_skills::audit::AuditEvent;
 use fm_encrypted_skills::audit::AuditSink;
 use fm_encrypted_skills::registry::TtlConfig;
@@ -25,6 +37,7 @@ use super::*;
 use crate::tools::context::FunctionToolOutput;
 use crate::tools::hook_names::HookToolName;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use codex_utils_path_uri::PathUri;
 
 #[derive(Default)]
 struct GuardCollectingSink {
@@ -1033,6 +1046,160 @@ fn redacts_turn_item_plan_text() {
         panic!("expected plan turn item");
     };
     assert_eq!(plan.text.as_str(), "step: [REDACTED]");
+}
+
+#[test]
+fn redacts_turn_item_command_execution_output() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decrypted = runtime.mem_root().to_string_lossy();
+    let item = TurnItem::CommandExecution(CommandExecutionItem {
+        id: "exec-1".to_string(),
+        plugin_id: None,
+        script_path: None,
+        process_id: None,
+        command: vec!["bash".to_string(), "run.sh".to_string()],
+        cwd: PathUri::from_host_native_path(PathBuf::from("/tmp")).unwrap(),
+        parsed_cmd: Vec::new(),
+        source: ExecCommandSource::Agent,
+        interaction_input: Some("input: # Guarded content".to_string()),
+        status: CommandExecutionStatus::Completed,
+        stdout: Some("output: # Guarded content".to_string()),
+        stderr: Some(format!("error: {decrypted}/p1/skill/SKILL.md")),
+        aggregated_output: Some("aggregated: # Guarded content".to_string()),
+        exit_code: Some(0),
+        duration: None,
+        formatted_output: Some(format!("formatted: {decrypted}/p1/skill/SKILL.md")),
+    });
+
+    let redacted = redact_turn_item(&runtime, "t1", item);
+
+    let TurnItem::CommandExecution(command_execution) = redacted else {
+        panic!("expected command execution turn item");
+    };
+    assert_eq!(
+        command_execution.interaction_input.as_deref(),
+        Some("input: [REDACTED]")
+    );
+    assert_eq!(
+        command_execution.stdout.as_deref(),
+        Some("output: [REDACTED]")
+    );
+    assert_eq!(
+        command_execution.stderr.as_deref(),
+        Some("error: [REDACTED]")
+    );
+    assert_eq!(
+        command_execution.aggregated_output.as_deref(),
+        Some("aggregated: [REDACTED]")
+    );
+    assert_eq!(
+        command_execution.formatted_output.as_deref(),
+        Some("formatted: [REDACTED]")
+    );
+}
+
+#[test]
+fn redacts_turn_item_file_change_output() {
+    let (runtime, _tmp) = loaded_runtime();
+    let item = TurnItem::FileChange(FileChangeItem {
+        id: "file-1".to_string(),
+        changes: HashMap::new(),
+        status: None,
+        auto_approved: None,
+        stdout: Some("stdout: # Guarded content".to_string()),
+        stderr: Some("stderr: # Guarded content".to_string()),
+    });
+
+    let redacted = redact_turn_item(&runtime, "t1", item);
+
+    let TurnItem::FileChange(file_change) = redacted else {
+        panic!("expected file change turn item");
+    };
+    assert_eq!(file_change.stdout.as_deref(), Some("stdout: [REDACTED]"));
+    assert_eq!(file_change.stderr.as_deref(), Some("stderr: [REDACTED]"));
+}
+
+#[test]
+fn redacts_turn_item_web_search_and_tool_call_text() {
+    let (runtime, _tmp) = loaded_runtime();
+    let item = TurnItem::WebSearch(WebSearchItem {
+        id: "web-1".to_string(),
+        query: "query: # Guarded content".to_string(),
+        action: WebSearchAction::Search {
+            query: None,
+            queries: None,
+        },
+        results: None,
+    });
+    let redacted = redact_turn_item(&runtime, "t1", item);
+    let TurnItem::WebSearch(web_search) = redacted else {
+        panic!("expected web search turn item");
+    };
+    assert_eq!(web_search.query.as_str(), "query: [REDACTED]");
+
+    let item = TurnItem::DynamicToolCall(DynamicToolCallItem {
+        id: "dyn-1".to_string(),
+        namespace: None,
+        tool: "demo".to_string(),
+        arguments: serde_json::json!({}),
+        status: DynamicToolCallStatus::Failed,
+        content_items: Some(vec![
+            codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem::InputText {
+                text: "content: # Guarded content".to_string(),
+            },
+        ]),
+        success: None,
+        error: Some("error: # Guarded content".to_string()),
+        duration: None,
+    });
+    let redacted = redact_turn_item(&runtime, "t1", item);
+    let TurnItem::DynamicToolCall(dynamic_tool_call) = redacted else {
+        panic!("expected dynamic tool call turn item");
+    };
+    assert!(
+        dynamic_tool_call
+            .content_items
+            .as_ref()
+            .is_some_and(|items| items.iter().any(|item| matches!(
+                item,
+                codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem::InputText { text }
+                    if text == "content: [REDACTED]"
+            )))
+    );
+    assert_eq!(
+        dynamic_tool_call.error.as_deref(),
+        Some("error: [REDACTED]")
+    );
+
+    let item = TurnItem::McpToolCall(McpToolCallItem {
+        id: "mcp-1".to_string(),
+        server: "server".to_string(),
+        tool: "tool".to_string(),
+        arguments: serde_json::json!({}),
+        connector_id: None,
+        mcp_app_resource_uri: None,
+        link_id: None,
+        app_name: None,
+        action_name: None,
+        plugin_id: None,
+        status: McpToolCallStatus::Failed,
+        result: None,
+        error: Some(McpToolCallError {
+            message: "error: # Guarded content".to_string(),
+        }),
+        duration: None,
+    });
+    let redacted = redact_turn_item(&runtime, "t1", item);
+    let TurnItem::McpToolCall(mcp_tool_call) = redacted else {
+        panic!("expected mcp tool call turn item");
+    };
+    assert_eq!(
+        mcp_tool_call
+            .error
+            .as_ref()
+            .map(|error| error.message.as_str()),
+        Some("error: [REDACTED]")
+    );
 }
 
 #[test]

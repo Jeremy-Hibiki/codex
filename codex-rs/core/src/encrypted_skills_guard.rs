@@ -695,31 +695,100 @@ pub(crate) fn redact_turn_item(
     mut item: TurnItem,
 ) -> TurnItem {
     let known = runtime.known_plaintexts(session_id);
-    if known.is_empty() {
-        return item;
-    }
     let known: Vec<&str> = known.iter().map(String::as_str).collect();
     match &mut item {
         TurnItem::AgentMessage(agent_message) => {
             for content in &mut agent_message.content {
                 let AgentMessageContent::Text { text } = content;
-                *text = export_guard::redact_known_plaintext(text, &known);
+                *text = redact_turn_item_text(runtime, session_id, text, &known);
             }
         }
         TurnItem::Reasoning(reasoning) => {
             for text in &mut reasoning.summary_text {
-                *text = export_guard::redact_known_plaintext(text, &known);
+                *text = redact_turn_item_text(runtime, session_id, text, &known);
             }
             for text in &mut reasoning.raw_content {
-                *text = export_guard::redact_known_plaintext(text, &known);
+                *text = redact_turn_item_text(runtime, session_id, text, &known);
             }
         }
         TurnItem::Plan(plan) => {
-            plan.text = export_guard::redact_known_plaintext(&plan.text, &known);
+            plan.text = redact_turn_item_text(runtime, session_id, &plan.text, &known);
+        }
+        TurnItem::CommandExecution(command_execution) => {
+            if let Some(text) = &mut command_execution.stdout {
+                *text = redact_turn_item_text(runtime, session_id, text, &known);
+            }
+            if let Some(text) = &mut command_execution.stderr {
+                *text = redact_turn_item_text(runtime, session_id, text, &known);
+            }
+            if let Some(text) = &mut command_execution.aggregated_output {
+                *text = redact_turn_item_text(runtime, session_id, text, &known);
+            }
+            if let Some(text) = &mut command_execution.formatted_output {
+                *text = redact_turn_item_text(runtime, session_id, text, &known);
+            }
+            if let Some(text) = &mut command_execution.interaction_input {
+                *text = redact_turn_item_text(runtime, session_id, text, &known);
+            }
+        }
+        TurnItem::FileChange(file_change) => {
+            if let Some(text) = &mut file_change.stdout {
+                *text = redact_turn_item_text(runtime, session_id, text, &known);
+            }
+            if let Some(text) = &mut file_change.stderr {
+                *text = redact_turn_item_text(runtime, session_id, text, &known);
+            }
+        }
+        TurnItem::WebSearch(web_search) => {
+            web_search.query =
+                redact_turn_item_text(runtime, session_id, &web_search.query, &known);
+        }
+        TurnItem::CollabAgentToolCall(collab_agent_tool_call) => {
+            if let Some(text) = &mut collab_agent_tool_call.prompt {
+                *text = redact_turn_item_text(runtime, session_id, text, &known);
+            }
+        }
+        TurnItem::DynamicToolCall(dynamic_tool_call) => {
+            if let Some(content_items) = &mut dynamic_tool_call.content_items {
+                for content in content_items {
+                    if let codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem::InputText {
+                        text,
+                    } = content
+                    {
+                        *text = redact_turn_item_text(runtime, session_id, text, &known);
+                    }
+                }
+            }
+            if let Some(text) = &mut dynamic_tool_call.error {
+                *text = redact_turn_item_text(runtime, session_id, text, &known);
+            }
+        }
+        TurnItem::McpToolCall(mcp_tool_call) => {
+            if let Some(error) = &mut mcp_tool_call.error {
+                error.message = redact_turn_item_text(runtime, session_id, &error.message, &known);
+            }
         }
         _ => {}
     }
     item
+}
+
+fn redact_turn_item_text(
+    runtime: &EncryptedSkillRuntime,
+    session_id: &str,
+    text: &str,
+    known: &[&str],
+) -> String {
+    let mut out = runtime.unrewrite_paths(session_id, text);
+    if !known.is_empty() {
+        out = export_guard::redact_known_plaintext(&out, known);
+    }
+    let root = runtime.mem_root().to_string_lossy();
+    out = paths::redact_path_prefix(&out, root.as_ref());
+    if root.as_ref() != paths::MEM_ROOT {
+        out = paths::redact_path_prefix(&out, paths::MEM_ROOT);
+    }
+    out
 }
 
 /// Wraps a tool output so any decrypted storage path string is redacted before

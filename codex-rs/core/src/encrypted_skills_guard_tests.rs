@@ -22,6 +22,7 @@ use fm_encrypted_skills::sdk::PackageEntry;
 use serde_json::json;
 
 use super::*;
+use crate::tools::context::FunctionToolOutput;
 use crate::tools::hook_names::HookToolName;
 use codex_utils_absolute_path::AbsolutePathBuf;
 
@@ -75,6 +76,18 @@ fn loaded_runtime() -> (EncryptedSkillRuntime, tempfile::TempDir) {
         .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
         .expect("load skill");
     (runtime, tmp)
+}
+
+fn empty_runtime() -> (EncryptedSkillRuntime, tempfile::TempDir) {
+    let tmp = tempfile::tempdir().unwrap();
+    (
+        EncryptedSkillRuntime::new(
+            Arc::new(GuardTestSdk),
+            TtlConfig::default(),
+            tmp.path().join("mem-root"),
+        ),
+        tmp,
+    )
 }
 
 fn loaded_long_runtime() -> (EncryptedSkillRuntime, tempfile::TempDir) {
@@ -131,6 +144,101 @@ fn guardian_request_redacts_mem_root_paths() {
     assert!(
         joined.contains("/skills/script.sh"),
         "decrypted dir should be rewritten back to the original skill path: {joined}"
+    );
+}
+
+#[test]
+fn unengaged_shell_command_mentioning_mem_root_is_allowed() {
+    let (runtime, _tmp) = empty_runtime();
+    let command = format!("cat {}", runtime.mem_root().to_string_lossy());
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": command }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Allow),
+        "unengaged shell command must pass through: {decision:?}"
+    );
+}
+
+#[test]
+fn unengaged_view_image_under_mem_root_is_allowed() {
+    let (runtime, _tmp) = empty_runtime();
+    let path = runtime
+        .mem_root()
+        .join("fm_skill_security_abc")
+        .to_string_lossy()
+        .into_owned();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::view_image(),
+        &json!({ "path": path }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Allow),
+        "unengaged view_image must pass through: {decision:?}"
+    );
+}
+
+#[test]
+fn unengaged_export_arguments_mentioning_mem_root_are_allowed() {
+    let (runtime, _tmp) = empty_runtime();
+    let patch = format!(
+        "*** Begin Patch\n*** Update File: {}\n@@\n+leak\n",
+        runtime.mem_root().to_string_lossy()
+    );
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        &HookToolName::apply_patch(),
+        &json!({ "patch": patch }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Allow),
+        "unengaged export tool must pass through: {decision:?}"
+    );
+}
+
+#[test]
+fn redacting_tool_output_passes_through_when_unengaged() {
+    let (runtime, _tmp) = empty_runtime();
+    let runtime = Arc::new(runtime);
+    let output = RedactingToolOutput {
+        inner: Box::new(FunctionToolOutput::from_text(
+            "unused".to_string(),
+            Some(true),
+        )),
+        runtime: Arc::clone(&runtime),
+        session_id: "t1".to_string(),
+        engaged: false,
+    };
+    let input = format!("script at {}", runtime.mem_root().to_string_lossy());
+    assert_eq!(output.redact_text(&input), input);
+}
+
+#[test]
+fn redacting_tool_output_redacts_when_engaged() {
+    let (runtime, _tmp) = loaded_runtime();
+    let runtime = Arc::new(runtime);
+    let output = RedactingToolOutput {
+        inner: Box::new(FunctionToolOutput::from_text(
+            "unused".to_string(),
+            Some(true),
+        )),
+        runtime: Arc::clone(&runtime),
+        session_id: "t1".to_string(),
+        engaged: true,
+    };
+    let decrypted = runtime.decrypted_dirs("t1").pop().unwrap();
+    let input = format!("script at {}", decrypted.join("run.sh").to_string_lossy());
+    let redacted = output.redact_text(&input);
+    assert!(!redacted.contains(&runtime.mem_root().to_string_lossy().to_string()));
+    assert!(
+        redacted.contains("/skills/run.sh"),
+        "decrypted dir should unrewrite to original skill path: {redacted}"
     );
 }
 

@@ -1,4 +1,5 @@
 use super::*;
+use crate::agent_security::AgentSecurityContext;
 use crate::environment_selection::TurnEnvironmentSnapshot;
 use crate::shell_snapshot::ShellSnapshotFile;
 use codex_core_plugins::PluginCommandAttribution;
@@ -116,6 +117,7 @@ pub struct TurnContext {
     pub(crate) sub_id: String,
     pub(crate) trace_id: Option<String>,
     pub(crate) realtime_active: bool,
+    pub(crate) agent_security: Option<AgentSecurityContext>,
     pub config: Arc<Config>,
     pub(crate) auth_manager: Option<Arc<AuthManager>>,
     pub(crate) model_info: ModelInfo,
@@ -281,6 +283,7 @@ impl TurnContext {
             sub_id: self.sub_id.clone(),
             trace_id: self.trace_id.clone(),
             realtime_active: self.realtime_active,
+            agent_security: self.agent_security.clone(),
             config: Arc::new(config),
             auth_manager: self.auth_manager.clone(),
             model_info: model_info.clone(),
@@ -563,6 +566,7 @@ impl Session {
             sub_id,
             trace_id: current_span_trace_id(),
             realtime_active: false,
+            agent_security: None,
             config: per_turn_config,
             auth_manager: auth_manager_for_context,
             model_info,
@@ -811,6 +815,15 @@ impl Session {
             skills_snapshot,
         );
         turn_context.extension_data.insert(trusted_plugin_roots);
+        turn_context.agent_security = {
+            let runtime = &self.services.encrypted_skills_runtime;
+            let session_id = self.thread_id().to_string();
+            if runtime.is_engaged(&session_id) {
+                Some(AgentSecurityContext::new(Arc::clone(runtime), session_id))
+            } else {
+                None
+            }
+        };
         turn_context.realtime_active = self.conversation.running_state().await.is_some();
 
         if let Some(final_schema) = final_output_json_schema {

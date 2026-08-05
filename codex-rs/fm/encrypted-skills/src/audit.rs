@@ -193,8 +193,10 @@ impl AuditSink for FileAuditSink {
 /// rotation (`rename` to `<path>.1`) from multiple sinks can split or drop
 /// events. All callers that target the same file should go through
 /// [`shared_file_sink`] so writes and rotation are serialized by one writer.
-static SHARED_SINKS: OnceLock<Mutex<HashMap<(PathBuf, u64), Weak<FileAuditSink>>>> =
-    OnceLock::new();
+/// Registry key identifying one audit file configuration.
+type SharedSinkKey = (PathBuf, u64);
+
+static SHARED_SINKS: OnceLock<Mutex<HashMap<SharedSinkKey, Weak<FileAuditSink>>>> = OnceLock::new();
 
 /// Returns the process-wide [`FileAuditSink`] for `path` and `max_bytes`,
 /// reusing the live instance when one already exists.
@@ -205,7 +207,9 @@ static SHARED_SINKS: OnceLock<Mutex<HashMap<(PathBuf, u64), Weak<FileAuditSink>>
 /// only a `Weak` reference, so the sink is reclaimed when no caller holds it.
 pub fn shared_file_sink(path: PathBuf, max_bytes: u64) -> io::Result<Arc<dyn AuditSink>> {
     let map = SHARED_SINKS.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut map = map.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut map = map
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     map.retain(|_, sink| sink.strong_count() > 0);
     let key = (path.clone(), max_bytes);
     if let Some(sink) = map.get(&key).and_then(Weak::upgrade) {

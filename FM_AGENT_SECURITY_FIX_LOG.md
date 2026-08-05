@@ -29,6 +29,8 @@ design.
 | 21 | `2de0c3caa0` | audit sink | F4: process-wide per-(path, max_bytes) shared FileAuditSink (Weak registry) wired into Session::new; one writer per file, no concurrent rotation |
 | 22 | `5d9fae664c` | fmsh-ukey groundwork | Reserve `SdkKind::UKey`/`Local` and `sdk = "ukey"/"local"` config variants (fail-closed until `fmsh-ukey` feature is wired); schema regenerated |
 | 23 | `01d3a010c0` | guardian/review redaction | Reviewer models must not see the real decrypted `/dev/shm` location: `redact_guardian_request` rewrites registered decrypted dirs back to original skill paths and redacts remaining memory-root segments in every command-bearing `GuardianApprovalRequest` (Shell / ExecCommand / Execve / NetworkAccess trigger) before the review prompt is built; shared `redact_storage_paths` helper is now also used by `RedactingToolOutput` |
+| 24 | openspec: encrypted-skill-engagement | 会话级 engaged 判定基础：`is_engaged`（registry 非空 || 解密 in-flight）、RAII `InFlightGuard` 覆盖“明文落盘→登记”窗口、失败路径保持 `secure_wipe`、`path_mappings` 导出 `(解密目录, 逻辑路径)`；`clear_thread` 同步清理 in-flight；未 engaged 不引入任何行为（门控由后续变更实现） |
+| 25 | openspec: agent-security-context-gating | `AgentSecurityContext`（runtime + session_id + live `engaged()`）；`TurnContext.agent_security` 按 turn 组装（engaged 时 Some，否则 None）；`before_tool` 未 engaged 直接 `Allow`；`RedactingToolOutput` 未 engaged 原样透传；未 engaged 会话恢复零行为变化，engaged 行为与变更前一致 |
 
 ## I23 补充说明：`/dev/shm` 路径的模型可见性
 
@@ -90,3 +92,42 @@ and unrelated to this fix set.
   selecting it now emits a loud startup warning.
 - Non-shell tool relative-path rewriting: the access-control spec was updated
   to match the implemented shell-only channel decision.
+
+## 待处理问题（已记录，未修复）
+
+- **P1 `/dev/shm` 路径可见性与技能脚本执行**：guard 目前把命令中的技能路径重写为真实解密路径
+  （`/dev/shm/fm_skill_security_*/p<pid>/...`）。该真实路径会进入执行副本，并可能随审批/评审
+  负载外发（in-core guardian 评审已红act，见 I23；用户审批 UI、permission hooks、telemetry
+  仍可见）。同时默认 workspace-write 的 bwrap 沙箱把 `/dev/shm` 挂为私有空 tmpfs，重写后的
+  路径在沙箱内不可见，技能脚本在 bwrap 下实际不可执行；且“写脚本 → 解释器间接读 `/dev/shm`”
+  的攻击在无沙箱/full-access 模式下无法靠字符串检测拦截。
+  已定方案（未实现）：把解密目录以只读 bind 挂到沙箱内的逻辑技能路径
+  （`--ro-bind <decrypted> <logical>`），命令不再包含 `/dev/shm`；guard 按“是否启用 bwrap bind”
+  决定是否保留旧的重写行为；涉及 protocol（`FileSystemSandboxPolicy.readonly_binds`）、
+  linux-sandbox bwrap、core sandbox orchestrator、guard 与测试。
+
+- **P2 缺少统一的“加密技能环境”上下文**：当前没有全局/上下文标志标识“本会话处于加密 Skill
+  环境、需启用 Agent Security 路线”。`EncryptedSkillRuntime` 是 per-session 的
+  （`Session.services.encrypted_skills_runtime`），但 guard/红act 调用点靠零散传参
+  （`&Session`、`runtime + session_id`），且 `guard_shell` 无条件把 mem-root（`/dev/shm`）纳入
+  保护——即使会话没有加载任何加密技能，普通会话也会被“命令提及 `/dev/shm` 即拦截”影响。
+  已定方向（未实现）：做 **Session/Thread 级环境**（`Option<AgentSecurityContext>`，内含
+  `Arc<EncryptedSkillRuntime>` + `thread_id`），**懒加载启用**——只有会话加载/触发了加密
+  Skill、开始解密、或存在泄露风险时才 `engaged`，此时才开启严格护栏（shell 路径 guard、
+  export guard、输出/评审红act、审批红act等）；未触发时 `is_engaged() == false`，解密目录
+  不存在、明文不可读，完全走 Codex 正常路径（连 `/dev/shm` 字符串拦截与输出红act都不启用）。
+  上下文在 Session/TurnContext 创建时组装；`engaged` 直接由 runtime 状态派生
+  （registry 非空或解密 in-flight），不维护容易失同步的独立标志位。细化：
+  **Session 级状态 + 每 Turn 决定翻转**——状态（runtime/registry/明文目录）在 Session 级，
+  TurnContext 每 turn 决定当前生效的 `Option<AgentSecurityContext>`；翻转条件必须绑定“明文
+  当前是否实际存在”，而不是“本 turn 是否使用 skill”。注意：当前明文不会在 turn 结束时自动
+  销毁（`clear_encrypted_skills` 无调用者，TTL 空闲 600s 才清理），所以现状下严格的 turn 级
+  翻转不安全；若要做 turn 级，需先加 turn 结束清理。并发场景（app-server 同 session 多 turn）
+  下 guard 判定应读 live session 状态，而非 turn 开始时的快照。
+  **范围补充：RPC 面纳入护栏**——Codex 可能通过 ACP 协议连接并提供前端，app-server 的客户端
+  直连 RPC 也必须受保护：`fs/readFile`、`fs/readDirectory`、`fs/getMetadata`、`fs/watch`、
+  `fs/writeFile`、`fs/copy`、`fs/remove` 等 fs 方法，以及 `command/exec`、`process/spawn`、
+  `thread/shellCommand` 等执行方法。这些处理器目前没有 encrypted runtime 访问路径，需要让
+  app-server 能按 thread_id 解析到该 session 的上下文（例如把 runtime 提升为进程级共享服务，
+  registry 内部仍按 thread_id 隔离），并复用与 Agent Loop 相同的路径/命令检查逻辑。
+  完整实施契约见 `FM_AGENT_SECURITY_DESIGN.md`。

@@ -733,6 +733,18 @@ impl ToolRegistry {
                     inner: result.result,
                     runtime: Arc::clone(&invocation.session.services.encrypted_skills_runtime),
                     session_id: invocation.session.thread_id.to_string(),
+                    engaged: invocation
+                        .turn
+                        .agent_security
+                        .as_ref()
+                        .map(crate::agent_security::AgentSecurityContext::engaged)
+                        .unwrap_or_else(|| {
+                            invocation
+                                .session
+                                .services
+                                .encrypted_skills_runtime
+                                .is_engaged(&invocation.session.thread_id.to_string())
+                        }),
                 });
                 dispatch_trace.record_completed(
                     &invocation,

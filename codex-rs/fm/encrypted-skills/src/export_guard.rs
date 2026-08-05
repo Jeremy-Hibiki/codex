@@ -7,7 +7,9 @@ pub const MIN_FRAGMENT_LEN: usize = 20;
 pub const MIN_QUOTED_FRAGMENT_LEN: usize = 12;
 
 /// True when `text` contains a known plaintext, a full trimmed line of it
-/// (>= 20 chars), or the 20-char prefix of such a line.
+/// (>= 20 chars), the 20-char prefix of such a line, or any >= 20-char
+/// contiguous fragment of such a line (so `sed`/`head`-style truncation and
+/// middle excerpts cannot smuggle content past matching).
 pub fn contains_known_plaintext(text: &str, known: &[&str]) -> bool {
     known
         .iter()
@@ -24,13 +26,21 @@ fn known_fragment_matches(text: &str, plaintext: &str) -> bool {
     if text.contains(plaintext) {
         return true;
     }
-    plaintext.lines().any(|line| {
-        let trimmed = line.trim();
-        if trimmed.len() < MIN_FRAGMENT_LEN {
-            return false;
-        }
-        let prefix: String = trimmed.chars().take(MIN_FRAGMENT_LEN).collect();
-        text.contains(trimmed) || text.contains(&prefix)
+    let lines: Vec<&str> = plaintext
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && line.chars().count() >= MIN_FRAGMENT_LEN)
+        .collect();
+    if lines.iter().any(|line| text.contains(line)) {
+        return true;
+    }
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() < MIN_FRAGMENT_LEN {
+        return false;
+    }
+    (0..=chars.len() - MIN_FRAGMENT_LEN).any(|start| {
+        let window: String = chars[start..start + MIN_FRAGMENT_LEN].iter().collect();
+        lines.iter().any(|line| line.contains(&window))
     })
 }
 
@@ -66,6 +76,38 @@ pub fn redact_known_plaintext(text: &str, known: &[&str]) -> String {
         out = redact_complete_short_lines(&out, &short_lines);
     }
     out = redact_quoted_fragments(&out, known);
+    redact_contiguous_fragments(&out, known)
+}
+
+/// Replaces any >= 20-char contiguous fragment of a known plaintext line,
+/// covering truncation from the middle (`cut`/`dd`/`tail -c`) and fragmentary
+/// tool output that neither forms a complete line nor starts at a line start.
+fn redact_contiguous_fragments(text: &str, known: &[&str]) -> String {
+    let lines: Vec<&str> = known
+        .iter()
+        .flat_map(|plaintext| plaintext.lines())
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && line.chars().count() >= MIN_FRAGMENT_LEN)
+        .collect();
+    if lines.is_empty() {
+        return text.to_string();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut index = 0usize;
+    while index < chars.len() {
+        let remaining = chars.len() - index;
+        if remaining >= MIN_FRAGMENT_LEN {
+            let window: String = chars[index..index + MIN_FRAGMENT_LEN].iter().collect();
+            if lines.iter().any(|line| line.contains(&window)) {
+                out.push_str(REDACTED_MARKER);
+                index += MIN_FRAGMENT_LEN;
+                continue;
+            }
+        }
+        out.push(chars[index]);
+        index += 1;
+    }
     out
 }
 

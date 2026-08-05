@@ -11,6 +11,7 @@ use codex_config::config_toml::EncryptedSkillsSdkToml;
 use codex_exec_server::CreateDirectoryOptions;
 use codex_exec_server::ExecutorFileSystem;
 use codex_protocol::models::PermissionProfile;
+use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::Op;
 use codex_protocol::user_input::UserInput;
@@ -226,9 +227,17 @@ async fn submit_single_turn(
     test: &core_test_support::test_codex::TestCodex,
     text: &str,
 ) -> Result<()> {
+    submit_single_turn_with_permission_profile(test, text, PermissionProfile::Disabled).await
+}
+
+async fn submit_single_turn_with_permission_profile(
+    test: &core_test_support::test_codex::TestCodex,
+    text: &str,
+    permission_profile: PermissionProfile,
+) -> Result<()> {
     let session_model = test.session_configured.model.clone();
     let (sandbox_policy, permission_profile) =
-        turn_permission_fields(PermissionProfile::Disabled, test.config.cwd.as_path());
+        turn_permission_fields(permission_profile, test.config.cwd.as_path());
     test.codex
         .submit(Op::UserInput {
             items: vec![UserInput::Text {
@@ -678,7 +687,18 @@ async fn script_execution_rewrites_original_path_and_redacts_output() -> Result<
     )
     .await;
 
-    submit_single_turn(&test, "please use $secret-skill").await?;
+    let cwd = test.config.cwd.clone();
+    submit_single_turn_with_permission_profile(
+        &test,
+        "please use $secret-skill",
+        PermissionProfile::workspace_write_with(
+            &[cwd],
+            NetworkSandboxPolicy::Restricted,
+            /*exclude_tmpdir_env_var*/ false,
+            /*exclude_slash_tmp*/ false,
+        ),
+    )
+    .await?;
 
     let rollout_path = test
         .session_configured

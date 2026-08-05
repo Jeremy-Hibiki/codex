@@ -1020,6 +1020,22 @@ fn redacts_turn_item_reasoning_text() {
 }
 
 #[test]
+fn redacts_turn_item_plan_text() {
+    let (runtime, _tmp) = loaded_runtime();
+    let item = TurnItem::Plan(codex_protocol::items::PlanItem {
+        id: "plan-1".to_string(),
+        text: "step: # Guarded content".to_string(),
+    });
+
+    let redacted = redact_turn_item(&runtime, "t1", item);
+
+    let TurnItem::Plan(plan) = redacted else {
+        panic!("expected plan turn item");
+    };
+    assert_eq!(plan.text.as_str(), "step: [REDACTED]");
+}
+
+#[test]
 fn redacts_tool_output_text_plaintext_for_durable_surfaces() {
     let (runtime, _tmp) = loaded_runtime();
     let item = ResponseItem::FunctionCallOutput {

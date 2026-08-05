@@ -169,11 +169,15 @@ in-flight 窗口定义：`load_or_register` 从 `decrypt_package()` 之后、`re
 
 待探索：P1 readonly_binds 方案落地后对正常 bash/脚本调用有无行为影响（挂载顺序、缺失 target 的 `--dir` 创建、与 writable roots/unreadable masks 的交互、bwrap 用户命名空间内的能力）；是否存在绕过路径让沙箱内进程访问宿主 `/dev/shm`（未挂 `--proc` 时的宿主 proc、symlink 组件、`/dev/fd`、继承的已打开 fd、bind 目标父目录、硬链接）；结论必须明确“能否被绕过、是否产生泄露”，有问题就修复并补回归测试。
 
+结论（已验证）：`--ro-bind` 在 base mounts 之后应用，缺失 source 跳过、缺失 target 以 `--dir` 创建（argv 单元测试）；新增真实 bwrap 执行测试确认逻辑路径可读、沙箱内 `/dev/shm` 为空、宿主 `/dev/shm` 标记不可见（`a74c497372`）。`--proc` 挂载在受限容器内可能被拒，但 `mount_proc=false` 下其余命名空间可正常创建；产品路径仍默认 `mount_proc=true`。
+
 ### TODO-2 Reasoning 与中间过程
 
 现状：assistant 消息与 reasoning 的红act只处理明文片段，不处理路径，且未做 engaged 门控；turn item/持久化红act覆盖明文，部分面覆盖路径。
 
 待探索：偏 Workflow 的 Skill 会让模型产出 task 列表、计划、步骤摘要、子代理消息等中间产物，这些可能复述 skill 内容或路径；逐一梳理 engaged 环境下所有模型可见中间产物（reasoning summary/raw、plan items、task list、agentMessage、commentary、subagent 消息、steer 注入、realtime 文本）是否都被明文+路径红act覆盖；前端展示策略需产品决策：防护上下文内这些产物是否允许展示给用户，默认按 I1/I2 不展示明文/路径，允许的只能是脱敏摘要。
+
+结论（已验证并修复）：模型流入口 `redact_assistant_reply_item` 覆盖 assistant message 与 reasoning summary/raw；持久化/事件面 `redact_turn_item` 覆盖 AgentMessage、Reasoning，本次补上 `PlanItem.text`（task 列表/计划即 Plan 面，含明文时整体红act）；subagent 消息走 agentMessage 面；commentary/steer 非模型产出，不适用；`thread/realtime/*` 排除（D10）。路径面统一由 `RedactingToolOutput`/`redact_storage_paths` 处理（模型上下文只见逻辑路径）。
 
 ### TODO-3 Rollout 与 State DB 的可读性
 
@@ -181,7 +185,11 @@ in-flight 窗口定义：`load_or_register` 从 `decrypt_package()` 之后、`re
 
 待探索：是否需要把 rollout 路径与 state db 路径纳入受保护路径集合（engaged 时禁止脚本/命令/搜索工具读取这些路径）；app-server 是否有对应读接口需要拦截；与 resume/fork/compact/rollback 等正常读取路径的兼容性；是否需要在文件系统层收紧（0600、移出可枚举目录、或对含明文的状态做加密）——注意 I1/I2 对“用户可见面”的约束同样适用于这些文件内容。
 
+结论（已验证）：持久化内容（rollout、compaction trace、fork 历史、state db 输入面）在源头上完成明文+路径红act（`RedactingToolOutput`、`redact_assistant_reply_items`、`redact_turn_item`、fork 隔离），测试断言 rollout 不含明文/解密路径；因此磁盘上不存在明文，脚本/命令读取 rollout/state db 不会触达明文，无需纳入受保护路径集合，也不影响 resume/fork/compact 正常读取。RPC 面历史读取（`thread/read` 等）的 engaged 判定属于 TODO-8 范围。
+
 ### TODO-4 TUI `!` 用户直执行令
+
+结论（已验证）：TUI `!` 走 app-server `thread/shellCommand`（README 明确 unsandboxed full access）；变更 4 在 `thread/shellCommand` 处理器入口用 `ensure_not_engaged_unsandboxed` 拦截，进程内任一会话 engaged 即拒绝；app-server E2E（`rpc_guard`）已覆盖该入口。`process/spawn` 同样拦截；`command/exec` 按命令是否引用受保护路径拦截。
 
 已核实：TUI 聊天输入以 `!` 开头会走 app-server `thread/shellCommand` → `Op::RunUserShell`，README 明确该命令 unsandboxed full access，且不经 `before_tool`。
 
@@ -223,14 +231,14 @@ in-flight 窗口定义：`load_or_register` 从 `decrypt_package()` 之后、`re
 | 模型读取技能文件（`cat <logical>/SKILL.md`） | guard 拦截（non_execution_access） | 明文内容/路径进入模型或输出 | Block，保持 |
 | 模型写脚本后间接读取（python 拼接/glob 访问 `/dev/shm`） | 字符串检测可被拼接绕过；bwrap 视图隔离可挡；full-access 挡不住 | 明文内容泄露给模型/输出 | P1 后逻辑路径 + bwrap 私有 `/dev/shm`；full-access 由 I6 强制沙箱封堵 |
 | 工具输出/错误回显含明文或真实路径 | `RedactingToolOutput` 红act + unrewrite | 未覆盖字段（部分错误消息、事件）泄露 | 统一红act链路，engaged 门控 |
-| reasoning / task 列表 / 计划等中间产物 | 当前只红act明文、未红act路径、未 engaged 门控 | Workflow Skill 内容/路径出现在 reasoning 或前端 | engaged 时全部红act；前端不展示明文/路径（产品决策） |
+| reasoning / task 列表 / 计划等中间产物 | 模型流入口与持久化面统一红act明文；路径面由 `RedactingToolOutput`/`redact_storage_paths` 处理；`PlanItem.text` 已补 | Workflow Skill 内容/路径出现在 reasoning 或前端 | engaged 时全部红act；前端不展示明文/路径（产品决策，TODO-2 已验证） |
 | guardian/auto-review 评审 | I23 已红act评审请求 | 审批事件、hooks、telemetry 仍见真实命令 | 扩展统一红act（TODO-2/5 覆盖） |
 | RPC fs 读（ACP 前端 `fs/readFile` 等） | 当前无 guard | 明文/路径直接返回前端 | engaged 时 Block（第 7 节） |
-| RPC/用户直执行令（`thread/shellCommand`、`command/exec`、`process/spawn`、TUI `!`） | 无沙箱/无 guard | 读明文、看路径 | engaged 时拒绝（D2）；技能脚本例外走 D9 自动 Permit |
+| RPC/用户直执行令（`thread/shellCommand`、`command/exec`、`process/spawn`、TUI `!`） | engaged 时处理器入口拦截（变更 4） | 读明文、看路径 | engaged 时拒绝（D2）；技能脚本例外走 D9 自动 Permit（TODO-4 已验证） |
 | 未 engaged 普通会话 | 无明文 | 无 | 零行为变化（I3） |
 | 插件 hooks | 可注册 hook 拿工具输入输出原文 | 明文/路径外发给插件 | 禁用（I7） |
 | MCP（官方提供） | 用户不能自装；工具参数/输出走 guard/红act | 当前上下文不构成问题 | 暂不纳入实施范围（记录，见 TODO-7） |
-| Rollout / State DB 被脚本读取 | 文件同 uid 可读 | 持久化明文/路径被外部读取 | TODO-3 探索 |
+| Rollout / State DB 被脚本读取 | 文件同 uid 可读，但持久化内容在源头已红act | 持久化明文/路径被外部读取 | 无明文 at rest，无需纳入受保护路径（TODO-3 已验证）；继续保留 resume/fork 正常读取 |
 | 关闭/降级沙箱 | 用户可配置 | 视图隔离失效，间接读取可达成 | I6 强制启用 + engaged 时拒绝解密/执行 |
 | telemetry/analytics 原始预览 | `log_preview()` 在红act包装前记录（已核实代码路径） | 工具输出预览含明文/路径进入遥测日志 | engaged 时先红act再记录（TODO-8） |
 | `thread/read`、`thread/turns\|items/list`、`thread/searchOccurrences` | 当前未纳入 RPC 检查 | 若触达 in-memory 明文或持久化红act不完整，历史/搜索结果泄露给前端 | 验证持久化红act完整性；engaged 时红act/Block（TODO-3/8） |

@@ -72,6 +72,24 @@ After I19: `fm-encrypted-skills` 131 passed (4 new normalization tests),
 `codex-core` `encrypted_skills` filter 74 passed (1 new normalized-variant
 guard test), `spawn` filter 102 passed.
 
+### 最终验证（agent-security 全部变更后）
+
+- `just test -p fm-encrypted-skills`: 142 passed。
+- `just test -p codex-protocol`: 265 passed。
+- `just test -p codex-cli`: 290 passed。
+- `just test -p codex-app-server`: 1028 passed（3 个 zsh-fork 用例 flaky 重试通过）。
+- `just test -p codex-linux-sandbox`: 122/124 passed；2 个失败为已知环境性网络用例
+  （wget 超时、socketpair），与本次改动无关。
+- `just test -p codex-core`（`encrypted_skills` 过滤）: 87 passed；guard 73 passed；
+  agent_security 6 passed。全量 3208 个用例中 21 个失败 + 1 个超时，均为环境相关
+  （真实 `~/.agents/skills` 污染 skills 目录测试、项目信任状态、代理网络下的
+  approvals/network/unified_exec、MCP 超时），与本变更涉及文件无关；其中
+  `script_execution_rewrites_original_path_and_redacts_output` 因产品策略（engaged 必须
+  沙箱）改为 workspace-write 配置后通过。
+- `bazel build //codex-rs/cli:codex //codex-rs/app-server:codex-app-server
+  //codex-rs/linux-sandbox:codex-linux-sandbox //codex-rs/fm/encrypted-skills:encrypted-skills`:
+  成功；`just bazel-lock-update` 无 lockfile 变化（zip 已在依赖图中）。
+
 After I20–I21: `fm-encrypted-skills` 135 passed (4 new shared-sink tests +
 concurrent-load single-decryption assertion), `codex-core` `encrypted_skills`
 filter 74 passed, `spawn` filter 102 passed. F2 kept as-is (stale-token
@@ -156,3 +174,20 @@ and unrelated to this fix set.
 - 测试策略：插件/marketplace CLI 集成测试改为断言产品策略拒绝；core-plugins 单元测试仍覆盖
   底层插件逻辑；app-server 新增 `product_policy` 集成测试覆盖 thread/turn start 的
   danger-full-access 拒绝。
+
+## TODO-1 验证记录：bwrap 只读 bind 真实执行
+
+新增 `codex-linux-sandbox` 真实执行测试 `readonly_binds_are_visible_in_real_bwrap_and_dev_shm_stays_private`：
+在宿主 `/dev/shm` 放置标记文件、把临时解密目录 `--ro-bind` 到逻辑技能路径后启动真实 bwrap，
+断言（1）逻辑路径下能读到绑定内容；（2）沙箱内 `/dev/shm` 为空；（3）宿主 `/dev/shm` 标记
+在沙箱内不可见。该测试在 bwrap 不可用或无法创建用户命名空间时自动跳过。
+
+## TODO-2/3/4 验证记录
+
+- TODO-2：发现并修复 `TurnItem::Plan`（task 列表/计划）未红act的缺口——`redact_turn_item` 新增
+  `PlanItem.text` 红act并补测试；reasoning summary/raw、agentMessage 已有覆盖；路径面由
+  `RedactingToolOutput`/`redact_storage_paths` 统一处理；subagent 消息走 agentMessage 面。
+- TODO-3：确认 rollout/compaction/fork/state 持久化在源头红act（有测试断言），磁盘无明文，
+  不需要把 rollout/state db 路径纳入受保护路径集合；resume/fork 正常读取不受影响。
+- TODO-4：确认 TUI `!` 走 `thread/shellCommand`，变更 4 的 `ensure_not_engaged_unsandboxed`
+  在处理器入口拦截，`rpc_guard` E2E 已覆盖；`process/spawn` 同样拦截。

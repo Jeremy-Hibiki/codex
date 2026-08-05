@@ -1,5 +1,6 @@
 //! Host-facing runtime that owns decryption state for encrypted skills.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -33,6 +34,13 @@ use crate::token::random_hex;
 pub struct EncryptedSkillRuntime {
     registry: Mutex<Registry>,
     cache: Mutex<ContentCache>,
+    /// Serializes the "cache store + registry register" sequence against
+    /// per-session teardown (`clear_session`), so a load cannot register a
+    /// record pointing at a cache entry that teardown already dropped.
+    state_lock: Mutex<()>,
+    /// Per-(session, skill) gates so concurrent loads of the same skill share
+    /// one decryption instead of racing to decrypt and replace each other.
+    inflight: Mutex<HashMap<(String, String), Arc<Mutex<()>>>>,
     sdk: Arc<dyn EnvelopeSdk>,
     mem_root: PathBuf,
     namespace: String,
@@ -81,6 +89,8 @@ impl EncryptedSkillRuntime {
         Self {
             registry: Mutex::new(Registry::new(clock, ttl)),
             cache: Mutex::new(ContentCache::new(64)),
+            state_lock: Mutex::new(()),
+            inflight: Mutex::new(HashMap::new()),
             sdk,
             mem_root,
             namespace: process_namespace(),
@@ -98,14 +108,47 @@ impl EncryptedSkillRuntime {
         skill_name: &str,
         package_path: &Path,
     ) -> Result<String, EnvelopeError> {
+        let key = (session_id.to_string(), skill_name.to_string());
+        let gate = {
+            let mut inflight = self.inflight.lock().map_err(lock_error)?;
+            inflight
+                .entry(key.clone())
+                .or_insert_with(|| Arc::new(Mutex::new(())))
+                .clone()
+        };
+        // Serialize concurrent loads for the same session+skill: the second
+        // caller waits here and then hits the registry cache-hit path.
+        let _gate = gate.lock().map_err(lock_error)?;
+        let result = self.load_or_register_inner(session_id, skill_name, package_path);
+        drop(_gate);
+        if let Ok(mut inflight) = self.inflight.lock() {
+            if inflight
+                .get(&key)
+                .is_some_and(|candidate| Arc::ptr_eq(candidate, &gate))
+            {
+                inflight.remove(&key);
+            }
+        }
+        result
+    }
+
+    fn load_or_register_inner(
+        &self,
+        session_id: &str,
+        skill_name: &str,
+        package_path: &Path,
+    ) -> Result<String, EnvelopeError> {
         {
-            let registry = self.registry.lock().map_err(lock_error)?;
+            let mut registry = self.registry.lock().map_err(lock_error)?;
             if let Some(record) = registry.get(session_id, skill_name)
                 && registry.is_loaded(session_id, skill_name)
             {
                 let token = record.token.clone();
+                // Refresh inside the same lock as the liveness check so a
+                // concurrent sweep cannot evict the skill between the check
+                // and the touch (TOCTOU).
+                registry.touch_skill(session_id, skill_name);
                 drop(registry);
-                self.touch(session_id, skill_name);
                 self.emit(AuditEvent::Decryption {
                     session_id: session_id.to_string(),
                     skill_name: skill_name.to_string(),
@@ -135,6 +178,15 @@ impl EncryptedSkillRuntime {
             base_dir: package_path
                 .parent()
                 .map(|parent| parent.to_string_lossy().into_owned()),
+        };
+        // Hold the lifecycle lock across store+register so teardown cannot
+        // drop the cache between them and leave a dangling registry record.
+        let _state = match self.state_lock.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                let _ = secure_wipe(&dir);
+                return Err(lock_error(poisoned));
+            }
         };
         let hex = match self.cache.lock() {
             Ok(mut cache) => cache.store(session_id, content, |hex| {
@@ -293,6 +345,10 @@ impl EncryptedSkillRuntime {
     }
 
     fn clear_session(&self, session_id: &str, reason: &str) {
+        let Ok(_state) = self.state_lock.lock() else {
+            tracing::error!("encrypted-skill lifecycle lock poisoned; session cleanup skipped");
+            return;
+        };
         let dirs = self
             .registry
             .lock()

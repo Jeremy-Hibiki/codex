@@ -36,7 +36,7 @@ pub use codex_thread::TryStartTurnIfIdleRejectionReason;
 pub use session::turn_context::TurnContext;
 mod agent;
 mod agent_communication;
-mod agent_security;
+pub mod agent_security;
 mod attestation;
 mod codex_delegate;
 mod command_canonicalization;

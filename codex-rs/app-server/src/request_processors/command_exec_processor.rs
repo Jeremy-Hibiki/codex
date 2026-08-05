@@ -1,3 +1,4 @@
+use super::rpc_guard;
 use super::*;
 
 #[derive(Clone)]
@@ -33,6 +34,7 @@ impl CommandExecRequestProcessor {
         request_id: &ConnectionRequestId,
         params: CommandExecParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        rpc_guard::ensure_command_not_guarded(&params.command.join(" "))?;
         self.require_local_environment()?;
         self.exec_one_off_command(request_id, params)
             .await

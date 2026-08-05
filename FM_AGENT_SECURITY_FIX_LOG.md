@@ -132,3 +132,27 @@ and unrelated to this fix set.
   app-server 能按 thread_id 解析到该 session 的上下文（例如把 runtime 提升为进程级共享服务，
   registry 内部仍按 thread_id 隔离），并复用与 Agent Loop 相同的路径/命令检查逻辑。
   完整实施契约见 `FM_AGENT_SECURITY_DESIGN.md`。
+- **I29（未修复，TODO-9）**：`features.plugins=true` 配置下插件启动加载/同步仍未在产品层强制
+  关闭；app-server 插件/marketplace RPC（`plugin/install`、`marketplace/add` 等）与 TUI 插件
+  入口尚未拦截；产品构建需默认禁用 plugins feature 或由受信管理工具下发配置，安全路线不得挂
+  在用户可关闭的 flag 下。
+
+| 27 | `1c694a0269` | openspec: agent-security-rpc-guard | 进程级 engaged 注册表（Weak，`any_engaged`/`engaged_guarded_paths`）；telemetry 工具预览先包 `RedactingToolOutput` 再取 `log_preview`（日志不再含明文/路径）；core `agent_security::rpc` 纯函数（fs path/command/args）；app-server RPC 面接线：fs 读/枚举/watch/写/复制/删除、`command/exec`、`thread/shellCommand`、`process/spawn`、`thread/inject_items`、`thread/name|goal|metadata`；无 thread_id 的 RPC 采用进程级“任一 engaged”保守判定（决策记录）；E2E 集成测试留待最终验证 |
+| 28 | `e29eda359d` | openspec: agent-security-product-policy | I6/I7/D10 落地：core `ensure_encrypted_skill_sandbox`（engaged 且无有效沙箱 → 拒绝执行）；CLI 拒绝 `--sandbox danger-full-access` 与 `dangerously-bypass-approvals-and-sandbox`（根级 `interactive.shared` 之外，覆盖 exec/resume/fork/archive/delete/unarchive 子命令自身 shared 参数），拒绝 `plugin`/`marketplace` 子命令；app-server `thread/start`/`turn/start` 请求参数携带 danger-full-access 时 `invalid_request` 拒绝；插件/marketplace CLI 集成测试收敛为“策略拒绝”断言（core-plugins 单元测试保留底层覆盖）；app-server 既有 full-access 用例改为配置级 full-access 或 WorkspaceWrite 保持原意图；新增 `product_policy` 集成测试 |
+
+## I28 补充说明：产品策略边界与决策记录
+
+- 强制沙箱（I6）落在三层：engaged 运行期断言（orchestrator 兜底，`initial_sandbox == None`
+  即拒绝）、CLI 参数拒绝、app-server 请求参数拒绝。`config.toml` 直改与同 uid 直接读写不在
+  产品保证范围内（同 uid 威胁模型，官方入口必须全部封住）。
+- `dangerously_bypass_approvals_and_sandbox` 与 `--sandbox danger-full-access` 等价，一并拒绝；
+  exec/resume/fork/archive/delete/unarchive 子命令自身携带的 shared 参数也要检查（根级
+  `interactive.shared` 覆盖不到子命令参数）。
+- 插件禁令（I7）当前落在 CLI 入口；app-server 插件/marketplace RPC 与 TUI 入口标记为最终阶段
+  （TODO-9）。核心配置 `features.plugins=true` 的启动加载暂未在产品层强制关闭，产品构建需由
+  默认配置/受信管理工具保证，已列入“待处理问题”。
+- D10 确认（用户决策回填）：`thread/realtime/*` 产品不提供，排除在范围外；客户端不提供任何
+  改配置/改模型配置入口；Skill 仅可配置启用/禁用；配置由未来受信管理工具负责。
+- 测试策略：插件/marketplace CLI 集成测试改为断言产品策略拒绝；core-plugins 单元测试仍覆盖
+  底层插件逻辑；app-server 新增 `product_policy` 集成测试覆盖 thread/turn start 的
+  danger-full-access 拒绝。

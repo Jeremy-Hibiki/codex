@@ -1,3 +1,4 @@
+use super::rpc_guard;
 use super::*;
 use codex_agent_extension::AgentInvocation;
 use codex_agent_extension::AgentRun;
@@ -180,6 +181,14 @@ impl TurnRequestProcessor {
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        if params.sandbox_policy == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess)
+            || params.permissions.as_deref()
+                == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS)
+        {
+            return Err(crate::error_code::invalid_request(
+                "danger-full-access is disabled by product policy",
+            ));
+        }
         validate_user_input_image_urls(&params.input)?;
         self.turn_start_inner(
             request_id,
@@ -196,6 +205,9 @@ impl TurnRequestProcessor {
         &self,
         params: ThreadInjectItemsParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        let value = serde_json::to_value(&params)
+            .map_err(|err| invalid_request(format!("invalid inject items params: {err}")))?;
+        rpc_guard::ensure_args_not_guarded(&value)?;
         self.thread_inject_items_response_inner(params)
             .await
             .map(|response| Some(response.into()))

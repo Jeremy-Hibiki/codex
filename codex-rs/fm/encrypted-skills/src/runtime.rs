@@ -6,6 +6,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::OnceLock;
+use std::sync::Weak;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
@@ -57,9 +59,38 @@ pub struct EncryptedSkillRuntime {
 
 pub const DEFAULT_MIN_FREE_BYTES: u64 = 4 * 1024 * 1024;
 
+/// Process-level registry of live runtimes, used by thread-less surfaces
+/// (app-server RPC) to determine whether any session is engaged.
+static RUNTIME_REGISTRY: OnceLock<Mutex<Vec<Weak<EncryptedSkillRuntime>>>> = OnceLock::new();
+
+fn runtime_registry() -> &'static Mutex<Vec<Weak<EncryptedSkillRuntime>>> {
+    RUNTIME_REGISTRY.get_or_init(|| Mutex::new(Vec::new()))
+}
+
 impl EncryptedSkillRuntime {
     pub fn new(sdk: Arc<dyn EnvelopeSdk>, ttl: TtlConfig, mem_root: PathBuf) -> Self {
         Self::new_with_audit(sdk, ttl, mem_root, None)
+    }
+
+    /// Constructs a runtime wrapped in `Arc` and registers it in the
+    /// process-level registry so thread-less surfaces can observe engagement.
+    pub fn new_shared(sdk: Arc<dyn EnvelopeSdk>, ttl: TtlConfig, mem_root: PathBuf) -> Arc<Self> {
+        Self::new_shared_with_audit(sdk, ttl, mem_root, None)
+    }
+
+    /// Constructs a registered runtime with an audit sink.
+    pub fn new_shared_with_audit(
+        sdk: Arc<dyn EnvelopeSdk>,
+        ttl: TtlConfig,
+        mem_root: PathBuf,
+        audit: Option<Arc<dyn AuditSink>>,
+    ) -> Arc<Self> {
+        let runtime = Arc::new(Self::new_with_audit(sdk, ttl, mem_root, audit));
+        runtime_registry()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(Arc::downgrade(&runtime));
+        runtime
     }
 
     pub fn new_with_audit(
@@ -365,6 +396,42 @@ impl EncryptedSkillRuntime {
         registered || in_flight
     }
 
+    /// True when this runtime has any engaged session or in-flight decryption.
+    fn has_engaged_state(&self) -> bool {
+        if self
+            .in_flight_sessions
+            .lock()
+            .map(|sessions| !sessions.is_empty())
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        self.registry
+            .lock()
+            .map(|registry| registry.has_any_session())
+            .unwrap_or(false)
+    }
+
+    /// Returns the mem root and every decrypted directory of engaged sessions.
+    fn engaged_session_paths(&self) -> Vec<PathBuf> {
+        let mut sessions: std::collections::HashSet<String> = self
+            .registry
+            .lock()
+            .map(|registry| registry.session_ids().cloned().collect())
+            .unwrap_or_default();
+        if let Ok(in_flight) = self.in_flight_sessions.lock() {
+            sessions.extend(in_flight.iter().cloned());
+        }
+        let mut out = Vec::new();
+        for session_id in sessions {
+            if self.is_engaged(&session_id) {
+                out.push(self.mem_root.clone());
+                out.extend(self.decrypted_dirs(&session_id));
+            }
+        }
+        out
+    }
+
     /// Returns `(decrypted_dir, original_dir)` pairs for every skill
     /// registered to this session whose original directory is non-empty.
     pub fn path_mappings(&self, session_id: &str) -> Vec<(PathBuf, PathBuf)> {
@@ -539,6 +606,36 @@ impl EncryptedSkillRuntime {
         }
         Ok(())
     }
+}
+
+/// Returns true when any registered runtime has an engaged session.
+pub fn any_engaged() -> bool {
+    let mut registry = runtime_registry()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    registry.retain(|weak| weak.strong_count() > 0);
+    registry.iter().any(|weak| {
+        weak.upgrade()
+            .is_some_and(|runtime| runtime.has_engaged_state())
+    })
+}
+
+/// Returns the mem roots and decrypted directories of every engaged session
+/// across registered runtimes (deduplicated and sorted).
+pub fn engaged_guarded_paths() -> Vec<PathBuf> {
+    let mut registry = runtime_registry()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    registry.retain(|weak| weak.strong_count() > 0);
+    let mut paths = Vec::new();
+    for weak in registry.iter() {
+        if let Some(runtime) = weak.upgrade() {
+            paths.extend(runtime.engaged_session_paths());
+        }
+    }
+    paths.sort();
+    paths.dedup();
+    paths
 }
 
 /// RAII marker that keeps a session's in-flight decryption visible to

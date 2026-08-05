@@ -243,6 +243,29 @@ fn redacting_tool_output_redacts_when_engaged() {
 }
 
 #[test]
+fn redacting_tool_output_log_preview_is_redacted_when_engaged() {
+    let (runtime, _tmp) = loaded_runtime();
+    let runtime = Arc::new(runtime);
+    let decrypted = runtime.decrypted_dirs("t1").pop().unwrap();
+    let raw_preview = format!("preview {}", decrypted.join("run.sh").to_string_lossy());
+    let output = RedactingToolOutput {
+        inner: Box::new(FunctionToolOutput::from_text(raw_preview, Some(true))),
+        runtime: Arc::clone(&runtime),
+        session_id: "t1".to_string(),
+        engaged: true,
+    };
+    let preview = output.log_preview();
+    assert!(
+        !preview.contains(&runtime.mem_root().to_string_lossy().to_string()),
+        "telemetry preview must not contain the memory root: {preview}"
+    );
+    assert!(
+        preview.contains("/skills/run.sh"),
+        "decrypted dir should unrewrite to the original skill path in preview: {preview}"
+    );
+}
+
+#[test]
 fn binds_active_logical_script_execution_is_allowed() {
     let (runtime, _tmp) = loaded_runtime();
     let decision = before_tool_with_runtime_and_binds(

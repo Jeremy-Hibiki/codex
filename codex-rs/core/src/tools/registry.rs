@@ -624,6 +624,14 @@ impl ToolRegistry {
         let response_cell = tokio::sync::Mutex::new(None);
         let invocation_for_tool = invocation.clone();
         let log_payload = invocation.payload.log_payload();
+        let telemetry_runtime = Arc::clone(&invocation.session.services.encrypted_skills_runtime);
+        let telemetry_session_id = invocation.session.thread_id.to_string();
+        let telemetry_engaged = invocation
+            .turn
+            .agent_security
+            .as_ref()
+            .map(crate::agent_security::AgentSecurityContext::engaged)
+            .unwrap_or_else(|| telemetry_runtime.is_engaged(&telemetry_session_id));
 
         let result = otel
             .log_tool_result_with_tags(
@@ -637,7 +645,16 @@ impl ToolRegistry {
                     let response_cell = &response_cell;
                     async move {
                         match handle_any_tool(tool.as_ref(), invocation_for_tool).await {
-                            Ok(result) => {
+                            Ok(mut result) => {
+                                // Wrap before computing the telemetry preview so
+                                // logs never carry raw decrypted paths/plaintext.
+                                result.result =
+                                    Box::new(crate::encrypted_skills_guard::RedactingToolOutput {
+                                        inner: result.result,
+                                        runtime: Arc::clone(&telemetry_runtime),
+                                        session_id: telemetry_session_id.clone(),
+                                        engaged: telemetry_engaged,
+                                    });
                                 let preview = result.result.log_preview();
                                 let success = result.result.success_for_logging();
                                 let mut guard = response_cell.lock().await;
@@ -737,23 +754,6 @@ impl ToolRegistry {
                         });
                     }
                 }
-                result.result = Box::new(crate::encrypted_skills_guard::RedactingToolOutput {
-                    inner: result.result,
-                    runtime: Arc::clone(&invocation.session.services.encrypted_skills_runtime),
-                    session_id: invocation.session.thread_id.to_string(),
-                    engaged: invocation
-                        .turn
-                        .agent_security
-                        .as_ref()
-                        .map(crate::agent_security::AgentSecurityContext::engaged)
-                        .unwrap_or_else(|| {
-                            invocation
-                                .session
-                                .services
-                                .encrypted_skills_runtime
-                                .is_engaged(&invocation.session.thread_id.to_string())
-                        }),
-                });
                 dispatch_trace.record_completed(
                     &invocation,
                     &result.call_id,

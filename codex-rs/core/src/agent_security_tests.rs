@@ -10,6 +10,8 @@ use fm_encrypted_skills::sdk::EnvelopeSdk;
 use fm_encrypted_skills::sdk::PackageEntry;
 
 use super::AgentSecurityContext;
+use super::ensure_encrypted_skill_sandbox;
+use super::rpc;
 use super::sandbox_applies_binds;
 
 struct TestSdk;
@@ -73,4 +75,58 @@ fn sandbox_applies_binds_false_without_bwrap() {
         /*use_legacy_landlock*/ true,
         /*enforce_managed_network*/ false,
     ));
+}
+
+#[test]
+fn rpc_guard_blocks_guarded_paths_when_engaged() {
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime = Arc::new(EncryptedSkillRuntime::new_shared(
+        Arc::new(TestSdk),
+        TtlConfig::default(),
+        tmp.path().join("mem-root"),
+    ));
+    runtime
+        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+        .unwrap();
+    let decrypted = runtime.decrypted_dirs("t1").pop().unwrap();
+
+    assert!(rpc::is_guarded_path(&decrypted.join("SKILL.md")));
+    assert!(rpc::is_guarded_path(runtime.mem_root()));
+    assert!(rpc::command_references_guarded_path(&format!(
+        "cat {}",
+        decrypted.join("SKILL.md").to_string_lossy()
+    )));
+    assert!(rpc::args_reference_guarded_path(&serde_json::json!({
+        "path": decrypted.join("SKILL.md").to_string_lossy()
+    })));
+
+    drop(runtime);
+    assert!(!rpc::is_guarded_path(&decrypted.join("SKILL.md")));
+}
+
+#[test]
+fn rpc_guard_allows_unengaged_paths() {
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime = Arc::new(EncryptedSkillRuntime::new_shared(
+        Arc::new(TestSdk),
+        TtlConfig::default(),
+        tmp.path().join("mem-root"),
+    ));
+    let own_path = runtime.mem_root().join("own-file");
+
+    assert!(!rpc::is_guarded_path(&own_path));
+    assert!(!rpc::command_references_guarded_path(&format!(
+        "cat {}",
+        own_path.to_string_lossy()
+    )));
+    assert!(!rpc::args_reference_guarded_path(&serde_json::json!({
+        "path": own_path.to_string_lossy()
+    })));
+}
+
+#[test]
+fn ensure_encrypted_skill_sandbox_gates_engaged_execution() {
+    assert!(ensure_encrypted_skill_sandbox(true, false).is_err());
+    assert!(ensure_encrypted_skill_sandbox(true, true).is_ok());
+    assert!(ensure_encrypted_skill_sandbox(false, false).is_ok());
 }

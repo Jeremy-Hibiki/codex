@@ -1,3 +1,4 @@
+use super::rpc_guard;
 use super::*;
 use codex_goal_extension::GoalObjectiveUpdate;
 use codex_goal_extension::GoalService;
@@ -41,6 +42,9 @@ impl ThreadGoalRequestProcessor {
         request_id: ConnectionRequestId,
         params: ThreadGoalSetParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        let value = serde_json::to_value(&params)
+            .map_err(|err| invalid_request(format!("invalid goal params: {err}")))?;
+        rpc_guard::ensure_args_not_guarded(&value)?;
         self.thread_goal_set_inner(request_id, params)
             .await
             .map(|()| None)

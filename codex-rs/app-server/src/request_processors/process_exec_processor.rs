@@ -3,6 +3,7 @@ use std::collections::hash_map::Entry;
 use std::sync::Arc;
 use std::time::Duration;
 
+use super::rpc_guard;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use codex_app_server_protocol::ClientResponsePayload;
@@ -70,6 +71,7 @@ impl ProcessExecRequestProcessor {
         request_id: ConnectionRequestId,
         params: ProcessSpawnParams,
     ) -> Result<(), JSONRPCErrorError> {
+        rpc_guard::ensure_not_engaged_unsandboxed()?;
         self.require_local_environment()?;
         let ProcessSpawnParams {
             command,

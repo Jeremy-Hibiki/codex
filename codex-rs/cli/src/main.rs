@@ -955,6 +955,26 @@ fn stage_str(stage: Stage) -> &'static str {
     }
 }
 
+fn requests_full_access(shared: &SharedCliOptions) -> bool {
+    shared.dangerously_bypass_approvals_and_sandbox
+        || matches!(
+            shared.sandbox_mode,
+            Some(codex_utils_cli::SandboxModeCliArg::DangerFullAccess)
+        )
+}
+
+fn subcommand_requests_full_access(subcommand: &Subcommand) -> bool {
+    match subcommand {
+        Subcommand::Exec(cli) => requests_full_access(&cli.shared),
+        Subcommand::Resume(cmd) => requests_full_access(&cmd.config_overrides.0.shared),
+        Subcommand::Fork(cmd) => requests_full_access(&cmd.config_overrides.0.shared),
+        Subcommand::Archive(cmd) => requests_full_access(&cmd.config_overrides.shared),
+        Subcommand::Unarchive(cmd) => requests_full_access(&cmd.config_overrides.shared),
+        Subcommand::Delete(cmd) => requests_full_access(&cmd.session.config_overrides.shared),
+        _ => false,
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let remote_control_disabled = codex_app_server::take_remote_control_disabled_env();
     arg0_dispatch_or_else(move |arg0_paths: Arg0DispatchPaths| async move {
@@ -1005,6 +1025,23 @@ async fn cli_main(
     reject_root_strict_config_for_subcommand(root_strict_config, &subcommand)?;
     if let Some(subcommand) = subcommand.as_ref() {
         profile_v2_for_subcommand(&interactive, subcommand)?;
+    }
+
+    // Product policy (I6/I7): full-access execution and plugin/marketplace
+    // management are disabled in this build.
+    if requests_full_access(&interactive.shared)
+        || subcommand
+            .as_ref()
+            .is_some_and(subcommand_requests_full_access)
+    {
+        return Err(anyhow::anyhow!(
+            "full-access execution is disabled by product policy; use a sandboxed permission profile"
+        ));
+    }
+    if matches!(subcommand.as_ref(), Some(Subcommand::Plugin(_))) {
+        return Err(anyhow::anyhow!(
+            "plugin and marketplace management is disabled by product policy"
+        ));
     }
 
     // Verify the product license before entering any of the main product

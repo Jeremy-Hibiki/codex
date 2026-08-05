@@ -36,7 +36,7 @@ fn known_fragment_matches(text: &str, plaintext: &str) -> bool {
     }
     let lines: Vec<String> = plaintext
         .lines()
-        .map(|line| normalize_text(line))
+        .map(normalize_text)
         .filter(|line| !line.is_empty() && line.chars().count() >= MIN_FRAGMENT_LEN)
         .collect();
     if lines.iter().any(|line| norm_text.contains(line.as_str())) {
@@ -170,7 +170,7 @@ fn redact_normalized_lines(text: &str, known: &[&str]) -> String {
     let normalized_lines: Vec<String> = known
         .iter()
         .flat_map(|plaintext| plaintext.lines())
-        .map(|line| normalize_text(line))
+        .map(normalize_text)
         .filter(|line| !line.is_empty())
         .collect();
     if normalized_lines.is_empty() {

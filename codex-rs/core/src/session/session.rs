@@ -1156,12 +1156,12 @@ impl Session {
                 guardian_rejection_circuit_breaker: Mutex::new(Default::default()),
                 runtime_handle: tokio::runtime::Handle::current(),
                 skills_service,
-                encrypted_skills_runtime: Arc::new(fm_encrypted_skills::runtime::EncryptedSkillRuntime::new_with_audit(
+                encrypted_skills_runtime: fm_encrypted_skills::runtime::EncryptedSkillRuntime::new_shared_with_audit(
                     encrypted_skills_sdk,
                     config.encrypted_skills_ttl.clone(),
                     encrypted_skills_mem_root.clone(),
                     encrypted_skills_audit,
-                )),
+                ),
                 agents_md_manager,
                 plugins_manager: Arc::clone(&plugins_manager),
                 mcp_manager: Arc::clone(&mcp_manager),

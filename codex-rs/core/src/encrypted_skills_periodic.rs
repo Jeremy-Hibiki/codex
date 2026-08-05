@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use codex_encrypted_skills::runtime::EncryptedSkillRuntime;
+use fm_encrypted_skills::runtime::EncryptedSkillRuntime;
 use tokio::runtime::Handle;
 
 /// Default interval for the idle sweep (30s).

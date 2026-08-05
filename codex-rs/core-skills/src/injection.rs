@@ -9,7 +9,6 @@ use codex_analytics::AnalyticsEventsClient;
 use codex_analytics::InvocationType;
 use codex_analytics::SkillInvocation;
 use codex_analytics::TrackEventsContext;
-use codex_encrypted_skills::runtime::EncryptedSkillRuntime;
 use codex_exec_server::LOCAL_FS;
 use codex_otel::SessionTelemetry;
 use codex_otel::sanitize_metric_tag_value;
@@ -17,6 +16,7 @@ use codex_protocol::user_input::UserInput;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::PathUri;
 use codex_utils_plugins::mention_syntax::TOOL_MENTION_SIGIL;
+use fm_encrypted_skills::runtime::EncryptedSkillRuntime;
 
 #[derive(Debug, Default)]
 pub struct SkillInjections {

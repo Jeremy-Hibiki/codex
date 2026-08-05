@@ -1,11 +1,11 @@
 pub use codex_api::ResponseEvent;
-use codex_encrypted_skills::runtime::EncryptedSkillRuntime;
 use codex_protocol::error::Result;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_tools::ToolSpec;
+use fm_encrypted_skills::runtime::EncryptedSkillRuntime;
 use futures::Stream;
 use serde_json::Value;
 use std::pin::Pin;

@@ -2344,6 +2344,7 @@ dependencies = [
  "codex-utils-path",
  "codex-windows-sandbox",
  "crossterm",
+ "fm-license",
  "http 1.4.0",
  "insta",
  "libc",
@@ -2354,6 +2355,7 @@ dependencies = [
  "regex-lite",
  "serde",
  "serde_json",
+ "signal-hook",
  "sqlx",
  "supports-color 3.0.2",
  "sys-locale",
@@ -2636,7 +2638,6 @@ dependencies = [
  "codex-context-fragments",
  "codex-core-plugins",
  "codex-core-skills",
- "codex-encrypted-skills",
  "codex-exec-server",
  "codex-exec-server-test-support",
  "codex-execpolicy",
@@ -2695,6 +2696,7 @@ dependencies = [
  "dirs",
  "dunce",
  "eventsource-stream",
+ "fm-encrypted-skills",
  "futures",
  "http 1.4.0",
  "iana-time-zone",
@@ -2826,7 +2828,6 @@ dependencies = [
  "codex-analytics",
  "codex-config",
  "codex-context-fragments",
- "codex-encrypted-skills",
  "codex-exec-server",
  "codex-login",
  "codex-model-provider",
@@ -2840,6 +2841,7 @@ dependencies = [
  "codex-utils-plugins",
  "dirs",
  "dunce",
+ "fm-encrypted-skills",
  "futures",
  "pretty_assertions",
  "serde",
@@ -2850,17 +2852,6 @@ dependencies = [
  "tokio",
  "toml 0.9.11+spec-1.1.0",
  "tracing",
- "zip",
-]
-
-[[package]]
-name = "codex-encrypted-skills"
-version = "0.146.0"
-dependencies = [
- "libc",
- "rand 0.9.3",
- "tempfile",
- "thiserror 2.0.18",
  "zip",
 ]
 
@@ -6192,6 +6183,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "fm-encrypted-skills"
+version = "0.146.0"
+dependencies = [
+ "libc",
+ "rand 0.9.3",
+ "tempfile",
+ "thiserror 2.0.18",
+ "zip",
+]
+
+[[package]]
+name = "fm-license"
+version = "0.146.0"
+dependencies = [
+ "anyhow",
+ "lmclient-rust-sdk",
+ "pretty_assertions",
+ "tracing",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8779,6 +8791,14 @@ name = "litrs"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
+
+[[package]]
+name = "lmclient-rust-sdk"
+version = "1.2.0"
+source = "git+http://192.168.131.126:8089/jiangzhengqi/lmclient-rust-sdk.git?tag=v1.2.0#c49257a2936508fba488984065a9c62ea08aaf71"
+dependencies = [
+ "clap",
+]
 
 [[package]]
 name = "local-waker"

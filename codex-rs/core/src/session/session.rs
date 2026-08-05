@@ -525,11 +525,10 @@ impl Session {
     ) -> anyhow::Result<Arc<Self>> {
         // Process-level encrypted-skill memory root: wipe stale decrypted
         // directories once per process, then recreate with mode 0700.
-        let encrypted_skills_mem_root =
-            codex_encrypted_skills::mem_root::resolve_default_mem_root();
-        if let Err(error) = codex_encrypted_skills::mem_root::init_mem_root_once(
-            encrypted_skills_mem_root.as_path(),
-        ) {
+        let encrypted_skills_mem_root = fm_encrypted_skills::mem_root::resolve_default_mem_root();
+        if let Err(error) =
+            fm_encrypted_skills::mem_root::init_mem_root_once(encrypted_skills_mem_root.as_path())
+        {
             tracing::warn!(
                 error = %error,
                 root = %encrypted_skills_mem_root.display(),
@@ -1077,14 +1076,14 @@ impl Session {
             ));
             let session_extension_data =
                 codex_extension_api::ExtensionData::new(session_id.to_string());
-            let encrypted_skills_sdk = codex_encrypted_skills::sdk::sdk_for(match config
+            let encrypted_skills_sdk = fm_encrypted_skills::sdk::sdk_for(match config
                 .encrypted_skills_sdk
             {
                 codex_config::config_toml::EncryptedSkillsSdkToml::Unavailable => {
-                    codex_encrypted_skills::sdk::SdkKind::Unavailable
+                    fm_encrypted_skills::sdk::SdkKind::Unavailable
                 }
                 codex_config::config_toml::EncryptedSkillsSdkToml::TestZip => {
-                    codex_encrypted_skills::sdk::SdkKind::TestZip
+                    fm_encrypted_skills::sdk::SdkKind::TestZip
                 }
             });
             let encrypted_skills_audit_path = config
@@ -1092,11 +1091,11 @@ impl Session {
                 .clone()
                 .unwrap_or_else(|| std::env::temp_dir().join("fm_skill_security_audit.log"));
             let encrypted_skills_audit: Option<
-                Arc<dyn codex_encrypted_skills::audit::AuditSink>,
-            > = match codex_encrypted_skills::audit::FileAuditSink::new(
+                Arc<dyn fm_encrypted_skills::audit::AuditSink>,
+            > = match fm_encrypted_skills::audit::FileAuditSink::new(
                 encrypted_skills_audit_path.clone(),
             ) {
-                Ok(sink) => Some(Arc::new(sink) as Arc<dyn codex_encrypted_skills::audit::AuditSink>),
+                Ok(sink) => Some(Arc::new(sink) as Arc<dyn fm_encrypted_skills::audit::AuditSink>),
                 Err(error) => {
                     tracing::warn!(
                         error = %error,
@@ -1142,7 +1141,7 @@ impl Session {
                 guardian_rejection_circuit_breaker: Mutex::new(Default::default()),
                 runtime_handle: tokio::runtime::Handle::current(),
                 skills_service,
-                encrypted_skills_runtime: Arc::new(codex_encrypted_skills::runtime::EncryptedSkillRuntime::new_with_audit(
+                encrypted_skills_runtime: Arc::new(fm_encrypted_skills::runtime::EncryptedSkillRuntime::new_with_audit(
                     encrypted_skills_sdk,
                     config.encrypted_skills_ttl.clone(),
                     encrypted_skills_mem_root.clone(),

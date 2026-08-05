@@ -2,13 +2,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use codex_encrypted_skills::audit::AuditEvent;
-use codex_encrypted_skills::audit::AuditSink;
-use codex_encrypted_skills::registry::TtlConfig;
-use codex_encrypted_skills::runtime::EncryptedSkillRuntime;
-use codex_encrypted_skills::sdk::EnvelopeError;
-use codex_encrypted_skills::sdk::EnvelopeSdk;
-use codex_encrypted_skills::sdk::PackageEntry;
 use codex_protocol::items::AgentMessageContent;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::AgentMessageInputContent;
@@ -18,6 +11,13 @@ use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ReasoningItemContent;
 use codex_protocol::models::ReasoningItemReasoningSummary;
 use codex_protocol::models::ResponseItem;
+use fm_encrypted_skills::audit::AuditEvent;
+use fm_encrypted_skills::audit::AuditSink;
+use fm_encrypted_skills::registry::TtlConfig;
+use fm_encrypted_skills::runtime::EncryptedSkillRuntime;
+use fm_encrypted_skills::sdk::EnvelopeError;
+use fm_encrypted_skills::sdk::EnvelopeSdk;
+use fm_encrypted_skills::sdk::PackageEntry;
 use serde_json::json;
 
 use super::*;
@@ -329,7 +329,6 @@ fn rewrites_original_skill_path_in_execution_commands() {
         other => panic!("expected Updated, got {other:?}"),
     }
 }
-
 
 #[test]
 fn blocks_chain_smuggled_read_after_script_execution() {

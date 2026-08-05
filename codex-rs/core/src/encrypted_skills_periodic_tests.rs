@@ -5,12 +5,12 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use codex_encrypted_skills::registry::Clock;
-use codex_encrypted_skills::registry::TtlConfig;
-use codex_encrypted_skills::runtime::EncryptedSkillRuntime;
-use codex_encrypted_skills::sdk::EnvelopeError;
-use codex_encrypted_skills::sdk::EnvelopeSdk;
-use codex_encrypted_skills::sdk::PackageEntry;
+use fm_encrypted_skills::registry::Clock;
+use fm_encrypted_skills::registry::TtlConfig;
+use fm_encrypted_skills::runtime::EncryptedSkillRuntime;
+use fm_encrypted_skills::sdk::EnvelopeError;
+use fm_encrypted_skills::sdk::EnvelopeSdk;
+use fm_encrypted_skills::sdk::PackageEntry;
 
 use super::spawn_periodic_sweep;
 

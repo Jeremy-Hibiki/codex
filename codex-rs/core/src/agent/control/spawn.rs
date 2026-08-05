@@ -84,7 +84,6 @@ fn keep_forked_rollout_item(item: &RolloutItem, preserve_reference_context_item:
     }
 }
 
-
 fn is_multi_agent_v2_usage_hint_message(item: &ResponseItem, usage_hint_texts: &[String]) -> bool {
     let ResponseItem::Message { role, content, .. } = item else {
         return false;
@@ -673,9 +672,9 @@ impl AgentControl {
             {
                 for content_item in content.iter_mut() {
                     if let ContentItem::InputText { text } = content_item
-                        && text.contains(codex_encrypted_skills::token::TOKEN_PREFIX)
+                        && text.contains(fm_encrypted_skills::token::TOKEN_PREFIX)
                     {
-                        *text = codex_encrypted_skills::token::strip_tokens(
+                        *text = fm_encrypted_skills::token::strip_tokens(
                             text,
                             "[encrypted-skill unavailable in this context]",
                         );

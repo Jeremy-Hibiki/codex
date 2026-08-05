@@ -614,7 +614,7 @@ pub struct Config {
     /// Envelope SDK selection for encrypted skills (fail-closed by default).
     pub encrypted_skills_sdk: codex_config::config_toml::EncryptedSkillsSdkToml,
     /// Encrypted-skill two-tier TTL configuration.
-    pub encrypted_skills_ttl: codex_encrypted_skills::registry::TtlConfig,
+    pub encrypted_skills_ttl: fm_encrypted_skills::registry::TtlConfig,
     /// Audit log path for encrypted-skill security events (persistent
     /// deployments should point this at a mounted volume).
     pub encrypted_skills_audit_path: Option<std::path::PathBuf>,
@@ -3989,7 +3989,7 @@ impl Config {
         let otel = otel::resolve_config(cfg.otel.unwrap_or_default(), &mut startup_warnings);
         let config = Self {
             encrypted_skills_sdk: cfg.encrypted_skills.sdk.unwrap_or_default(),
-            encrypted_skills_ttl: codex_encrypted_skills::registry::TtlConfig {
+            encrypted_skills_ttl: fm_encrypted_skills::registry::TtlConfig {
                 skill_idle: std::time::Duration::from_secs(
                     cfg.encrypted_skills.skill_idle_ttl_secs.unwrap_or(600),
                 ),

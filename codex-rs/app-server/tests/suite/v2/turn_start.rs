@@ -2101,7 +2101,6 @@ async fn turn_start_exec_approval_toggle_v2() -> Result<()> {
                     text_elements: Vec::new(),
                 }],
                 approval_policy: Some(codex_app_server_protocol::AskForApproval::Never),
-                sandbox_policy: Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
                 model: Some("mock-model".to_string()),
                 effort: Some(ReasoningEffort::Medium),
                 summary: Some(ReasoningSummary::Auto),
@@ -4006,7 +4005,6 @@ async fn command_execution_notifications_include_process_id() -> Result<()> {
                     text: "run a command".to_string(),
                     text_elements: Vec::new(),
                 }],
-                sandbox_policy: Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
                 ..Default::default()
             },
         })
@@ -4163,7 +4161,6 @@ async fn command_execution_notifications_include_trusted_plugin_id() -> Result<(
                     text: "run a plugin command".to_string(),
                     text_elements: Vec::new(),
                 }],
-                sandbox_policy: Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
                 ..Default::default()
             },
         })
@@ -4260,7 +4257,12 @@ async fn turn_start_with_elevated_override_does_not_persist_project_trust() -> R
             params: TurnStartParams {
                 thread_id: thread.id,
                 cwd: Some(workspace.path().to_path_buf()),
-                sandbox_policy: Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
+                sandbox_policy: Some(codex_app_server_protocol::SandboxPolicy::WorkspaceWrite {
+                    writable_roots: vec![],
+                    network_access: false,
+                    exclude_tmpdir_env_var: true,
+                    exclude_slash_tmp: true,
+                }),
                 input: vec![V2UserInput::Text {
                     text: "Hello".to_string(),
                     text_elements: Vec::new(),

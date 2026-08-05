@@ -27,16 +27,7 @@ use crate::tools::hook_names::HookToolName;
 
 pub(crate) const BLOCK_MESSAGE: &str = "Direct access to encrypted skill storage is not allowed";
 
-#[derive(Debug)]
-pub(crate) enum GuardDecision {
-    Allow,
-    Updated(Value),
-    Blocked {
-        message: String,
-        reason: &'static str,
-    },
-}
-
+#[cfg(test)]
 pub(crate) fn before_tool_with_runtime(
     runtime: &EncryptedSkillRuntime,
     session_id: &str,
@@ -46,6 +37,16 @@ pub(crate) fn before_tool_with_runtime(
     before_tool_with_runtime_and_binds(
         runtime, session_id, tool_name, tool_input, /*binds_active*/ false,
     )
+}
+
+#[derive(Debug)]
+pub(crate) enum GuardDecision {
+    Allow,
+    Updated(Value),
+    Blocked {
+        message: String,
+        reason: &'static str,
+    },
 }
 
 pub(crate) fn before_tool_with_runtime_and_binds(

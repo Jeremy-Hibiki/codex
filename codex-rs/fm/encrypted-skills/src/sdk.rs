@@ -132,7 +132,7 @@ impl EnvelopeSdk for TestZipSdk {
             .map_err(|_| EnvelopeError::PackageNotFound(package_path.display().to_string()))?;
         let mut bytes = Vec::new();
         Read::read_to_end(&mut file.take(MAX_PACKAGE_BYTES + 1), &mut bytes)
-            .map_err(|err| EnvelopeError::Io(err))?;
+            .map_err(EnvelopeError::Io)?;
         if bytes.len() as u64 > MAX_PACKAGE_BYTES {
             return Err(EnvelopeError::PackageTooLarge {
                 max_bytes: MAX_PACKAGE_BYTES,

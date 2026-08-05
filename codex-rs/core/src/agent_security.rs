@@ -62,6 +62,19 @@ pub(crate) fn sandbox_applies_binds(
     }
 }
 
+/// Product policy (I6): engaged sessions must execute under an active
+/// sandbox; full-access execution is rejected at runtime.
+pub fn ensure_encrypted_skill_sandbox(
+    engaged: bool,
+    sandbox_requested: bool,
+) -> Result<(), &'static str> {
+    if engaged && !sandbox_requested {
+        Err("encrypted skills require an active sandbox; full-access execution is disabled")
+    } else {
+        Ok(())
+    }
+}
+
 /// Pure helpers for thread-less surfaces (app-server RPC) that must block
 /// guarded paths when any session in the process is engaged.
 pub mod rpc {

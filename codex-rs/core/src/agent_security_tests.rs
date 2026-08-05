@@ -10,6 +10,7 @@ use fm_encrypted_skills::sdk::EnvelopeSdk;
 use fm_encrypted_skills::sdk::PackageEntry;
 
 use super::AgentSecurityContext;
+use super::ensure_encrypted_skill_sandbox;
 use super::rpc;
 use super::sandbox_applies_binds;
 
@@ -121,4 +122,11 @@ fn rpc_guard_allows_unengaged_paths() {
     assert!(!rpc::args_reference_guarded_path(&serde_json::json!({
         "path": own_path.to_string_lossy()
     })));
+}
+
+#[test]
+fn ensure_encrypted_skill_sandbox_gates_engaged_execution() {
+    assert!(ensure_encrypted_skill_sandbox(true, false).is_err());
+    assert!(ensure_encrypted_skill_sandbox(true, true).is_ok());
+    assert!(ensure_encrypted_skill_sandbox(false, false).is_ok());
 }

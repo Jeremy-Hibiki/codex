@@ -181,6 +181,14 @@ impl TurnRequestProcessor {
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        if params.sandbox_policy == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess)
+            || params.permissions.as_deref()
+                == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS)
+        {
+            return Err(crate::error_code::invalid_request(
+                "danger-full-access is disabled by product policy",
+            ));
+        }
         validate_user_input_image_urls(&params.input)?;
         self.turn_start_inner(
             request_id,

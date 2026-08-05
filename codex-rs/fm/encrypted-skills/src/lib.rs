@@ -3,9 +3,10 @@
 //! Implements the non-wiring logic of the `encrypt-agent-security-skills`
 //! OpenSpec change (see `openspec/changes/encrypt-agent-security-skills`):
 //! token sentinels, the digital-envelope SDK boundary, decrypted directory
-//! layout under the memory root, the per-session content cache, the two-tier
-//! TTL session registry, request-time rehydration with trust-tier framing,
-//! path rewriting/redaction, outbound plaintext detection, and audit events.
+//! layout under the memory root, the per-session content cache, the
+//! skill-level TTL registry with turn/thread-end cleanup, request-time
+//! rehydration with trust-tier framing, path rewriting/redaction, outbound
+//! plaintext detection, and audit events.
 //!
 //! The crate deliberately keeps every pure function free of IO so the host
 //! wiring points stay thin:

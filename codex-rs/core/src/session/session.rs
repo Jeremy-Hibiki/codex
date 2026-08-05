@@ -1207,7 +1207,7 @@ impl Session {
             // 的空闲窗口；进程挂起仍需部署侧 healthcheck/restart 兜底。
             crate::encrypted_skills_periodic::spawn_periodic_sweep(
                 services.runtime_handle.clone(),
-                Arc::clone(&services.encrypted_skills_runtime),
+                Arc::downgrade(&services.encrypted_skills_runtime),
                 crate::encrypted_skills_periodic::PERIODIC_SWEEP_INTERVAL,
             );
             let (mcp_prewarm_tx, mcp_prewarm_rx) = async_channel::bounded(1);

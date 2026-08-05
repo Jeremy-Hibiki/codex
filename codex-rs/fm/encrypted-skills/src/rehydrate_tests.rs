@@ -9,6 +9,7 @@ fn cached(cache: &mut ContentCache, session: &str, plaintext: &str) -> String {
             skill_name: "skill".to_string(),
             base_dir: None,
         },
+        |_| false,
     );
     format!("[SENSITIVE_SKILL_TOKEN:{session}:{hex}]")
 }

@@ -3,6 +3,16 @@ use super::*;
 use crate::agent::role::apply_role_to_config;
 use crate::config::PermissionProfileSnapshot;
 use codex_extension_api::ExtensionDataInit;
+use codex_protocol::models::AgentMessageInputContent;
+use codex_protocol::models::ContentItem;
+use codex_protocol::models::FunctionCallOutputBody;
+use codex_protocol::models::FunctionCallOutputContentItem;
+use codex_protocol::models::ReasoningItemContent;
+use codex_protocol::models::ReasoningItemReasoningSummary;
+use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::RolloutItem;
+use fm_encrypted_skills::token::TOKEN_PREFIX;
+use fm_encrypted_skills::token::strip_tokens;
 
 const AGENT_NAMES: &str = include_str!("../agent_names.txt");
 
@@ -81,6 +91,97 @@ fn keep_forked_rollout_item(item: &RolloutItem, preserve_reference_context_item:
         // so they must rebuild context on their first child turn.
         RolloutItem::TurnContext(_) | RolloutItem::WorldState(_) => preserve_reference_context_item,
         RolloutItem::Compacted(_) | RolloutItem::EventMsg(_) | RolloutItem::SessionMeta(_) => true,
+    }
+}
+
+/// Strips encrypted-skill sentinel tokens from every text-bearing surface of
+/// the forked rollout so the child cannot resolve the parent's decryption
+/// handles, while preserving the surrounding user instructions. Token
+/// placeholders are not the skill plaintext, but they must not cross the fork
+/// boundary either.
+fn strip_encrypted_skill_tokens(items: &mut [RolloutItem]) {
+    const REPLACEMENT: &str = "[encrypted-skill unavailable in this context]";
+    for item in items {
+        match item {
+            RolloutItem::ResponseItem(response_item) => {
+                strip_tokens_from_response_item(response_item, REPLACEMENT);
+            }
+            RolloutItem::InterAgentCommunication(communication) => {
+                strip_token_text(&mut communication.content, REPLACEMENT);
+                if let Some(encrypted) = &mut communication.encrypted_content {
+                    strip_token_text(encrypted, REPLACEMENT);
+                }
+            }
+            RolloutItem::Compacted(compacted) => {
+                strip_token_text(&mut compacted.message, REPLACEMENT);
+                if let Some(history) = &mut compacted.replacement_history {
+                    for response_item in history {
+                        strip_tokens_from_response_item(response_item, REPLACEMENT);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn strip_tokens_from_response_item(item: &mut ResponseItem, replacement: &str) {
+    match item {
+        ResponseItem::Message { content, .. } => {
+            for content_item in content {
+                match content_item {
+                    ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+                        strip_token_text(text, replacement);
+                    }
+                    ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => {}
+                }
+            }
+        }
+        ResponseItem::AgentMessage { content, .. } => {
+            for content_item in content {
+                if let AgentMessageInputContent::InputText { text } = content_item {
+                    strip_token_text(text, replacement);
+                }
+            }
+        }
+        ResponseItem::FunctionCall { arguments, .. } => strip_token_text(arguments, replacement),
+        ResponseItem::CustomToolCall { input, .. } => strip_token_text(input, replacement),
+        ResponseItem::FunctionCallOutput { output, .. }
+        | ResponseItem::CustomToolCallOutput { output, .. } => match &mut output.body {
+            FunctionCallOutputBody::Text(text) => strip_token_text(text, replacement),
+            FunctionCallOutputBody::ContentItems(items) => {
+                for content_item in items {
+                    if let FunctionCallOutputContentItem::InputText { text } = content_item {
+                        strip_token_text(text, replacement);
+                    }
+                }
+            }
+        },
+        ResponseItem::Reasoning {
+            summary, content, ..
+        } => {
+            for entry in summary {
+                let ReasoningItemReasoningSummary::SummaryText { text } = entry;
+                strip_token_text(text, replacement);
+            }
+            if let Some(content) = content {
+                for entry in content {
+                    match entry {
+                        ReasoningItemContent::ReasoningText { text }
+                        | ReasoningItemContent::Text { text } => {
+                            strip_token_text(text, replacement);
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn strip_token_text(text: &mut String, replacement: &str) {
+    if text.contains(TOKEN_PREFIX) {
+        *text = strip_tokens(text, replacement);
     }
 }
 
@@ -663,25 +764,10 @@ impl AgentControl {
                 break;
             }
         }
-        // Strip encrypted-skill sentinel tokens from user messages so the
-        // child cannot resolve the parent's decryption handles, while
+        // Strip encrypted-skill sentinel tokens from every text surface so
+        // the child cannot resolve the parent's decryption handles, while
         // preserving the surrounding user instructions.
-        for item in &mut forked_rollout_items {
-            if let RolloutItem::ResponseItem(ResponseItem::Message { role, content, .. }) = item
-                && role == "user"
-            {
-                for content_item in content.iter_mut() {
-                    if let ContentItem::InputText { text } = content_item
-                        && text.contains(fm_encrypted_skills::token::TOKEN_PREFIX)
-                    {
-                        *text = fm_encrypted_skills::token::strip_tokens(
-                            text,
-                            "[encrypted-skill unavailable in this context]",
-                        );
-                    }
-                }
-            }
-        }
+        strip_encrypted_skill_tokens(&mut forked_rollout_items);
         forked_rollout_items.retain(|item| {
             keep_forked_rollout_item(item, preserve_reference_context_item)
                 && !matches!(

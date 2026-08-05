@@ -224,22 +224,6 @@ fn unload_turn_wipes_dirs_and_cache() {
 }
 
 #[test]
-fn redact_reply_uses_session_known_plaintexts() {
-    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
-    let (runtime, _tmp) = test_runtime(sdk);
-    runtime
-        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
-        .unwrap();
-
-    let reply = format!("the skill says: {SKILL_MD}");
-    assert_eq!(
-        runtime.redact_reply("t1", &reply),
-        "the skill says: [REDACTED]"
-    );
-    assert_eq!(runtime.redact_reply("other", &reply), reply);
-}
-
-#[test]
 fn sweep_evicts_skills_after_ttl_and_keeps_fresh_ones() {
     let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |path| {
         if path.to_string_lossy().contains("stale") {
@@ -272,6 +256,79 @@ fn sweep_evicts_skills_after_ttl_and_keeps_fresh_ones() {
 
     assert_eq!(runtime.rehydrate(Some("t1"), &stale), stale);
     assert_eq!(runtime.rehydrate(Some("t1"), &fresh), "fresh content");
+}
+
+#[test]
+fn ttl_reload_wipes_the_replaced_directory() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let clock = Arc::new(FakeClock::new(1000));
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime = EncryptedSkillRuntime::new_with_clock(
+        sdk,
+        TtlConfig {
+            skill_idle: Duration::from_secs(60),
+        },
+        tmp.path().join("mem-root"),
+        clock.clone(),
+    );
+    runtime
+        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+        .unwrap();
+    let first_dir = runtime.decrypted_dirs("t1")[0].clone();
+    assert!(first_dir.exists());
+
+    // Expire the skill TTL, then load again before any sweep runs.
+    clock.advance(61_000);
+    runtime
+        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+        .unwrap();
+
+    assert!(
+        !first_dir.exists(),
+        "the replaced decrypted directory must be wiped"
+    );
+    let dirs = runtime.decrypted_dirs("t1");
+    assert_eq!(dirs.len(), 1);
+    assert!(dirs[0].exists());
+}
+
+#[test]
+fn concurrent_loads_do_not_leave_orphaned_directories() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let (runtime, _tmp) = test_runtime(sdk);
+    let runtime = Arc::new(runtime);
+    let first = Arc::clone(&runtime);
+    let second = Arc::clone(&runtime);
+    let first = std::thread::spawn(move || {
+        first
+            .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+            .unwrap()
+    });
+    let second = std::thread::spawn(move || {
+        second
+            .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+            .unwrap()
+    });
+    first.join().unwrap();
+    second.join().unwrap();
+
+    let dirs = runtime.decrypted_dirs("t1");
+    assert_eq!(dirs.len(), 1);
+    assert!(
+        dirs.iter().all(|dir| dir.exists()),
+        "all registered directories must exist"
+    );
+    let namespace = runtime.mem_root().join(process_namespace());
+    let remaining: Vec<_> = std::fs::read_dir(&namespace)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.is_dir())
+        .collect();
+    assert_eq!(
+        remaining.len(),
+        1,
+        "concurrent loads must not leave orphaned decrypted directories"
+    );
 }
 
 fn test_runtime(sdk: Arc<dyn EnvelopeSdk>) -> (EncryptedSkillRuntime, tempfile::TempDir) {

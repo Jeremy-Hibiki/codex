@@ -71,6 +71,9 @@ impl Registry {
         }
     }
 
+    /// Registers (or replaces) the session/skill mapping and returns the
+    /// previously registered record, if any, so the caller can wipe the stale
+    /// decrypted directory it pointed at.
     pub fn register(
         &mut self,
         session_id: &str,
@@ -78,7 +81,7 @@ impl Registry {
         dir: PathBuf,
         original_dir: PathBuf,
         token: String,
-    ) {
+    ) -> Option<SkillRecord> {
         let now = self.clock.now_millis();
         let record = SkillRecord {
             dir,
@@ -90,7 +93,7 @@ impl Registry {
         self.skills
             .entry(session_id.to_string())
             .or_default()
-            .insert(skill_name.to_string(), record);
+            .insert(skill_name.to_string(), record)
     }
 
     pub fn get(&self, session_id: &str, skill_name: &str) -> Option<&SkillRecord> {
@@ -131,7 +134,7 @@ impl Registry {
         idle <= self.ttl.skill_idle.as_millis() as u64
     }
 
-    /// Refreshes the skill's `last_used_at` and the session's activity.
+    /// Refreshes the skill's `last_used_at`.
     pub fn touch_skill(&mut self, session_id: &str, skill_name: &str) {
         let now = self.clock.now_millis();
         if let Some(record) = self
@@ -178,15 +181,6 @@ impl Registry {
             .into_iter()
             .flat_map(|bucket| bucket.into_values().map(|record| record.dir))
             .collect()
-    }
-
-    pub fn clear_all(&mut self) -> Vec<PathBuf> {
-        let dirs: Vec<PathBuf> = self
-            .skills
-            .drain()
-            .flat_map(|(_, bucket)| bucket.into_values().map(|record| record.dir))
-            .collect();
-        dirs
     }
 }
 

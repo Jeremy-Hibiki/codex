@@ -63,7 +63,7 @@ async fn periodic_sweep_unloads_idle_skill_without_requests() {
 
     let _task = spawn_periodic_sweep(
         tokio::runtime::Handle::current(),
-        Arc::clone(&runtime),
+        Arc::downgrade(&runtime),
         Duration::from_millis(10),
     );
 
@@ -101,7 +101,7 @@ async fn periodic_sweep_keeps_fresh_skills_loaded() {
 
     let _task = spawn_periodic_sweep(
         tokio::runtime::Handle::current(),
-        Arc::clone(&runtime),
+        Arc::downgrade(&runtime),
         Duration::from_millis(10),
     );
 
@@ -113,5 +113,35 @@ async fn periodic_sweep_keeps_fresh_skills_loaded() {
         runtime.decrypted_dirs("t1").len(),
         1,
         "fresh skill must survive periodic sweeps"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn periodic_sweep_task_exits_when_runtime_is_dropped() {
+    let clock = Arc::new(FakeClock::new(1000));
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime = Arc::new(EncryptedSkillRuntime::new_with_clock(
+        Arc::new(PeriodicSweepSdk),
+        TtlConfig {
+            skill_idle: Duration::from_secs(60),
+        },
+        tmp.path().join("mem-root"),
+        clock.clone(),
+    ));
+    let task = spawn_periodic_sweep(
+        tokio::runtime::Handle::current(),
+        Arc::downgrade(&runtime),
+        Duration::from_millis(10),
+    );
+
+    // The runtime must not be kept alive by the background task: once the
+    // session's strong reference is gone, the next tick exits the task.
+    drop(runtime);
+    tokio::time::advance(Duration::from_millis(100)).await;
+    tokio::task::yield_now().await;
+
+    assert!(
+        task.is_finished(),
+        "periodic sweep task must exit when the runtime is dropped"
     );
 }

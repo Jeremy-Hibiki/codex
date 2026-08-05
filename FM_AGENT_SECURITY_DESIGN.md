@@ -201,6 +201,11 @@ in-flight 窗口定义：`load_or_register` 从 `decrypt_package()` 之后、`re
 
 待探索：protocol 新增 `readonly_binds` 是否可用独立扩展类型减小对公共 schema 的影响（serde default 保持兼容）；与上游 main 合并时的冲突面清单（记录所有被改动的公共文件）；测试尽量放在对应 crate 内，减少跨 crate 测试耦合。
 
+结论（已验证）：加密技能逻辑收拢在 `fm-encrypted-skills`（runtime/guard 纯函数）、core
+`encrypted_skills_guard`/`agent_security`（护栏与判定）、`linux-sandbox` bwrap、app-server
+`rpc_guard`/处理器边界；`readonly_binds` 走 serde default 兼容；测试放在对应 crate；
+被改动的公共文件已由 FIX_LOG 逐提交记录。
+
 ### TODO-6 强制启用沙箱的实施面盘点（I6）
 
 现状：Codex 存在多条可关闭/降级沙箱的入口：`config.toml` 的 `sandbox_mode`、permission profile 选择（含 `danger-full-access`）、`dangerously_bypass_approvals_and_sandbox`、CLI `--sandbox`/`--full-auto` 类参数、TUI `/permissions` 切换、app-server `thread/start`/`turn/start` 的 sandbox/permissions 覆盖参数、以及 requirements.toml/managed config 的约束（已有 `permission_profile_constraint` 机制可复用）。

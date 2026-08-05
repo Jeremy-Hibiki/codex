@@ -137,7 +137,7 @@ and unrelated to this fix set.
   入口尚未拦截；产品构建需默认禁用 plugins feature 或由受信管理工具下发配置，安全路线不得挂
   在用户可关闭的 flag 下。
 
-| 27 | `1c694a0269` | openspec: agent-security-rpc-guard | 进程级 engaged 注册表（Weak，`any_engaged`/`engaged_guarded_paths`）；telemetry 工具预览先包 `RedactingToolOutput` 再取 `log_preview`（日志不再含明文/路径）；core `agent_security::rpc` 纯函数（fs path/command/args）；app-server RPC 面接线：fs 读/枚举/watch/写/复制/删除、`command/exec`、`thread/shellCommand`、`process/spawn`、`thread/inject_items`、`thread/name|goal|metadata`；无 thread_id 的 RPC 采用进程级“任一 engaged”保守判定（决策记录）；E2E 集成测试留待最终验证 |
+| 27 | `1c694a0269` + `5c44c17a17` | openspec: agent-security-rpc-guard | 进程级 engaged 注册表（Weak，`any_engaged`/`engaged_guarded_paths`）；telemetry 工具预览先包 `RedactingToolOutput` 再取 `log_preview`（日志不再含明文/路径）；core `agent_security::rpc` 纯函数（fs path/command/args）；app-server RPC 面接线：fs 读/枚举/watch/写/复制/删除、`command/exec`、`thread/shellCommand`、`process/spawn`、`thread/inject_items`、`thread/name|goal|metadata`；无 thread_id 的 RPC 采用进程级“任一 engaged”保守判定（决策记录）；E2E 集成测试：真实加载加密 Skill，在 turn in-flight 窗口内验证 fs/readFile、command/exec、thread/shellCommand、process/spawn 被拦截，普通路径放行，未 engaged 时不受影响 |
 | 28 | `e29eda359d` | openspec: agent-security-product-policy | I6/I7/D10 落地：core `ensure_encrypted_skill_sandbox`（engaged 且无有效沙箱 → 拒绝执行）；CLI 拒绝 `--sandbox danger-full-access` 与 `dangerously-bypass-approvals-and-sandbox`（根级 `interactive.shared` 之外，覆盖 exec/resume/fork/archive/delete/unarchive 子命令自身 shared 参数），拒绝 `plugin`/`marketplace` 子命令；app-server `thread/start`/`turn/start` 请求参数携带 danger-full-access 时 `invalid_request` 拒绝；插件/marketplace CLI 集成测试收敛为“策略拒绝”断言（core-plugins 单元测试保留底层覆盖）；app-server 既有 full-access 用例改为配置级 full-access 或 WorkspaceWrite 保持原意图；新增 `product_policy` 集成测试 |
 
 ## I28 补充说明：产品策略边界与决策记录

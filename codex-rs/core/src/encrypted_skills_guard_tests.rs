@@ -803,6 +803,94 @@ fn redacts_tool_output_content_items_for_durable_surfaces() {
 }
 
 #[test]
+fn redact_text_redacts_plaintext_and_decrypted_paths() {
+    let (runtime, _tmp) = loaded_runtime();
+    let mem_root = runtime.mem_root().display().to_string();
+    let text =
+        format!("hook context: # Guarded content at {mem_root}/fm_skill_security_abc/SKILL.md");
+    let out = redact_text(&runtime, "t1", &text);
+    assert!(!out.contains("# Guarded content"));
+    assert!(!out.contains(&mem_root));
+    assert!(out.contains("[REDACTED]"));
+}
+
+#[test]
+fn persistence_redacts_developer_messages() {
+    let (runtime, _tmp) = loaded_runtime();
+    let mem_root = runtime.mem_root().display().to_string();
+    let item = ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: vec![ContentItem::InputText {
+            text: format!("# Guarded content at {mem_root}/fm_skill_security_abc/SKILL.md"),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    };
+    let out = redact_tool_output_plaintext_for_persistence(&runtime, "t1", item);
+    let ResponseItem::Message { content, .. } = out else {
+        panic!("expected message item");
+    };
+    let text = content
+        .iter()
+        .find_map(|item| match item {
+            ContentItem::InputText { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .unwrap();
+    assert!(!text.contains("# Guarded content"));
+    assert!(!text.contains(&mem_root));
+    assert!(text.contains("[REDACTED]"));
+}
+
+#[test]
+fn redact_all_response_item_text_covers_every_role() {
+    let (runtime, _tmp) = loaded_runtime();
+    let mem_root = runtime.mem_root().display().to_string();
+    let items = vec![
+        ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "# Guarded content".to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        },
+        ResponseItem::FunctionCallOutput {
+            id: None,
+            call_id: "call-1".to_string(),
+            output: FunctionCallOutputPayload {
+                body: FunctionCallOutputBody::Text(format!(
+                    "# Guarded content at {mem_root}/fm_skill_security_abc"
+                )),
+                success: None,
+            },
+            internal_chat_message_metadata_passthrough: None,
+        },
+    ];
+    let out = redact_all_response_item_text(&runtime, "t1", &items);
+    let mut texts = Vec::new();
+    for item in out {
+        match item {
+            ResponseItem::Message { content, .. } => {
+                for content_item in content {
+                    if let ContentItem::InputText { text } = content_item {
+                        texts.push(text);
+                    }
+                }
+            }
+            ResponseItem::FunctionCallOutput { output, .. } => {
+                texts.push(output.body.to_text().unwrap());
+            }
+            _ => {}
+        }
+    }
+    assert!(texts.iter().all(|text| !text.contains("# Guarded content")));
+    assert!(texts.iter().all(|text| !text.contains(&mem_root)));
+}
+
+#[test]
 fn redact_turn_item_leaves_user_messages_untouched() {
     let (runtime, _tmp) = loaded_runtime();
     let item = TurnItem::UserMessage(codex_protocol::items::UserMessageItem {

@@ -20,6 +20,8 @@ design.
 | 12 | `52a9289e22` | session wiring | `tracing::warn!` when the simulated `test_zip` envelope SDK is selected |
 | 13 | `6c94e649e7` | rehydrate API | Remove unused `Runtime::rehydrate`; gate unframed helper to `cfg(test)` |
 | 14 | `9119204ba7` | OpenSpec | Align access-control spec with shell-only decrypted-storage channel |
+| 15 | `cde71bb57e` | hook/tool-output redaction | Redact skill plaintext + decrypted paths from hook additional contexts (PostToolUse etc.) at the source and extend persistence redaction to developer-role messages |
+| 16 | `70d2ebabbd` | compaction trace | Redact known plaintext + paths on compaction trace input/replacement history before recording (remote-compaction only; local trace is disabled) |
 
 ## Verification
 
@@ -33,6 +35,9 @@ design.
 After the I11–I14 round: `fm-encrypted-skills` 124 passed and the
 `codex-core` `spawn` filter 102 passed (one approvals test is flaky in this
 workspace and passed on the identical code in the previous run).
+
+After I15–I16: `codex-core` `encrypted_skills` filter 69 passed (3 new
+redaction tests), `spawn` filter 102 passed.
 
 Two pre-existing loader tests fail identically before and after these changes
 when run inside this git worktree (`non_git_repo_skills_search_does_not_walk_parents`,

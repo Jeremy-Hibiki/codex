@@ -107,11 +107,16 @@ pub(super) async fn run_remote_compact_v2_attempt(
         &responses_metadata,
     )
     .await;
-    trace_attempt.record_result(
-        compaction_output_result
-            .as_ref()
-            .map(|output| std::slice::from_ref(&output.compaction_output)),
-    );
+    // The compaction output is model-generated from rehydrated skill content;
+    // redact known plaintext and decrypted paths before the trace records it.
+    let redacted_output = compaction_output_result.as_ref().map(|output| {
+        crate::encrypted_skills_guard::redact_all_response_item_text(
+            &sess.services.encrypted_skills_runtime,
+            &sess.thread_id.to_string(),
+            std::slice::from_ref(&output.compaction_output),
+        )
+    });
+    trace_attempt.record_result(redacted_output.as_deref().map_err(|err| err.to_string()));
     let RemoteCompactionV2Output {
         compaction_output,
         response_id,

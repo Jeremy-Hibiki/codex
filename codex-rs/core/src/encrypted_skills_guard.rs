@@ -303,10 +303,121 @@ fn redact_response_item_text(item: &mut ResponseItem, known: &[&str]) {
     }
 }
 
-/// Redacts known skill plaintext from tool-output text for durable surfaces
-/// (rollout and the client stream). In-memory history keeps the original text
-/// so the model can keep using skill-provided content across turns; the
-/// persisted copy never contains plaintext.
+/// Redacts known skill plaintext (and decrypted paths) from arbitrary text.
+/// Used for hook-provided contexts and trace payloads, which do not pass
+/// through the assistant-reply redaction path.
+pub(crate) fn redact_text(runtime: &EncryptedSkillRuntime, session_id: &str, text: &str) -> String {
+    let mut out = text.to_string();
+    let known = runtime.known_plaintexts(session_id);
+    if !known.is_empty() {
+        let known: Vec<&str> = known.iter().map(String::as_str).collect();
+        out = export_guard::redact_known_plaintext(&out, &known);
+    }
+    runtime.redact(&out)
+}
+
+/// Clones and redacts every text-bearing field of `items` (all roles), for
+/// diagnostic surfaces such as compaction traces that may contain model output
+/// derived from rehydrated skill content.
+pub(crate) fn redact_all_response_item_text(
+    runtime: &EncryptedSkillRuntime,
+    session_id: &str,
+    items: &[ResponseItem],
+) -> Vec<ResponseItem> {
+    let known = runtime.known_plaintexts(session_id);
+    let known: Vec<&str> = known.iter().map(String::as_str).collect();
+    items
+        .iter()
+        .cloned()
+        .map(|mut item| {
+            redact_response_item_all_text(runtime, &mut item, &known);
+            item
+        })
+        .collect()
+}
+
+fn redact_response_item_all_text(
+    runtime: &EncryptedSkillRuntime,
+    item: &mut ResponseItem,
+    known: &[&str],
+) {
+    match item {
+        ResponseItem::Message { content, .. } => {
+            for content_item in content {
+                match content_item {
+                    ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+                        redact_text_field(runtime, text, known);
+                    }
+                    ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => {}
+                }
+            }
+        }
+        ResponseItem::AgentMessage { content, .. } => {
+            for content_item in content {
+                if let AgentMessageInputContent::InputText { text } = content_item {
+                    redact_text_field(runtime, text, known);
+                }
+            }
+        }
+        ResponseItem::FunctionCall { arguments, .. } => {
+            redact_text_field(runtime, arguments, known)
+        }
+        ResponseItem::CustomToolCall { input, .. } => redact_text_field(runtime, input, known),
+        ResponseItem::FunctionCallOutput { output, .. }
+        | ResponseItem::CustomToolCallOutput { output, .. } => {
+            redact_output_body(runtime, output, known);
+        }
+        ResponseItem::Reasoning {
+            summary, content, ..
+        } => {
+            for entry in summary {
+                let ReasoningItemReasoningSummary::SummaryText { text } = entry;
+                redact_text_field(runtime, text, known);
+            }
+            if let Some(content) = content {
+                for entry in content {
+                    match entry {
+                        ReasoningItemContent::ReasoningText { text }
+                        | ReasoningItemContent::Text { text } => {
+                            redact_text_field(runtime, text, known);
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn redact_text_field(runtime: &EncryptedSkillRuntime, text: &mut String, known: &[&str]) {
+    *text = export_guard::redact_known_plaintext(text, known);
+    *text = runtime.redact(text);
+}
+
+fn redact_output_body(
+    runtime: &EncryptedSkillRuntime,
+    output: &mut FunctionCallOutputPayload,
+    known: &[&str],
+) {
+    match &mut output.body {
+        FunctionCallOutputBody::Text(text) => redact_text_field(runtime, text, known),
+        FunctionCallOutputBody::ContentItems(items) => {
+            for content in items {
+                if let FunctionCallOutputContentItem::InputText { text } = content {
+                    redact_text_field(runtime, text, known);
+                }
+            }
+        }
+    }
+}
+
+/// Redacts known skill plaintext (and decrypted paths) from tool-output and
+/// developer-role text for durable surfaces (rollout and the client stream).
+/// In-memory history keeps the original text so the model can keep using
+/// skill-provided content across turns; the persisted copy never contains
+/// plaintext. Hook-provided additional contexts arrive as developer messages,
+/// so they are covered here as defense-in-depth even though
+/// `record_additional_contexts` already redacts them at the source.
 pub(crate) fn redact_tool_output_plaintext_for_persistence(
     runtime: &EncryptedSkillRuntime,
     session_id: &str,
@@ -318,22 +429,38 @@ pub(crate) fn redact_tool_output_plaintext_for_persistence(
     }
     let known: Vec<&str> = known.iter().map(String::as_str).collect();
     match &mut item {
+        ResponseItem::Message { role, content, .. } if role == "developer" => {
+            for content_item in content {
+                match content_item {
+                    ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+                        redact_text_field(runtime, text, &known);
+                    }
+                    ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => {}
+                }
+            }
+        }
         ResponseItem::FunctionCallOutput { output, .. }
         | ResponseItem::CustomToolCallOutput { output, .. } => match &mut output.body {
-            FunctionCallOutputBody::Text(text) => {
-                *text = export_guard::redact_known_plaintext(text, &known);
-            }
+            FunctionCallOutputBody::Text(text) => redact_text_field(runtime, text, &known),
             FunctionCallOutputBody::ContentItems(items) => {
-                for content in items {
-                    if let FunctionCallOutputContentItem::InputText { text } = content {
-                        *text = export_guard::redact_known_plaintext(text, &known);
-                    }
-                }
+                redact_content_items(runtime, items, &known)
             }
         },
         _ => {}
     }
     item
+}
+
+fn redact_content_items(
+    runtime: &EncryptedSkillRuntime,
+    items: &mut [FunctionCallOutputContentItem],
+    known: &[&str],
+) {
+    for content in items {
+        if let FunctionCallOutputContentItem::InputText { text } = content {
+            redact_text_field(runtime, text, known);
+        }
+    }
 }
 
 fn contains_redactable_text(item: &ResponseItem) -> bool {

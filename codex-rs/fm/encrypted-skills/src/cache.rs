@@ -40,7 +40,16 @@ impl ContentCache {
 
     /// Stores `content` and returns its token hex. Identical plaintext in the
     /// same session returns the existing token.
-    pub fn store(&mut self, session_id: &str, content: CachedContent) -> String {
+    ///
+    /// `is_referenced` prevents evicting entries the session registry still
+    /// points at: evicting a referenced token would leave the registry saying
+    /// "loaded" while rehydration turns stale.
+    pub fn store(
+        &mut self,
+        session_id: &str,
+        content: CachedContent,
+        is_referenced: impl Fn(&str) -> bool,
+    ) -> String {
         let bucket = self.by_session.entry(session_id.to_string()).or_default();
         for (hex, existing) in bucket.iter() {
             if existing.plaintext == content.plaintext {
@@ -56,6 +65,14 @@ impl ContentCache {
             .or_default();
         *bytes_for_session += bytes;
         while bucket.len() > self.cap || *bytes_for_session > self.max_bytes {
+            let Some((hex, _)) = bucket.front() else {
+                break;
+            };
+            if is_referenced(hex) {
+                // A live registry reference must stay resolvable; the entry is
+                // bounded by the registry/thread lifecycle instead.
+                break;
+            }
             if let Some((_, evicted)) = bucket.pop_front() {
                 *bytes_for_session = bytes_for_session.saturating_sub(evicted.plaintext.len());
             }

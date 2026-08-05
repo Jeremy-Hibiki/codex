@@ -125,7 +125,11 @@ impl EncryptedSkillRuntime {
             .mem_root
             .join(&self.namespace)
             .join(decrypted_dir_name(&random_hex()));
-        write_package_entries(&entries, &dir)?;
+        if let Err(error) = write_package_entries(&entries, &dir) {
+            // A partial write must not leave plaintext behind unregistered.
+            let _ = secure_wipe(&dir);
+            return Err(error);
+        }
         let content = CachedContent {
             plaintext,
             skill_name: skill_name.to_string(),
@@ -133,18 +137,37 @@ impl EncryptedSkillRuntime {
                 .parent()
                 .map(|parent| parent.to_string_lossy().into_owned()),
         };
-        let hex = self
-            .cache
-            .lock()
-            .map_err(lock_error)?
-            .store(session_id, content);
-        self.registry.lock().map_err(lock_error)?.register(
-            session_id,
-            skill_name,
-            dir,
-            original_dir.unwrap_or_default(),
-            hex.clone(),
-        );
+        let hex = match self.cache.lock() {
+            Ok(mut cache) => cache.store(session_id, content, |hex| {
+                self.registry
+                    .lock()
+                    .map(|registry| registry.token_ref_count(session_id, hex) > 0)
+                    .unwrap_or(true)
+            }),
+            Err(poisoned) => {
+                let _ = secure_wipe(&dir);
+                return Err(lock_error(poisoned));
+            }
+        };
+        let replaced = match self.registry.lock() {
+            Ok(mut registry) => registry.register(
+                session_id,
+                skill_name,
+                dir,
+                original_dir.unwrap_or_default(),
+                hex.clone(),
+            ),
+            Err(poisoned) => {
+                let _ = secure_wipe(&dir);
+                return Err(lock_error(poisoned));
+            }
+        };
+        // TTL re-load and concurrent loads replace a stale record; wipe the
+        // directory the replaced record pointed at so no orphaned plaintext
+        // survives in the memory root.
+        if let Some(replaced) = replaced {
+            let _ = secure_wipe(&replaced.dir);
+        }
         self.emit(AuditEvent::Decryption {
             session_id: session_id.to_string(),
             skill_name: skill_name.to_string(),
@@ -226,17 +249,6 @@ impl EncryptedSkillRuntime {
                     .collect()
             })
             .unwrap_or_default()
-    }
-
-    /// Redacts known skill plaintext from a model reply before it is persisted
-    /// to rollout or in-memory history.
-    pub fn redact_reply(&self, session_id: &str, text: &str) -> String {
-        let known = self.known_plaintexts(session_id);
-        if known.is_empty() {
-            return text.to_string();
-        }
-        let known: Vec<&str> = known.iter().map(String::as_str).collect();
-        crate::export_guard::redact_known_plaintext(text, &known)
     }
 
     /// Runs the skill-level TTL sweep and wipes evicted directories.

@@ -124,7 +124,38 @@ fn clear_thread_returns_dirs_and_removes_session() {
 }
 
 #[test]
-fn clear_all_returns_all_dirs() {
+fn register_returns_replaced_record() {
+    let clock = Arc::new(FakeClock::new(1000));
+    let mut registry = registry_with(clock);
+    assert!(
+        registry
+            .register(
+                "t1",
+                "a",
+                PathBuf::from("/tmp/a"),
+                PathBuf::from("/orig"),
+                "hex-token".to_string(),
+            )
+            .is_none()
+    );
+    let replaced = registry
+        .register(
+            "t1",
+            "a",
+            PathBuf::from("/tmp/a-new"),
+            PathBuf::from("/orig"),
+            "hex-token".to_string(),
+        )
+        .unwrap();
+    assert_eq!(replaced.dir, PathBuf::from("/tmp/a"));
+    assert_eq!(
+        registry.get("t1", "a").map(|record| &record.dir),
+        Some(&PathBuf::from("/tmp/a-new"))
+    );
+}
+
+#[test]
+fn clear_thread_only_removes_one_session() {
     let clock = Arc::new(FakeClock::new(1000));
     let mut registry = registry_with(clock);
     registry.register(
@@ -141,7 +172,6 @@ fn clear_all_returns_all_dirs() {
         PathBuf::from("/orig"),
         "hex-token".to_string(),
     );
-    let mut dirs = registry.clear_all();
-    dirs.sort();
-    assert_eq!(dirs, vec![PathBuf::from("/tmp/a"), PathBuf::from("/tmp/b")]);
+    assert_eq!(registry.clear_thread("t1"), vec![PathBuf::from("/tmp/a")]);
+    assert!(registry.get("t2", "b").is_some());
 }

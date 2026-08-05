@@ -159,11 +159,18 @@ fn load_encrypted_skill(
     session_id: &str,
     skill: &SkillMetadata,
 ) -> Result<(String, Option<String>), String> {
-    let package_path = skill
+    let skill_dir = skill
         .path_to_skills_md
         .parent()
-        .ok_or_else(|| "skill path has no parent directory".to_string())?
-        .join(format!("{}.zip.enc", skill.name));
+        .ok_or_else(|| "skill path has no parent directory".to_string())?;
+    let default_package = format!("{}.zip.enc", skill.name);
+    let package_name = skill
+        .encryption
+        .as_ref()
+        .and_then(|encryption| encryption.package.as_deref())
+        .filter(|package| !package.is_empty())
+        .unwrap_or(&default_package);
+    let package_path = skill_dir.join(package_name);
     let token = runtime
         .load_or_register(session_id, &skill.name, &package_path)
         .map_err(|err| format!("{err}"))?;

@@ -90,6 +90,9 @@ guard test), `spawn` filter 102 passed.
   //codex-rs/linux-sandbox:codex-linux-sandbox //codex-rs/fm/encrypted-skills:encrypted-skills`:
   成功；`just bazel-lock-update` 无 lockfile 变化（zip 已在依赖图中）。
 
+TODO-6/7/8/9 收尾后复跑：`codex-app-server` 全量 906/906；`codex-core`
+`encrypted_skills`+`encrypted_skills_guard`+`agent_security` 96/96；`just fix` 干净。
+
 After I20–I21: `fm-encrypted-skills` 135 passed (4 new shared-sink tests +
 concurrent-load single-decryption assertion), `codex-core` `encrypted_skills`
 filter 74 passed, `spawn` filter 102 passed. F2 kept as-is (stale-token
@@ -156,7 +159,7 @@ and unrelated to this fix set.
 
 | 27 | `1c694a0269` + `5c44c17a17` | openspec: agent-security-rpc-guard | 进程级 engaged 注册表（Weak，`any_engaged`/`engaged_guarded_paths`）；telemetry 工具预览先包 `RedactingToolOutput` 再取 `log_preview`（日志不再含明文/路径）；core `agent_security::rpc` 纯函数（fs path/command/args）；app-server RPC 面接线：fs 读/枚举/watch/写/复制/删除、`command/exec`、`thread/shellCommand`、`process/spawn`、`thread/inject_items`、`thread/name|goal|metadata`；无 thread_id 的 RPC 采用进程级“任一 engaged”保守判定（决策记录）；E2E 集成测试：真实加载加密 Skill，在 turn in-flight 窗口内验证 fs/readFile、command/exec、thread/shellCommand、process/spawn 被拦截，普通路径放行，未 engaged 时不受影响 |
 | 28 | `e29eda359d` | openspec: agent-security-product-policy | I6/I7/D10 落地：core `ensure_encrypted_skill_sandbox`（engaged 且无有效沙箱 → 拒绝执行）；CLI 拒绝 `--sandbox danger-full-access` 与 `dangerously-bypass-approvals-and-sandbox`（根级 `interactive.shared` 之外，覆盖 exec/resume/fork/archive/delete/unarchive 子命令自身 shared 参数），拒绝 `plugin`/`marketplace` 子命令；app-server `thread/start`/`turn/start` 请求参数携带 danger-full-access 时 `invalid_request` 拒绝；插件/marketplace CLI 集成测试收敛为“策略拒绝”断言（core-plugins 单元测试保留底层覆盖）；app-server 既有 full-access 用例改为配置级 full-access 或 WorkspaceWrite 保持原意图；新增 `product_policy` 集成测试 |
-| 29 | （本轮提交） | TODO-6/7/8/9 收尾 | app-server 消息边界统一拦截 `marketplace/add|remove|upgrade`、`plugin/install|uninstall`、`plugin/share/save|updateTargets|checkout|delete`（只读 list/read 保留）；`thread/settings/update` 拒绝 danger-full-access；engaged 时拒绝 `config/value/write`、`config/batchWrite`、`experimentalFeature/enablement/set`、`skills/config/write`、`skills/extraRoots/set`（未 engaged 行为不变）；`redact_turn_item` 扩展覆盖 CommandExecution/FileChange/WebSearch/CollabAgentToolCall/DynamicToolCall/McpToolCall 文本面（明文+路径红act），集成测试验证技能脚本回显明文在 rollout 中被红act |
+| 29 | `faf8a03fb3` + `6a2f9a217a` | TODO-6/7/8/9 收尾 | app-server 消息边界统一拦截 `marketplace/add|remove|upgrade`、`plugin/install|uninstall`、`plugin/share/save|updateTargets|checkout|delete`（只读 list/read 保留）；`thread/settings/update` 拒绝 danger-full-access；engaged 时拒绝 `config/value/write`、`config/batchWrite`、`experimentalFeature/enablement/set`、`skills/config/write`、`skills/extraRoots/set`（未 engaged 行为不变）；`redact_turn_item` 扩展覆盖 CommandExecution/FileChange/WebSearch/CollabAgentToolCall/DynamicToolCall/McpToolCall 文本面（明文+路径红act），集成测试验证技能脚本回显明文在 rollout 中被红act |
 
 ## I28 补充说明：产品策略边界与决策记录
 

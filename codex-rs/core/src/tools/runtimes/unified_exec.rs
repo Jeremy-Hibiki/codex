@@ -183,6 +183,15 @@ impl Approvable<UnifiedExecRequest> for UnifiedExecRuntime<'_> {
             .clone()
             .or_else(|| req.justification.clone());
         Box::pin(async move {
+            // D9: engaged execute-only skill script executions are
+            // auto-permitted (no user prompt, no guardian review).
+            if crate::encrypted_skills_guard::is_skill_script_execution(
+                &session.services.encrypted_skills_runtime,
+                &session.thread_id.to_string(),
+                &req.hook_command,
+            ) {
+                return ReviewDecision::ApprovedForSession;
+            }
             let native_cwd = match req.cwd.to_abs_path() {
                 Ok(c) => c,
                 Err(e) => {

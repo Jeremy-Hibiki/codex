@@ -626,6 +626,20 @@ fn create_filesystem_args(
         append_unreadable_root_args(&mut bwrap_args, &unreadable_root, &allowed_write_paths)?;
     }
 
+    // Read-only binds overlay decrypted skill directories at their logical
+    // skill paths. Applied last so they win over writable roots and masks;
+    // missing targets are created inside the sandbox and missing sources
+    // (skill already swept) are skipped.
+    for bind in &file_system_sandbox_policy.readonly_binds {
+        if !bind.source.exists() {
+            continue;
+        }
+        append_sandbox_dir_creation_args(&mut bwrap_args.args, &bind.target);
+        bwrap_args.args.push("--ro-bind".to_string());
+        bwrap_args.args.push(path_to_string(&bind.source));
+        bwrap_args.args.push(path_to_string(&bind.target));
+    }
+
     Ok(bwrap_args)
 }
 
@@ -1018,6 +1032,26 @@ fn append_mount_target_parent_dir_args(args: &mut Vec<String>, mount_target: &Pa
     }
 }
 
+/// Emits `--dir` for every component of `path` so a bind target can be created
+/// inside the sandbox even when the path does not exist on the host.
+fn append_sandbox_dir_creation_args(args: &mut Vec<String>, path: &Path) {
+    let mut current = PathBuf::from("/");
+    for component in path.components() {
+        use std::path::Component;
+        match component {
+            Component::RootDir => continue,
+            Component::CurDir => continue,
+            Component::ParentDir => continue,
+            Component::Prefix(_) => continue,
+            Component::Normal(part) => {
+                current.push(part);
+                args.push("--dir".to_string());
+                args.push(path_to_string(&current));
+            }
+        }
+    }
+}
+
 fn append_read_only_subpath_args(
     bwrap_args: &mut BwrapArgs,
     subpath: &Path,
@@ -1328,6 +1362,7 @@ fn find_first_non_existent_component(target_path: &Path) -> Option<PathBuf> {
 mod tests {
     use super::*;
 
+    use codex_protocol::permissions::ReadonlyBind;
     use codex_protocol::protocol::FileSystemAccessMode;
     use codex_protocol::protocol::FileSystemPath;
     use codex_protocol::protocol::FileSystemSandboxEntry;
@@ -1335,6 +1370,7 @@ mod tests {
     use codex_protocol::protocol::FileSystemSpecialPath;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use pretty_assertions::assert_eq;
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     const NO_UNREADABLE_GLOB_SCAN_MAX_DEPTH: Option<usize> = None;
@@ -2747,5 +2783,111 @@ mod tests {
             .iter()
             .map(|target| target.path().to_path_buf())
             .collect()
+    }
+
+    fn bind_window(args: &BwrapArgs, source: &str, target: &str) -> bool {
+        args.args
+            .windows(3)
+            .any(|window| window == ["--ro-bind", source, target])
+    }
+
+    #[test]
+    fn readonly_binds_are_mounted_after_base_mounts() {
+        let temp = TempDir::new().expect("tempdir");
+        let source = temp.path().to_path_buf();
+        let target = PathBuf::from("/logical/skill");
+        let mut policy = FileSystemSandboxPolicy::restricted(Vec::new());
+        policy.readonly_binds = vec![ReadonlyBind {
+            source: source.clone(),
+            target: target.clone(),
+        }];
+
+        let args = create_filesystem_args(&policy, temp.path(), NO_UNREADABLE_GLOB_SCAN_MAX_DEPTH)
+            .expect("filesystem args");
+        let source_str = source.to_str().expect("utf8 source");
+        let target_str = target.to_str().expect("utf8 target");
+        assert!(
+            bind_window(&args, source_str, target_str),
+            "readonly bind must be present: {:#?}",
+            args.args
+        );
+        let dev_index = args
+            .args
+            .iter()
+            .position(|arg| arg == "--dev")
+            .expect("--dev");
+        let bind_index = args
+            .args
+            .windows(3)
+            .position(|window| window == ["--ro-bind", source_str, target_str])
+            .expect("bind window");
+        assert!(
+            bind_index > dev_index,
+            "readonly bind must be applied after the base device mount"
+        );
+    }
+
+    #[test]
+    fn readonly_bind_missing_target_creates_dir() {
+        let temp = TempDir::new().expect("tempdir");
+        let source = temp.path().to_path_buf();
+        let target = PathBuf::from("/logical/missing/skill");
+        let mut policy = FileSystemSandboxPolicy::restricted(Vec::new());
+        policy.readonly_binds = vec![ReadonlyBind {
+            source: source.clone(),
+            target: target.clone(),
+        }];
+
+        let args = create_filesystem_args(&policy, temp.path(), NO_UNREADABLE_GLOB_SCAN_MAX_DEPTH)
+            .expect("filesystem args");
+        let target_str = target.to_str().expect("utf8 target");
+        assert!(
+            args.args
+                .windows(2)
+                .any(|window| window == ["--dir", target_str]),
+            "missing bind target must be created with --dir: {:#?}",
+            args.args
+        );
+        assert!(bind_window(
+            &args,
+            source.to_str().expect("utf8 source"),
+            target_str
+        ));
+    }
+
+    #[test]
+    fn readonly_bind_missing_source_is_skipped() {
+        let temp = TempDir::new().expect("tempdir");
+        let missing_source = temp.path().join("missing-skill");
+        let target = PathBuf::from("/logical/skill");
+        let mut policy = FileSystemSandboxPolicy::restricted(Vec::new());
+        policy.readonly_binds = vec![ReadonlyBind {
+            source: missing_source.clone(),
+            target: target.clone(),
+        }];
+
+        let args = create_filesystem_args(&policy, temp.path(), NO_UNREADABLE_GLOB_SCAN_MAX_DEPTH)
+            .expect("filesystem args");
+        assert!(
+            !bind_window(
+                &args,
+                missing_source.to_str().expect("utf8 source"),
+                target.to_str().expect("utf8 target")
+            ),
+            "missing source must not produce a bind"
+        );
+    }
+
+    #[test]
+    fn readonly_binds_empty_keeps_args_without_bind() {
+        let temp = TempDir::new().expect("tempdir");
+        let policy = FileSystemSandboxPolicy::restricted(Vec::new());
+        let args = create_filesystem_args(&policy, temp.path(), NO_UNREADABLE_GLOB_SCAN_MAX_DEPTH)
+            .expect("filesystem args");
+        assert!(
+            !args.args.iter().any(|arg| arg == "/logical/skill"),
+            "no bind args should be emitted when readonly_binds is empty: {:#?}",
+            args.args
+        );
     }
 }

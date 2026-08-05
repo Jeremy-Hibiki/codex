@@ -227,6 +227,19 @@ pub struct FileSystemSandboxPolicy {
     pub glob_scan_max_depth: Option<usize>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub entries: Vec<FileSystemSandboxEntry>,
+    /// Read-only bind mounts applied inside the sandbox, mapping a host
+    /// source (for example a decrypted skill directory) to a target path in
+    /// the sandbox view (for example the skill's logical directory).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub readonly_binds: Vec<ReadonlyBind>,
+}
+
+/// A read-only bind mount between a host path and a sandbox-visible path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadonlyBind {
+    pub source: PathBuf,
+    pub target: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -410,6 +423,7 @@ impl FileSystemSandboxPolicy {
             kind: FileSystemSandboxKind::Unrestricted,
             glob_scan_max_depth: None,
             entries: Vec::new(),
+            readonly_binds: Vec::new(),
         }
     }
 
@@ -418,6 +432,7 @@ impl FileSystemSandboxPolicy {
             kind: FileSystemSandboxKind::ExternalSandbox,
             glob_scan_max_depth: None,
             entries: Vec::new(),
+            readonly_binds: Vec::new(),
         }
     }
 
@@ -426,6 +441,7 @@ impl FileSystemSandboxPolicy {
             kind: FileSystemSandboxKind::Restricted,
             glob_scan_max_depth: None,
             entries,
+            readonly_binds: Vec::new(),
         }
     }
 
@@ -1913,6 +1929,7 @@ mod tests {
     #[cfg(unix)]
     use std::fs;
     use std::path::Path;
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     #[cfg(unix)]
@@ -3322,5 +3339,31 @@ mod tests {
 
         assert!(is_read_denied(&bracket_file, &policy, temp.path()));
         assert!(!is_read_denied(&other, &policy, temp.path()));
+    }
+
+    #[test]
+    fn readonly_binds_default_to_empty_when_absent() {
+        let policy: FileSystemSandboxPolicy = serde_json::from_str(
+            r#"{"kind":"restricted","glob_scan_max_depth":null,"entries":[]}"#,
+        )
+        .expect("policy without readonly_binds should deserialize");
+        assert!(policy.readonly_binds.is_empty());
+    }
+
+    #[test]
+    fn readonly_binds_round_trip_through_serialization() {
+        let policy = FileSystemSandboxPolicy {
+            kind: FileSystemSandboxKind::Restricted,
+            glob_scan_max_depth: None,
+            entries: Vec::new(),
+            readonly_binds: vec![ReadonlyBind {
+                source: PathBuf::from("/host/decrypted"),
+                target: PathBuf::from("/logical/skill"),
+            }],
+        };
+        let json = serde_json::to_string(&policy).expect("serialize policy");
+        let decoded: FileSystemSandboxPolicy =
+            serde_json::from_str(&json).expect("deserialize policy");
+        assert_eq!(decoded, policy);
     }
 }

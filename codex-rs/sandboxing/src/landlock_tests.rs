@@ -46,6 +46,7 @@ fn proxy_flag_takes_precedence_over_legacy_landlock() {
         cwd,
         /*use_legacy_landlock*/ true,
         /*allow_network_for_proxy*/ true,
+        &[],
     );
     assert_eq!(
         args.contains(&"--allow-network-for-proxy".to_string()),
@@ -68,6 +69,7 @@ fn permission_profile_flag_is_included() {
         cwd,
         /*use_legacy_landlock*/ true,
         /*allow_network_for_proxy*/ false,
+        &[],
     );
 
     assert_eq!(

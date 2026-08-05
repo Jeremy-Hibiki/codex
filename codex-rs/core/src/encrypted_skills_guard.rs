@@ -21,7 +21,6 @@ use fm_encrypted_skills::runtime::EncryptedSkillRuntime;
 use serde_json::Value;
 
 use crate::guardian::GuardianApprovalRequest;
-use crate::session::session::Session;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
 use crate::tools::hook_names::HookToolName;
@@ -38,24 +37,23 @@ pub(crate) enum GuardDecision {
     },
 }
 
-pub(crate) fn before_tool(
-    session: &Session,
-    tool_name: &HookToolName,
-    tool_input: &Value,
-) -> GuardDecision {
-    before_tool_with_runtime(
-        &session.services.encrypted_skills_runtime,
-        &session.thread_id.to_string(),
-        tool_name,
-        tool_input,
-    )
-}
-
 pub(crate) fn before_tool_with_runtime(
     runtime: &EncryptedSkillRuntime,
     session_id: &str,
     tool_name: &HookToolName,
     tool_input: &Value,
+) -> GuardDecision {
+    before_tool_with_runtime_and_binds(
+        runtime, session_id, tool_name, tool_input, /*binds_active*/ false,
+    )
+}
+
+pub(crate) fn before_tool_with_runtime_and_binds(
+    runtime: &EncryptedSkillRuntime,
+    session_id: &str,
+    tool_name: &HookToolName,
+    tool_input: &Value,
+    binds_active: bool,
 ) -> GuardDecision {
     // Unengaged sessions have no plaintext and no decrypted paths: every
     // guard rule passes through unchanged so normal Codex behavior is
@@ -64,14 +62,18 @@ pub(crate) fn before_tool_with_runtime(
         return GuardDecision::Allow;
     }
     let decision = match tool_name {
-        name if name == &HookToolName::bash() => guard_shell(runtime, session_id, tool_input),
-        name if name == &HookToolName::view_image() => guard_read(runtime, session_id, tool_input),
+        name if name == &HookToolName::bash() => {
+            guard_shell(runtime, session_id, tool_input, binds_active)
+        }
+        name if name == &HookToolName::view_image() => {
+            guard_read(runtime, session_id, tool_input, binds_active)
+        }
         // Every other tool (file writes, web search, MCP, extension tools)
         // is an outbound-capable surface: block arguments containing known
         // skill plaintext. Shell remains the sole runtime channel for
         // legitimate in-session secret use, and its commands are path-guarded
         // and executed inside the sandbox.
-        _ => guard_export(runtime, session_id, tool_input),
+        _ => guard_export(runtime, session_id, tool_input, binds_active),
     };
     if let GuardDecision::Blocked { reason, .. } = &decision {
         runtime.record_blocked(session_id, tool_name.name(), reason);
@@ -83,14 +85,20 @@ fn guard_shell(
     runtime: &EncryptedSkillRuntime,
     session_id: &str,
     tool_input: &Value,
+    binds_active: bool,
 ) -> GuardDecision {
     let Some(command) = tool_input.get("command").and_then(Value::as_str) else {
         return GuardDecision::Allow;
     };
-    // Rewrite original skill directories to their decrypted `/dev/shm` paths
-    // FIRST, so every downstream check operates on a single, canonical view
-    // of what the shell will actually execute.
-    let rewritten = runtime.rewrite_paths(session_id, command);
+    // With sandbox binds active the command keeps the logical skill path
+    // (the decrypted dir is mounted read-only at that path inside the
+    // sandbox); otherwise rewrite original dirs to the decrypted `/dev/shm`
+    // paths so every downstream check sees what the shell will execute.
+    let rewritten = if binds_active {
+        command.to_string()
+    } else {
+        runtime.rewrite_paths(session_id, command)
+    };
     // A shell command that carries known skill plaintext is an outbound channel
     // (echo/printf/heredoc writing to disk, pipes to other processes, ...).
     // Block it the same way non-shell tools are blocked, before the path rules
@@ -107,12 +115,20 @@ fn guard_shell(
             };
         }
     }
-    let guarded_paths = runtime
+    let mut guarded_paths: Vec<String> = runtime
         .decrypted_dirs(session_id)
         .into_iter()
         .map(|dir| dir.to_string_lossy().into_owned())
-        .chain([runtime.mem_root().to_string_lossy().into_owned()])
-        .collect::<Vec<_>>();
+        .collect();
+    guarded_paths.push(runtime.mem_root().to_string_lossy().into_owned());
+    if binds_active {
+        guarded_paths.extend(
+            runtime
+                .path_mappings(session_id)
+                .into_iter()
+                .map(|(_, original)| original.to_string_lossy().into_owned()),
+        );
+    }
     // Split at unquoted chain operators (`;`, `|`, `&&`, `&`) and judge each
     // segment independently. This closes the smuggle vector where a forbidden
     // read hides after an allowed execution (`bash run.sh; cat SKILL.md`).
@@ -158,6 +174,7 @@ fn guard_read(
     runtime: &EncryptedSkillRuntime,
     session_id: &str,
     tool_input: &Value,
+    binds_active: bool,
 ) -> GuardDecision {
     let Some(file_path) = tool_input.get("path").and_then(Value::as_str) else {
         return GuardDecision::Allow;
@@ -168,6 +185,14 @@ fn guard_read(
     let mut guarded = runtime.decrypted_dirs(session_id);
     guarded.push(runtime.mem_root().to_path_buf());
     guarded.push(PathBuf::from(paths::MEM_ROOT));
+    if binds_active {
+        guarded.extend(
+            runtime
+                .path_mappings(session_id)
+                .into_iter()
+                .map(|(_, original)| original),
+        );
+    }
     if path_under_dirs(file_path, &guarded) {
         GuardDecision::Blocked {
             message: BLOCK_MESSAGE.to_string(),
@@ -182,6 +207,7 @@ fn guard_export(
     runtime: &EncryptedSkillRuntime,
     session_id: &str,
     tool_input: &Value,
+    binds_active: bool,
 ) -> GuardDecision {
     let known = runtime.known_plaintexts(session_id);
     let mut values = Vec::new();
@@ -206,6 +232,14 @@ fn guard_export(
         .map(|dir| dir.to_string_lossy().into_owned())
         .collect();
     guarded_paths.push(runtime.mem_root().to_string_lossy().into_owned());
+    if binds_active {
+        guarded_paths.extend(
+            runtime
+                .path_mappings(session_id)
+                .into_iter()
+                .map(|(_, original)| original.to_string_lossy().into_owned()),
+        );
+    }
     if values
         .iter()
         .any(|value| paths::command_references_dir(value, &guarded_paths))
@@ -216,6 +250,39 @@ fn guard_export(
         };
     }
     GuardDecision::Allow
+}
+
+/// True when `command` is an execute-only skill script execution for an
+/// engaged session (a guarded path referenced as a script argument, without
+/// guarded shell I/O channels). Used to auto-permit such executions (D9).
+pub(crate) fn is_skill_script_execution(
+    runtime: &EncryptedSkillRuntime,
+    session_id: &str,
+    command: &str,
+) -> bool {
+    if !runtime.is_engaged(session_id) {
+        return false;
+    }
+    let mut guarded_paths: Vec<String> = runtime
+        .decrypted_dirs(session_id)
+        .into_iter()
+        .map(|dir| dir.to_string_lossy().into_owned())
+        .collect();
+    guarded_paths.push(runtime.mem_root().to_string_lossy().into_owned());
+    guarded_paths.extend(
+        runtime
+            .path_mappings(session_id)
+            .into_iter()
+            .map(|(_, original)| original.to_string_lossy().into_owned()),
+    );
+    let rewritten = runtime.rewrite_paths(session_id, command);
+    paths::split_command_segments(&rewritten)
+        .into_iter()
+        .any(|segment| {
+            paths::command_references_dir(&segment, &guarded_paths)
+                && paths::is_script_execution(&segment)
+                && paths::script_execution_avoids_guarded_io(&segment, &guarded_paths)
+        })
 }
 
 fn collect_string_values<'a>(value: &'a Value, out: &mut Vec<&'a str>) {

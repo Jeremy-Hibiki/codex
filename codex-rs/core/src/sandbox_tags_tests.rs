@@ -142,6 +142,7 @@ fn profile_policy_tag_reports_closest_legacy_mode() {
         .expect("absolute writable root");
     let profile = PermissionProfile::from_runtime_permissions(
         &FileSystemSandboxPolicy {
+            readonly_binds: Vec::new(),
             kind: FileSystemSandboxKind::Restricted,
             glob_scan_max_depth: None,
             entries: vec![FileSystemSandboxEntry {

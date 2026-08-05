@@ -365,6 +365,7 @@ impl TurnContext {
                 .windows_sandbox_private_desktop,
             windows_sandbox_proxy_settings_mode: None,
             use_legacy_landlock: self.config.features.use_legacy_landlock(),
+            readonly_binds: Vec::new(),
         }
     }
 

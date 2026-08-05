@@ -243,6 +243,90 @@ fn redacting_tool_output_redacts_when_engaged() {
 }
 
 #[test]
+fn binds_active_logical_script_execution_is_allowed() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime_and_binds(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": "bash /skills/run.sh" }),
+        /*binds_active*/ true,
+    );
+    assert!(
+        matches!(decision, GuardDecision::Allow),
+        "logical script execution must be allowed with binds active: {decision:?}"
+    );
+}
+
+#[test]
+fn binds_active_logical_read_is_blocked() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime_and_binds(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": "cat /skills/SKILL.md" }),
+        /*binds_active*/ true,
+    );
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "logical read must be blocked with binds active: {decision:?}"
+    );
+}
+
+#[test]
+fn legacy_rewrite_without_binds_rewrites_to_decrypted_path() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = before_tool_with_runtime_and_binds(
+        &runtime,
+        "t1",
+        &HookToolName::bash(),
+        &json!({ "command": "bash /skills/run.sh" }),
+        /*binds_active*/ false,
+    );
+    let GuardDecision::Updated(updated) = decision else {
+        panic!("expected Updated command without binds: {decision:?}");
+    };
+    let decrypted = runtime.decrypted_dirs("t1").pop().unwrap();
+    assert!(
+        updated["command"]
+            .as_str()
+            .is_some_and(|command| command.contains(&decrypted.to_string_lossy().to_string())),
+        "legacy mode must rewrite to the decrypted path: {updated:?}"
+    );
+}
+
+#[test]
+fn is_skill_script_execution_detects_execute_only_commands() {
+    let (runtime, _tmp) = loaded_runtime();
+    assert!(crate::encrypted_skills_guard::is_skill_script_execution(
+        &runtime,
+        "t1",
+        "bash /skills/run.sh"
+    ));
+    assert!(!crate::encrypted_skills_guard::is_skill_script_execution(
+        &runtime,
+        "t1",
+        "cat /skills/SKILL.md"
+    ));
+    assert!(!crate::encrypted_skills_guard::is_skill_script_execution(
+        &runtime,
+        "t1",
+        "git status"
+    ));
+}
+
+#[test]
+fn is_skill_script_execution_false_when_unengaged() {
+    let (runtime, _tmp) = empty_runtime();
+    assert!(!crate::encrypted_skills_guard::is_skill_script_execution(
+        &runtime,
+        "t1",
+        "bash /skills/run.sh"
+    ));
+}
+
+#[test]
 fn blocks_cat_script_under_mem_root() {
     let (runtime, _tmp) = loaded_runtime();
     let decision = before_tool_with_runtime(

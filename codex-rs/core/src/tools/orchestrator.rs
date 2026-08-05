@@ -30,6 +30,7 @@ use codex_otel::ToolDecisionSource;
 use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::error::SandboxErr;
 use codex_protocol::exec_output::ExecToolCallOutput;
+use codex_protocol::permissions::ReadonlyBind;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::ReviewDecision;
 use codex_sandboxing::SandboxManager;
@@ -92,6 +93,7 @@ impl ToolOrchestrator {
             workspace_roots: attempt.workspace_roots,
             codex_linux_sandbox_exe: attempt.codex_linux_sandbox_exe,
             use_legacy_landlock: attempt.use_legacy_landlock,
+            skill_binds: attempt.skill_binds.clone(),
             windows_sandbox_level: attempt.windows_sandbox_level,
             windows_sandbox_private_desktop: attempt.windows_sandbox_private_desktop,
             network_denial_cancellation_token: network_approval
@@ -255,6 +257,23 @@ impl ToolOrchestrator {
 
         // Platform-specific flag gating is handled by SandboxManager::select_initial.
         let use_legacy_landlock = turn_ctx.config.features.use_legacy_landlock();
+        let skill_binds = if crate::agent_security::sandbox_applies_binds(
+            &file_system_sandbox_policy,
+            network_sandbox_policy,
+            use_legacy_landlock,
+            managed_network_active,
+        ) {
+            tool_ctx
+                .session
+                .services
+                .encrypted_skills_runtime
+                .path_mappings(&tool_ctx.session.thread_id.to_string())
+                .into_iter()
+                .map(|(source, target)| ReadonlyBind { source, target })
+                .collect()
+        } else {
+            Vec::new()
+        };
         #[allow(deprecated)]
         let sandbox_policy_cwd = tool
             .sandbox_cwd(req)
@@ -271,6 +290,7 @@ impl ToolOrchestrator {
             workspace_roots,
             codex_linux_sandbox_exe: turn_ctx.config.codex_linux_sandbox_exe.as_ref(),
             use_legacy_landlock,
+            skill_binds: skill_binds.clone(),
             windows_sandbox_level: turn_ctx.windows_sandbox_level,
             windows_sandbox_private_desktop: turn_ctx
                 .config
@@ -455,6 +475,7 @@ impl ToolOrchestrator {
                     workspace_roots,
                     codex_linux_sandbox_exe: retry_codex_linux_sandbox_exe,
                     use_legacy_landlock,
+                    skill_binds: skill_binds.clone(),
                     windows_sandbox_level: turn_ctx.windows_sandbox_level,
                     windows_sandbox_private_desktop: turn_ctx
                         .config

@@ -20,6 +20,7 @@ use codex_protocol::models::AdditionalPermissionProfile;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::permissions::FileSystemSandboxPolicy;
 use codex_protocol::permissions::NetworkSandboxPolicy;
+use codex_protocol::permissions::ReadonlyBind;
 use codex_protocol::protocol::SandboxPolicy;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::PathUri;
@@ -140,6 +141,7 @@ pub struct SandboxTransformRequest<'a> {
     pub sandbox_policy_cwd: &'a PathUri,
     pub codex_linux_sandbox_exe: Option<&'a Path>,
     pub use_legacy_landlock: bool,
+    pub readonly_binds: Vec<ReadonlyBind>,
     pub windows_sandbox_level: WindowsSandboxLevel,
     pub windows_sandbox_private_desktop: bool,
 }
@@ -332,6 +334,7 @@ impl SandboxManager {
             sandbox_policy_cwd,
             codex_linux_sandbox_exe,
             use_legacy_landlock,
+            readonly_binds,
             windows_sandbox_level,
             windows_sandbox_private_desktop,
         } = request;
@@ -401,6 +404,7 @@ impl SandboxManager {
                     pending.native_sandbox_policy_cwd.as_path(),
                     use_legacy_landlock,
                     allow_proxy_network,
+                    &readonly_binds,
                 );
                 let mut full_command = Vec::with_capacity(1 + args.len());
                 full_command.push(os_string_to_command_component(exe.as_os_str().to_owned()));

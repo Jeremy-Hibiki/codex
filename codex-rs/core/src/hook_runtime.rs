@@ -629,6 +629,19 @@ pub(crate) async fn record_additional_contexts(
     turn_context: &Arc<TurnContext>,
     additional_contexts: Vec<String>,
 ) {
+    // PostToolUse hooks run before tool outputs are wrapped/redacted, so their
+    // additional contexts can carry skill plaintext or decrypted paths. Strip
+    // that content before it enters history or persistence.
+    let additional_contexts = additional_contexts
+        .into_iter()
+        .map(|text| {
+            crate::encrypted_skills_guard::redact_text(
+                &sess.services.encrypted_skills_runtime,
+                &sess.thread_id.to_string(),
+                &text,
+            )
+        })
+        .collect();
     let developer_messages = additional_context_messages(additional_contexts);
     if developer_messages.is_empty() {
         return;

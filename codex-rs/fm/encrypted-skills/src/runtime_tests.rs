@@ -493,6 +493,39 @@ fn path_mappings_exclude_empty_original_dir_and_empty_session() {
 }
 
 #[test]
+fn process_registry_tracks_shared_runtime_and_guarded_paths() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime = EncryptedSkillRuntime::new_shared_with_audit(
+        sdk,
+        TtlConfig::default(),
+        tmp.path().join("mem-root"),
+        None,
+    );
+    runtime
+        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+        .unwrap();
+
+    assert!(any_engaged());
+    let paths = engaged_guarded_paths();
+    assert!(paths.contains(&runtime.mem_root().to_path_buf()));
+    let decrypted = runtime.decrypted_dirs("t1").pop().unwrap();
+    assert!(paths.contains(&decrypted));
+
+    drop(runtime);
+    assert!(!engaged_guarded_paths().contains(&decrypted));
+}
+
+#[test]
+fn process_registry_ignores_unengaged_shared_runtime() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime =
+        EncryptedSkillRuntime::new_shared(sdk, TtlConfig::default(), tmp.path().join("mem-root"));
+    assert!(!engaged_guarded_paths().contains(&runtime.mem_root().to_path_buf()));
+}
+
+#[test]
 fn audit_events_cover_decryption_and_tokenization() {
     let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
     let sink = Arc::new(CollectingSink::default());

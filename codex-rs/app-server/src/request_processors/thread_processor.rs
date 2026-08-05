@@ -1,3 +1,4 @@
+use super::rpc_guard;
 use super::thread_fork_goal::inherit_thread_goal_snapshot;
 use super::turn_processor::can_accept_direct_input;
 use super::*;
@@ -558,6 +559,7 @@ impl ThreadRequestProcessor {
         request_id: ConnectionRequestId,
         params: ThreadSetNameParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        rpc_guard::ensure_command_not_guarded(&params.name)?;
         match self.thread_set_name_response_inner(params).await {
             Ok((response, notification)) => {
                 self.outgoing
@@ -580,6 +582,9 @@ impl ThreadRequestProcessor {
         &self,
         params: ThreadMetadataUpdateParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        let value = serde_json::to_value(&params)
+            .map_err(|err| invalid_request(format!("invalid thread metadata params: {err}")))?;
+        rpc_guard::ensure_args_not_guarded(&value)?;
         self.thread_metadata_update_response_inner(params)
             .await
             .map(|response| Some(response.into()))
@@ -754,6 +759,7 @@ impl ThreadRequestProcessor {
         request_id: &ConnectionRequestId,
         params: ThreadShellCommandParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        rpc_guard::ensure_not_engaged_unsandboxed()?;
         self.thread_shell_command_inner(request_id, params)
             .await
             .map(|response| Some(response.into()))

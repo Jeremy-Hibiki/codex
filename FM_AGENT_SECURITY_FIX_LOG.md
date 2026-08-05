@@ -132,3 +132,4 @@ and unrelated to this fix set.
   app-server 能按 thread_id 解析到该 session 的上下文（例如把 runtime 提升为进程级共享服务，
   registry 内部仍按 thread_id 隔离），并复用与 Agent Loop 相同的路径/命令检查逻辑。
   完整实施契约见 `FM_AGENT_SECURITY_DESIGN.md`。
+| 27 | openspec: agent-security-rpc-guard | 进程级 engaged 注册表（Weak，`any_engaged`/`engaged_guarded_paths`）；telemetry 工具预览先包 `RedactingToolOutput` 再取 `log_preview`（日志不再含明文/路径）；core `agent_security::rpc` 纯函数（fs path/command/args）；app-server RPC 面接线：fs 读/枚举/watch/写/复制/删除、`command/exec`、`thread/shellCommand`、`process/spawn`、`thread/inject_items`、`thread/name|goal|metadata`；无 thread_id 的 RPC 采用进程级“任一 engaged”保守判定（决策记录）；E2E 集成测试留待最终验证 |

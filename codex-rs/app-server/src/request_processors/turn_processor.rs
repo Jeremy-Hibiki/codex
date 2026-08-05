@@ -1,3 +1,4 @@
+use super::rpc_guard;
 use super::*;
 use codex_agent_extension::AgentInvocation;
 use codex_agent_extension::AgentRun;
@@ -196,6 +197,9 @@ impl TurnRequestProcessor {
         &self,
         params: ThreadInjectItemsParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        let value = serde_json::to_value(&params)
+            .map_err(|err| invalid_request(format!("invalid inject items params: {err}")))?;
+        rpc_guard::ensure_args_not_guarded(&value)?;
         self.thread_inject_items_response_inner(params)
             .await
             .map(|response| Some(response.into()))

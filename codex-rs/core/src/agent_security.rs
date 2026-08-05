@@ -62,6 +62,78 @@ pub(crate) fn sandbox_applies_binds(
     }
 }
 
+/// Pure helpers for thread-less surfaces (app-server RPC) that must block
+/// guarded paths when any session in the process is engaged.
+pub mod rpc {
+    use serde_json::Value;
+    use std::path::Path;
+
+    pub fn any_engaged() -> bool {
+        fm_encrypted_skills::runtime::any_engaged()
+    }
+
+    fn guarded_paths() -> Vec<std::path::PathBuf> {
+        fm_encrypted_skills::runtime::engaged_guarded_paths()
+    }
+
+    fn guarded_strings() -> Vec<String> {
+        guarded_paths()
+            .into_iter()
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    /// True when `path` lies under the mem root or an engaged session's
+    /// decrypted directory.
+    pub fn is_guarded_path(path: &Path) -> bool {
+        if !any_engaged() {
+            return false;
+        }
+        guarded_paths().iter().any(|guard| path.starts_with(guard))
+    }
+
+    /// True when the command string references a guarded path.
+    pub fn command_references_guarded_path(command: &str) -> bool {
+        if !any_engaged() {
+            return false;
+        }
+        let guarded = guarded_strings();
+        guarded.iter().any(|guard| command.contains(guard.as_str()))
+    }
+
+    /// True when any string value in `value` references a guarded path.
+    pub fn args_reference_guarded_path(value: &Value) -> bool {
+        if !any_engaged() {
+            return false;
+        }
+        let guarded = guarded_strings();
+        let mut hit = false;
+        collect_string_values(value, &mut |text| {
+            if guarded.iter().any(|guard| text.contains(guard.as_str())) {
+                hit = true;
+            }
+        });
+        hit
+    }
+
+    fn collect_string_values<'a>(value: &'a Value, out: &mut impl FnMut(&'a str)) {
+        match value {
+            Value::String(text) => out(text),
+            Value::Array(items) => {
+                for item in items {
+                    collect_string_values(item, out);
+                }
+            }
+            Value::Object(map) => {
+                for item in map.values() {
+                    collect_string_values(item, out);
+                }
+            }
+            Value::Null | Value::Bool(_) | Value::Number(_) => {}
+        }
+    }
+}
+
 impl AgentSecurityContext {
     pub fn new(runtime: Arc<EncryptedSkillRuntime>, session_id: impl Into<String>) -> Self {
         Self {

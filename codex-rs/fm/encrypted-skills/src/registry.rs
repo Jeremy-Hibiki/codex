@@ -109,6 +109,19 @@ impl Registry {
             .flat_map(|bucket| bucket.values())
     }
 
+    /// True when any session has registered skills.
+    pub fn has_any_session(&self) -> bool {
+        self.skills.values().any(|bucket| !bucket.is_empty())
+    }
+
+    /// Iterates session ids that have at least one registered skill.
+    pub fn session_ids(&self) -> impl Iterator<Item = &String> {
+        self.skills
+            .iter()
+            .filter(|(_, bucket)| !bucket.is_empty())
+            .map(|(session_id, _)| session_id)
+    }
+
     /// Number of live skill records in `session_id` that reference `token`.
     /// Content dedup can share one cache entry across skills, so an eviction
     /// must not drop the cache entry while another skill still references it.

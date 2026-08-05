@@ -135,7 +135,7 @@ pub fn check_in_now() {
 /// The LMCLIENT SDK reads `FMSH_LIC_SERVER` internally (`<port>@<host>`).
 /// This function reads `FMSH_CODEX_LIC_FEATURE` and `FMSH_CODEX_LIC_VERSION`
 /// (both required) and optionally `FMSH_CODEX_LIC_DISPLAY_NAME` (defaults to `"Codex"`).
-pub fn verify_at_startup() -> Result<Option<LicenseGuard>> {
+pub fn verify_at_startup() -> Result<LicenseGuard> {
     let config = resolve_config(
         std::env::var(FEATURE_ENV_VAR).ok().as_deref(),
         std::env::var(VERSION_ENV_VAR).ok().as_deref(),
@@ -174,9 +174,9 @@ pub fn verify_at_startup() -> Result<Option<LicenseGuard>> {
     *ACTIVE_FEATURE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(config.feature);
-    Ok(Some(LicenseGuard {
+    Ok(LicenseGuard {
         client: Some(client),
-    }))
+    })
 }
 
 #[cfg(test)]

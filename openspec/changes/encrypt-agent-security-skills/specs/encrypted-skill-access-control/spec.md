@@ -44,17 +44,17 @@ The system SHALL allow executing scripts located under `/dev/shm/fm-agent-securi
 - **WHEN** a command executes a script under `/dev/shm/fm-agent-security/` (for example `bash .../scripts/build.sh`)
 - **THEN** the command runs normally
 
-### Requirement: Tool-argument path rewriting to decrypted storage
-Before executing a tool whose arguments reference a decrypted skill's original directory or skill-relative paths, the system SHALL rewrite those references to the session's decrypted directory.
+### Requirement: Shell command path rewriting to decrypted storage
+Before executing a shell command whose arguments reference a decrypted skill's original directory or skill-relative paths, the system SHALL rewrite those references to the session's decrypted directory.
 
 #### Scenario: Shell command with original skill path is rewritten
 - **WHEN** a shell command references the skill's original directory (for example `bash ~/.codex/skills/foo/scripts/build.sh`)
 - **THEN** the command is rewritten to the session's decrypted directory before execution
 - **AND** the real script under `/dev/shm/fm-agent-security/` executes
 
-#### Scenario: File tool with relative resource path is rewritten
-- **WHEN** a file tool references a package file relative to the skill (for example `resources/config.json`)
-- **THEN** the path is resolved against the skill's original directory and rewritten to the decrypted directory before the tool runs
+#### Scenario: Non-shell tools never reach decrypted resources
+- **WHEN** a non-shell tool references a skill-relative resource or any decrypted storage path
+- **THEN** the invocation is blocked; shell script execution is the sole decrypted-storage channel, so no file-tool path rewriting is provided
 
 #### Scenario: Unrelated paths pass through
 - **WHEN** a tool invocation does not reference any known skill directory

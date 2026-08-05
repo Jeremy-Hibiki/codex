@@ -16,6 +16,10 @@ design.
 | 8 | `31cfaea079` | fork isolation | Strip sentinel tokens from all forked text surfaces (assistant/tool/reasoning, inter-agent messages, compacted history, function args) |
 | 9 | `9d47154608` | skill injection | Honor `metadata.encryption.package`; fall back to `<name>.zip.enc` |
 | 10 | `5864546904` | fm-license | `verify_at_startup` returns `Result<LicenseGuard>` instead of an always-`Some` `Option` |
+| 11 | `e28a313c46` | audit sink | Log audit events dropped because the sink mutex was poisoned |
+| 12 | `52a9289e22` | session wiring | `tracing::warn!` when the simulated `test_zip` envelope SDK is selected |
+| 13 | `6c94e649e7` | rehydrate API | Remove unused `Runtime::rehydrate`; gate unframed helper to `cfg(test)` |
+| 14 | `9119204ba7` | OpenSpec | Align access-control spec with shell-only decrypted-storage channel |
 
 ## Verification
 
@@ -25,6 +29,10 @@ design.
   failures in this workspace): 135 passed.
 - `just test -p fm-license`: passed.
 - `cargo check -p codex-cli`: passed.
+
+After the I11–I14 round: `fm-encrypted-skills` 124 passed and the
+`codex-core` `spawn` filter 102 passed (one approvals test is flaky in this
+workspace and passed on the identical code in the previous run).
 
 Two pre-existing loader tests fail identically before and after these changes
 when run inside this git worktree (`non_git_repo_skills_search_does_not_walk_parents`,
@@ -36,8 +44,7 @@ and unrelated to this fix set.
 - Bazel/CI items (MODULE.bazel.lock, workspace `zip` default-features): excluded
   per request.
 - Thread-level TTL: single skill-level TTL is by design.
-- `TestZipSdk` production selectability: simulated encryption is the documented
-  current envelope implementation.
-- Non-shell tool relative-path rewriting: the access-control spec treats shell
-  as the sole decrypted-storage channel, conflicting with the relative-resource
-  scenario; left for a product decision.
+- `TestZipSdk` remains selectable as the documented simulated envelope, but
+  selecting it now emits a loud startup warning.
+- Non-shell tool relative-path rewriting: the access-control spec was updated
+  to match the implemented shell-only channel decision.

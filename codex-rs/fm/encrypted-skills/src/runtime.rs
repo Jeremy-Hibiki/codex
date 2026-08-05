@@ -20,7 +20,6 @@ use crate::paths::rewrite_skill_paths;
 use crate::registry::Clock;
 use crate::registry::Registry;
 use crate::registry::TtlConfig;
-use crate::rehydrate::rehydrate_text;
 use crate::rehydrate::rehydrate_text_mapped;
 use crate::rehydrate::wrap_with_framing;
 use crate::sdk::EnvelopeError;
@@ -184,15 +183,6 @@ impl EncryptedSkillRuntime {
     pub fn touch(&self, session_id: &str, skill_name: &str) {
         if let Ok(mut registry) = self.registry.lock() {
             registry.touch_skill(session_id, skill_name);
-        }
-    }
-
-    /// Rehydrates sentinel tokens owned by `owner_session` in `text`.
-    pub fn rehydrate(&self, owner_session: Option<&str>, text: &str) -> String {
-        let cache = self.cache.lock().map_err(lock_error);
-        match cache {
-            Ok(cache) => rehydrate_text(text, owner_session, &cache),
-            Err(_) => text.to_string(),
         }
     }
 

@@ -1083,6 +1083,9 @@ impl Session {
                     fm_encrypted_skills::sdk::SdkKind::Unavailable
                 }
                 codex_config::config_toml::EncryptedSkillsSdkToml::TestZip => {
+                    tracing::warn!(
+                        "encrypted-skill envelope SDK is test_zip: packages are plain ZIPs and are NOT encrypted"
+                    );
                     fm_encrypted_skills::sdk::SdkKind::TestZip
                 }
             });

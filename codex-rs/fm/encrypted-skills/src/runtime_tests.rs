@@ -143,8 +143,12 @@ fn rehydrate_uses_cached_content_with_session_gate() {
         .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
         .unwrap();
 
-    assert_eq!(runtime.rehydrate(Some("t1"), &token), SKILL_MD);
-    assert_eq!(runtime.rehydrate(Some("t2"), &token), token);
+    assert!(
+        runtime
+            .rehydrate_framed(Some("t1"), &token)
+            .contains(SKILL_MD)
+    );
+    assert_eq!(runtime.rehydrate_framed(Some("t2"), &token), token);
 }
 
 #[test]
@@ -204,7 +208,7 @@ fn clear_thread_wipes_dirs_and_cache() {
 
     runtime.clear_thread("t1");
 
-    assert_eq!(runtime.rehydrate(Some("t1"), &token), token);
+    assert_eq!(runtime.rehydrate_framed(Some("t1"), &token), token);
     assert!(runtime.known_plaintexts("t1").is_empty());
 }
 
@@ -218,7 +222,7 @@ fn unload_turn_wipes_dirs_and_cache() {
 
     runtime.unload_turn("t1");
 
-    assert_eq!(runtime.rehydrate(Some("t1"), &token), token);
+    assert_eq!(runtime.rehydrate_framed(Some("t1"), &token), token);
     assert!(runtime.known_plaintexts("t1").is_empty());
     assert!(runtime.decrypted_dirs("t1").is_empty());
 }
@@ -254,8 +258,12 @@ fn sweep_evicts_skills_after_ttl_and_keeps_fresh_ones() {
     runtime.touch("t1", "fresh");
     runtime.sweep();
 
-    assert_eq!(runtime.rehydrate(Some("t1"), &stale), stale);
-    assert_eq!(runtime.rehydrate(Some("t1"), &fresh), "fresh content");
+    assert_eq!(runtime.rehydrate_framed(Some("t1"), &stale), stale);
+    assert!(
+        runtime
+            .rehydrate_framed(Some("t1"), &fresh)
+            .contains("fresh content")
+    );
 }
 
 #[test]

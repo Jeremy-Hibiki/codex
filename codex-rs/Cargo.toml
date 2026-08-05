@@ -2,6 +2,8 @@
 members = [
     "fm/encrypted-skills",
     "fm/license",
+    "fm/ukey/fmsh-ukey-wrapper",
+    "fm/ukey/fmsh-ukey-cipher",
     "aws-auth",
     "analytics",
     "agent-graph-store",
@@ -143,6 +145,8 @@ license = "Apache-2.0"
 [workspace.dependencies]
 fm-license = { path = "fm/license" }
 fm-encrypted-skills = { path = "fm/encrypted-skills" }
+fmsh-ukey-wrapper = { path = "fm/ukey/fmsh-ukey-wrapper" }
+fmsh-ukey-cipher = { path = "fm/ukey/fmsh-ukey-cipher" }
 
 # Internal
 app_test_support = { path = "app-server/tests/common" }

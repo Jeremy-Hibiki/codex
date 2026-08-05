@@ -12,6 +12,12 @@ doctest = false
 [lints]
 workspace = true
 
+[features]
+# Real envelope backends backed by `fmsh-ukey-cipher`. Requires
+# FMSH_UKEY_SDK_DIR at build time (the wrapper links the vendor SDK) and
+# FMSH_UKEY_PROVIDER / FMSH_UKEY_CONTAINER at runtime for the ukey mode.
+fmsh-ukey = ["dep:fmsh-ukey-cipher"]
+
 [dependencies]
 libc = { workspace = true }
 rand = { workspace = true }
@@ -20,6 +26,9 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 unicode-normalization = { workspace = true }
 zip = { workspace = true, features = ["deflate"] }
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
+fmsh-ukey-cipher = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

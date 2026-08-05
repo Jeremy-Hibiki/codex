@@ -1,6 +1,6 @@
 //! Periodic encrypted-skill TTL sweep for long-lived processes.
 
-use std::sync::Arc;
+use std::sync::Weak;
 use std::time::Duration;
 
 use fm_encrypted_skills::runtime::EncryptedSkillRuntime;
@@ -16,7 +16,7 @@ pub(crate) const PERIODIC_SWEEP_INTERVAL: Duration = Duration::from_secs(30);
 /// deployment-side watchdog (healthcheck + restart) to be cleaned up.
 pub(crate) fn spawn_periodic_sweep(
     handle: Handle,
-    runtime: Arc<EncryptedSkillRuntime>,
+    runtime: Weak<EncryptedSkillRuntime>,
     interval: Duration,
 ) -> tokio::task::JoinHandle<()> {
     handle.spawn(async move {
@@ -24,6 +24,11 @@ pub(crate) fn spawn_periodic_sweep(
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             ticker.tick().await;
+            let Some(runtime) = runtime.upgrade() else {
+                // The owning session (and its strong references) are gone; the
+                // sweep task must not keep the runtime alive on its own.
+                break;
+            };
             runtime.sweep();
         }
     })

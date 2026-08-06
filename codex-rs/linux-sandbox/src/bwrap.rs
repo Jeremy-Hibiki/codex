@@ -2933,7 +2933,7 @@ mod tests {
             /*exclude_slash_tmp*/ false,
         );
         policy.readonly_binds = vec![ReadonlyBind {
-            source: source.clone(),
+            source,
             target: logical_target.clone(),
         }];
 

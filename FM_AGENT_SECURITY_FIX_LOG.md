@@ -182,6 +182,7 @@ and unrelated to this fix set.
 | 29 | `faf8a03fb3` + `6a2f9a217a` | TODO-6/7/8/9 收尾 | app-server 消息边界统一拦截 `marketplace/add|remove|upgrade`、`plugin/install|uninstall`、`plugin/share/save|updateTargets|checkout|delete`（只读 list/read 保留）；`thread/settings/update` 拒绝 danger-full-access；engaged 时拒绝 `config/value/write`、`config/batchWrite`、`experimentalFeature/enablement/set`、`skills/config/write`、`skills/extraRoots/set`（未 engaged 行为不变）；`redact_turn_item` 扩展覆盖 CommandExecution/FileChange/WebSearch/CollabAgentToolCall/DynamicToolCall/McpToolCall 文本面（明文+路径红act），集成测试验证技能脚本回显明文在 rollout 中被红act；原 8 个 app-server 插件/市场测试文件保留并标记 `#[ignore]`（非删除），策略拒绝测试另存 `plugin_policy.rs` |
 | 32 | `a1e101d764` | debug 沙箱 bypass | 新增 `FMSH_CODEX_AGENT_SECURITY_SANDBOX_BYPASS=1`：仅 `debug_assertions` 构建生效（release 恒 false），CLI/app-server 的 danger-full-access 拒绝与 engaged 运行期沙箱校验全部放行；插件禁令与 engaged 配置写拒绝不受影响；启用时打一次性 `tracing::warn!` |
 | 33 | `a8ee85aa0e` | 四种加密模式与两阶段解密 | 同步 `fmsh-ukey-lib` 最新（`3516cd5`，`local` 更名 `software`，四种方式：`noop`/`software`(hpke 默认或 sm2-sm4-cbc)/`ukey`/`ukey-two-phase`）；`EncryptedSkillsSdkToml` 增加 `Noop`/`Software`/`UKeyTwoPhase` 与 `software_algorithm`/`software_privkey`/`key_envelope` 配置；`SdkKind` 同步扩展；新增 `memfd.rs`（软件私钥经 memfd 载入、瞬态密钥不落盘）；`UkeyTwoPhaseSdk` 每 Skill 一个 `key.enc`、一次 UKey 解开后在内存缓存 AES key，后续包软件解密；新增 noop/memfd 单测与 feature-gated software/two-phase 单测 |
+| 34 | `8102050b6d` | write_stdin / app-server stdin / lock poisoning | 二次安全复核三轮修复：① `guard_stdin_input` 守卫注入交互式 shell 的 stdin（write_stdin 的 pre_tool_use_payload 返回 None，spawn 时 guard 只检查启动命令，后续 `cat <skill路径>` 绕过信任层级）；② app-server `process/writeStdin` 解码 base64 delta 后过 `ensure_command_not_guarded`，关闭 spawn-time/unengaged→engaged 的 TOCTOU；③ `runtime.rs` 9 个只读安全查询方法（is_engaged/known_plaintexts/decrypted_dirs/path_mappings/rewrite_paths/unrewrite_paths/touch/has_engaged_state/engaged_session_paths）从 `unwrap_or(false)`/`unwrap_or_default()` 改为 `recover_lock`（`PoisonError::into_inner`），锁中毒后继续服务内存状态而非静默 fail-open；变更路径（load_or_register_inner/clear_session/sweep/rehydrate_framed）保持 `map_err(lock_error)` fail-safe；故意用 std Mutex 而非 parking_lot（poisoning 是 panic 检测锚点） |
 
 ## I28 补充说明：产品策略边界与决策记录
 
@@ -217,3 +218,10 @@ and unrelated to this fix set.
   不需要把 rollout/state db 路径纳入受保护路径集合；resume/fork 正常读取不受影响。
 - TODO-4：确认 TUI `!` 走 `thread/shellCommand`，变更 4 的 `ensure_not_engaged_unsandboxed`
   在处理器入口拦截，`rpc_guard` E2E 已覆盖；`process/spawn` 同样拦截。
+
+## I34 验证记录（2026-08-06）
+
+- `fm-encrypted-skills`: **144/144**（新增 `read_only_queries_survive_registry_poisoning`：故意毒化 registry mutex，断言 is_engaged/decrypted_dirs/known_plaintexts 返回正确数据而非空）
+- `codex-core` encrypted_skills_guard/periodic: **85/85**（新增 6 个 stdin guard 测试：原始路径 Blocked、解密路径 Blocked、无害命令 Allow、脚本执行 Allow、链式走私 Blocked、unengaged 放行）
+- `cargo clippy -p fm-encrypted-skills -p codex-core --lib --tests`: 零 error 零 warning（1 个 pre-existing rmcp-client 弃用警告无关）
+- `cargo fmt`: 干净

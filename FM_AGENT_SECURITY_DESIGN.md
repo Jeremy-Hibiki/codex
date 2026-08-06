@@ -266,8 +266,11 @@ skill/read|share/list` 保留（产品前端不暴露该入口，且内部验证
 mlock 可能失败。
 
 待决策与处置方向：
-- 若产品承诺“明文永不落盘（含 swap）”：解密后对文件 mmap+mlock（或改 memfd 匿名内存+
-  mlock），失败时 fail-closed 或显式降级并记录；需处理多技能并发峰值与 RLIMIT_MEMLOCK。
+- 若产品承诺“明文永不落盘（含 swap）”：解密后对 `/dev/shm` 目录内的文件 mmap+mlock（保持
+  映射存活），失败时 fail-closed 或显式降级并记录；需处理多技能并发峰值与 RLIMIT_MEMLOCK。
+  memfd 方案不适用：Skill 解密后是 zip 展开出的目录树（SKILL.md/scripts/agents/references/
+  templates），脚本执行与工具读取依赖真实路径和相对引用，memfd 只有单个 blob、没有目录层级，
+  无法承载该结构。
 - 若接受 root/取证威胁模型外：不 pin，但需把“明文仅存在于请求瞬间/内存”改为“明文仅存在于
   tmpfs 页与模型请求内存，内存压力下可能进入 swap”。
 - 无论哪种方案，补回归测试与文档结论回填（本条目）。

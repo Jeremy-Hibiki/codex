@@ -181,9 +181,13 @@ impl TurnRequestProcessor {
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        if params.sandbox_policy == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess)
-            || params.permissions.as_deref()
-                == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS)
+        if !codex_core::agent_security::sandbox_policy_bypassed()
+            && (params.sandbox_policy
+                == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess)
+                || params.permissions.as_deref()
+                    == Some(
+                        codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS,
+                    ))
         {
             return Err(crate::error_code::invalid_request(
                 "danger-full-access is disabled by product policy",
@@ -218,9 +222,13 @@ impl TurnRequestProcessor {
         request_id: &ConnectionRequestId,
         params: ThreadSettingsUpdateParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        if params.sandbox_policy == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess)
-            || params.permissions.as_deref()
-                == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS)
+        if !codex_core::agent_security::sandbox_policy_bypassed()
+            && (params.sandbox_policy
+                == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess)
+                || params.permissions.as_deref()
+                    == Some(
+                        codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS,
+                    ))
         {
             return Err(crate::error_code::invalid_request(
                 "danger-full-access is disabled by product policy",

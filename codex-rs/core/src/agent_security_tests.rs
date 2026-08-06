@@ -13,6 +13,7 @@ use super::AgentSecurityContext;
 use super::ensure_encrypted_skill_sandbox;
 use super::rpc;
 use super::sandbox_applies_binds;
+use super::sandbox_policy_bypassed_for;
 
 struct TestSdk;
 
@@ -129,4 +130,12 @@ fn ensure_encrypted_skill_sandbox_gates_engaged_execution() {
     assert!(ensure_encrypted_skill_sandbox(true, false).is_err());
     assert!(ensure_encrypted_skill_sandbox(true, true).is_ok());
     assert!(ensure_encrypted_skill_sandbox(false, false).is_ok());
+}
+
+#[test]
+fn sandbox_bypass_env_only_accepts_exact_one() {
+    assert!(sandbox_policy_bypassed_for(None) == false);
+    assert!(sandbox_policy_bypassed_for(Some("1")) == true);
+    assert!(sandbox_policy_bypassed_for(Some("0")) == false);
+    assert!(sandbox_policy_bypassed_for(Some("true")) == false);
 }

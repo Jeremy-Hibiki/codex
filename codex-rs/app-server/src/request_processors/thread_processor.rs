@@ -453,9 +453,12 @@ impl ThreadRequestProcessor {
         supports_openai_form_elicitation: bool,
         request_context: RequestContext,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        if params.sandbox == Some(codex_app_server_protocol::SandboxMode::DangerFullAccess)
-            || params.permissions.as_deref()
-                == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS)
+        if !codex_core::agent_security::sandbox_policy_bypassed()
+            && (params.sandbox == Some(codex_app_server_protocol::SandboxMode::DangerFullAccess)
+                || params.permissions.as_deref()
+                    == Some(
+                        codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS,
+                    ))
         {
             return Err(crate::error_code::invalid_request(
                 "danger-full-access is disabled by product policy",

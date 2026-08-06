@@ -62,13 +62,45 @@ pub(crate) fn sandbox_applies_binds(
     }
 }
 
+/// Debug-only escape hatch for the forced-sandbox product policy (I6).
+///
+/// Only honored in `debug_assertions` builds; release builds always return
+/// `false` so the env var can never weaken production enforcement. Intended
+/// for local development and CI harnesses that need full-access execution
+/// without editing the product policy.
+pub const SANDBOX_BYPASS_ENV_VAR: &str = "FMSH_CODEX_AGENT_SECURITY_SANDBOX_BYPASS";
+
+static SANDBOX_BYPASS_WARNED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+pub fn sandbox_policy_bypassed() -> bool {
+    #[cfg(debug_assertions)]
+    {
+        let active = sandbox_policy_bypassed_for(std::env::var(SANDBOX_BYPASS_ENV_VAR).ok().as_deref());
+        if active && !SANDBOX_BYPASS_WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            tracing::warn!(
+                "{SANDBOX_BYPASS_ENV_VAR}=1 is active: full-access execution is allowed in this debug build"
+            );
+        }
+        active
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        false
+    }
+}
+
+pub fn sandbox_policy_bypassed_for(value: Option<&str>) -> bool {
+    matches!(value, Some("1"))
+}
+
 /// Product policy (I6): engaged sessions must execute under an active
 /// sandbox; full-access execution is rejected at runtime.
 pub fn ensure_encrypted_skill_sandbox(
     engaged: bool,
     sandbox_requested: bool,
 ) -> Result<(), &'static str> {
-    if engaged && !sandbox_requested {
+    if engaged && !sandbox_requested && !sandbox_policy_bypassed() {
         Err("encrypted skills require an active sandbox; full-access execution is disabled")
     } else {
         Ok(())

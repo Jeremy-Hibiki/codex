@@ -153,6 +153,7 @@ in-flight 窗口定义：`load_or_register` 从 `decrypt_package()` 之后、`re
 | D8 | 插件与 MCP 的禁用范围 | 插件/marketplace 全禁；MCP server 允许 | MCP 不能注册 Codex Hook，暴露面限于工具参数/输出（guard 已覆盖）与同 uid 进程（威胁模型外） |
 | D9 | 技能脚本执行的审批 | engaged 时自动 Permit，不向用户征询、不进 guardian 评审 | 用户不应看到加载加密 Skill 后的 Turn 内执行过程；命令本身也走逻辑路径/红act |
 | D10 | 配置与模型配置的修改途径 | 客户端不提供任何改配置/改模型配置的入口；Skill 仅可配置启用/禁用；配置由未来受信管理工具负责 | `thread/start` config 覆盖、`experimentalFeature/enablement/set`、`skills/config/write` 等客户端入口不暴露；`thread/realtime/*` 产品不提供，排除在范围外 |
+| D11 | 强制沙箱的 debug 后门 | `FMSH_CODEX_AGENT_SECURITY_SANDBOX_BYPASS=1`，仅 `debug_assertions` 构建生效，release 忽略 | 本地开发/CI 需要 full-access 时使用；插件禁令与 engaged 配置写拒绝不受影响；产品发布构建不受影响 |
 
 ## 14. 相关记录
 
@@ -345,9 +346,8 @@ default_permissions = ":workspace" # 与 workspace-write 一致的命名档案
 plugins = false                    # I7/I30：禁止插件
 
 [encrypted_skills]
-# sdk 的 "ukey"/"local" 为预留值（后端未接入，选择后 fail-closed）
-sdk = "unavailable"
-# local_privkey = "/etc/codex/keys/enc.priv.pem"   # 预留，待后端接入后使用
+sdk = "ukey"                       # 或 "local"（需下面 local_privkey）
+# local_privkey = "/etc/codex/keys/enc.priv.pem"
 audit_path = "/var/log/codex/encrypted-skills-audit.jsonl"
 skill_idle_ttl_secs = 600
 ```
@@ -364,8 +364,8 @@ sandbox_mode = "workspace-write"
   `read-only` 会破坏该能力；`danger-full-access` 违反 I6，CLI/ACP 与运行期都会拒绝。
 - 不要写：`sandbox_mode = "danger-full-access"`、`default_permissions = ":danger-full-access"`、
   `features.plugins = true`、`sdk = "test_zip"`（仅测试，生产 fail-closed）。
-- `sdk` 的 `ukey`/`local` 为预留值，后端未接入（不再依赖/ vendor fmsh-ukey），
-  选择后 fail-closed；当前产品保持 `unavailable`（fail-closed），待真实后端接入。
+- `sdk` 生产用 `ukey`（FMSH UKey，需编译期 `fmsh-ukey` feature）或 `local`
+  （X25519+AES-GCM，配 `local_privkey`）。
 - 部署侧配套：`/dev/shm` 容量按技能包估算调大（容量门控预留 ≥4 MiB）；有 root 时按 I31
   配置 `LimitMEMLOCK`/无 swap，无 root 则接受威胁模型或 `VmSwap` 监控；审计日志目录收紧权限
   （文件本身按 0600 写）。

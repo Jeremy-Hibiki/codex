@@ -66,12 +66,13 @@ pub enum SdkKind {
     Unavailable,
     /// Test-only SDK that decrypts plain ZIP packages (`.zip.enc` is a zip).
     TestZip,
-    /// Real FMSH UKey backend (CMS SM2/SM4 envelope). Reserved: the backend
-    /// is not wired into this branch, so this kind stays fail-closed.
+    /// Real FMSH UKey backend (CMS SM2/SM4 envelope via `fmsh-ukey-cipher`).
+    /// Reserved until the `fmsh-ukey` feature is wired in; without the
+    /// feature this kind stays fail-closed.
     UKey,
-    /// Local X25519 + AES-256-GCM envelope backend, decrypting with the
-    /// given static X25519 private key. Reserved: not wired in, stays
-    /// fail-closed.
+    /// Local X25519 + AES-256-GCM envelope backend (`fmsh-ukey-cipher`
+    /// `local` mode), decrypting with the given static X25519 private key.
+    /// Reserved for the same feature gate.
     Local(PathBuf),
 }
 
@@ -79,9 +80,41 @@ pub fn sdk_for(kind: SdkKind) -> Arc<dyn EnvelopeSdk> {
     match kind {
         SdkKind::Unavailable => Arc::new(UnavailableSdk),
         SdkKind::TestZip => Arc::new(TestZipSdk),
+        #[cfg(all(
+            feature = "fmsh-ukey",
+            target_os = "linux",
+            target_arch = "x86_64",
+            target_env = "gnu"
+        ))]
+        SdkKind::UKey => match fmsh::UKeySdk::new() {
+            Ok(sdk) => Arc::new(sdk),
+            Err(error) => {
+                tracing::warn!(error = %error, "fmsh-ukey SDK unavailable; falling back to fail-closed");
+                Arc::new(UnavailableSdk)
+            }
+        },
+        #[cfg(all(
+            feature = "fmsh-ukey",
+            target_os = "linux",
+            target_arch = "x86_64",
+            target_env = "gnu"
+        ))]
+        SdkKind::Local(privkey) => match fmsh::LocalSdk::new(&privkey) {
+            Ok(sdk) => Arc::new(sdk),
+            Err(error) => {
+                tracing::warn!(error = %error, privkey = %privkey.display(), "fmsh-ukey local SDK unavailable; falling back to fail-closed");
+                Arc::new(UnavailableSdk)
+            }
+        },
+        #[cfg(not(all(
+            feature = "fmsh-ukey",
+            target_os = "linux",
+            target_arch = "x86_64",
+            target_env = "gnu"
+        )))]
         SdkKind::UKey | SdkKind::Local(_) => {
             tracing::warn!(
-                "encrypted-skill SDK kind is reserved and not wired in; using fail-closed"
+                "encrypted-skill SDK kind is not compiled in; enable the fmsh-ukey feature (and provide FMSH_UKEY_SDK_DIR at build time) to use it"
             );
             Arc::new(UnavailableSdk)
         }
@@ -143,6 +176,80 @@ fn parse_zip_bytes(zip_bytes: &[u8]) -> Result<Vec<PackageEntry>, EnvelopeError>
         entries.push(PackageEntry { rel_path, contents });
     }
     Ok(entries)
+}
+
+#[cfg(all(
+    feature = "fmsh-ukey",
+    target_os = "linux",
+    target_arch = "x86_64",
+    target_env = "gnu"
+))]
+mod fmsh {
+    use std::path::Path;
+    use std::sync::Arc;
+
+    use fmsh_ukey_cipher::Cipher;
+    use fmsh_ukey_cipher::LocalCipher;
+    use fmsh_ukey_cipher::UkeyCipher;
+
+    use super::EnvelopeError;
+    use super::EnvelopeSdk;
+    use super::PackageEntry;
+    use super::parse_zip_bytes;
+
+    /// Decrypts `fmsh-ukey-enc` skill packages (`.zip.enc` = CMS SM2/SM4
+    /// envelope of the skill zip) through the FMSH UKey SDK.
+    pub(crate) struct UKeySdk {
+        cipher: Arc<UkeyCipher>,
+    }
+
+    impl UKeySdk {
+        pub(crate) fn new() -> Result<Self, EnvelopeError> {
+            let cipher = UkeyCipher::new(None, None, None)
+                .map_err(|_| EnvelopeError::HardwareKeyRequired)?;
+            Ok(Self {
+                cipher: Arc::new(cipher),
+            })
+        }
+    }
+
+    impl EnvelopeSdk for UKeySdk {
+        fn decrypt_package(&self, package_path: &Path) -> Result<Vec<PackageEntry>, EnvelopeError> {
+            let envelope = std::fs::read(package_path).map_err(EnvelopeError::Io)?;
+            let zip_bytes = self
+                .cipher
+                .decrypt(&envelope)
+                .map_err(|err| EnvelopeError::Decrypt(format!("ukey decrypt failed: {err:#}")))?;
+            parse_zip_bytes(&zip_bytes)
+        }
+    }
+
+    /// Decrypts `fmsh-ukey-enc` local-mode skill packages (`.zip.enc` =
+    /// X25519 + AES-256-GCM envelope of the skill zip) with a static private
+    /// key, without any hardware.
+    pub(crate) struct LocalSdk {
+        cipher: LocalCipher,
+    }
+
+    impl LocalSdk {
+        pub(crate) fn new(privkey: &Path) -> Result<Self, EnvelopeError> {
+            let cipher = LocalCipher::from_priv_file(privkey).map_err(|err| {
+                EnvelopeError::Decrypt(format!("loading local private key: {err:#}"))
+            })?;
+            Ok(Self { cipher })
+        }
+    }
+
+    impl EnvelopeSdk for LocalSdk {
+        fn decrypt_package(&self, package_path: &Path) -> Result<Vec<PackageEntry>, EnvelopeError> {
+            let envelope = std::fs::read(package_path).map_err(EnvelopeError::Io)?;
+            let zip_bytes = self
+                .cipher
+                .decrypt(&envelope)
+                .map_err(|err| EnvelopeError::Decrypt(format!("local decrypt failed: {err:#}")))?;
+            parse_zip_bytes(&zip_bytes)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -236,6 +343,12 @@ mod tests {
             Err(EnvelopeError::SdkUnavailable)
         ));
         assert!(matches!(sdk_for(SdkKind::TestZip).as_ref(), _));
+        #[cfg(not(all(
+            feature = "fmsh-ukey",
+            target_os = "linux",
+            target_arch = "x86_64",
+            target_env = "gnu"
+        )))]
         {
             // UKey/Local are reserved and fail closed until the feature is wired.
             assert!(matches!(
@@ -248,5 +361,42 @@ mod tests {
                 Err(EnvelopeError::SdkUnavailable)
             ));
         }
+    }
+
+    #[cfg(all(
+        feature = "fmsh-ukey",
+        target_os = "linux",
+        target_arch = "x86_64",
+        target_env = "gnu"
+    ))]
+    #[test]
+    fn local_sdk_decrypts_fmsh_envelope_package() {
+        use fmsh_ukey_cipher::Cipher;
+        use fmsh_ukey_cipher::LocalCipher;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let pub_path = tmp.path().join("enc.pub.pem");
+        let priv_path = tmp.path().join("enc.priv.pem");
+        let cipher = LocalCipher::generate_to_files(&pub_path, &priv_path).unwrap();
+
+        let mut zip_buf = Vec::new();
+        {
+            let mut writer = zip::ZipWriter::new(std::io::Cursor::new(&mut zip_buf));
+            writer
+                .start_file("SKILL.md", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(b"# secret").unwrap();
+            writer.finish().unwrap();
+        }
+
+        let envelope = cipher.encrypt(&zip_buf).unwrap();
+        let package = tmp.path().join("secret.zip.enc");
+        std::fs::write(&package, &envelope).unwrap();
+
+        let sdk = super::fmsh::LocalSdk::new(&priv_path).unwrap();
+        let entries = sdk.decrypt_package(&package).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].rel_path, PathBuf::from("SKILL.md"));
+        assert_eq!(entries[0].contents, b"# secret");
     }
 }

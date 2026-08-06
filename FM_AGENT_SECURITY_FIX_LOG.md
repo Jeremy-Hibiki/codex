@@ -49,7 +49,7 @@ prompt。I23 在 `run_guardian_review` 入口统一红act，评审模型只看�
 - 默认 workspace-write 的 bwrap 沙箱把 `/dev/shm` 挂成私有空 tmpfs，重写后的真实路径在沙箱内
   不可见，导致技能脚本执行与沙箱隔离存在张力；根治方案是把解密目录以只读 bind 挂到沙箱内的
   逻辑技能路径（`--ro-bind <decrypted> <logical>`），使命令永不包含 `/dev/shm`。
-| 23 | `41c2632016` + `33f94b4371`（后按决策移除） | fmsh-ukey integration | 曾以 git 依赖接入 `fmsh-ukey-cipher`（upstream `f09dc46`）并实现 `UKeySdk`/`LocalSdk`、接入 `local_privkey`；后续决策：不再 vendor/依赖 ukey，git 依赖、feature 与实现已移除，`UKey`/`Local` 恢复为预留 fail-closed（见 I22 语义） |
+| 23 | `41c2632016` + `33f94b4371` | fmsh-ukey integration | Add `fmsh-ukey-cipher` as optional git dependency pinned to upstream `f09dc46` (openssl >= 0.10.76), add optional `fmsh-ukey` feature, implement `UKeySdk`/`LocalSdk`, wire `local_privkey` config; openssl lock bumped 0.10.75 -> 0.10.81; feature build verified with a stub SDK (`136 passed`) |
 
 ## Verification
 
@@ -174,6 +174,7 @@ and unrelated to this fix set.
 | 27 | `1c694a0269` + `5c44c17a17` | openspec: agent-security-rpc-guard | 进程级 engaged 注册表（Weak，`any_engaged`/`engaged_guarded_paths`）；telemetry 工具预览先包 `RedactingToolOutput` 再取 `log_preview`（日志不再含明文/路径）；core `agent_security::rpc` 纯函数（fs path/command/args）；app-server RPC 面接线：fs 读/枚举/watch/写/复制/删除、`command/exec`、`thread/shellCommand`、`process/spawn`、`thread/inject_items`、`thread/name|goal|metadata`；无 thread_id 的 RPC 采用进程级“任一 engaged”保守判定（决策记录）；E2E 集成测试：真实加载加密 Skill，在 turn in-flight 窗口内验证 fs/readFile、command/exec、thread/shellCommand、process/spawn 被拦截，普通路径放行，未 engaged 时不受影响 |
 | 28 | `e29eda359d` | openspec: agent-security-product-policy | I6/I7/D10 落地：core `ensure_encrypted_skill_sandbox`（engaged 且无有效沙箱 → 拒绝执行）；CLI 拒绝 `--sandbox danger-full-access` 与 `dangerously-bypass-approvals-and-sandbox`（根级 `interactive.shared` 之外，覆盖 exec/resume/fork/archive/delete/unarchive 子命令自身 shared 参数），拒绝 `plugin`/`marketplace` 子命令；app-server `thread/start`/`turn/start` 请求参数携带 danger-full-access 时 `invalid_request` 拒绝；插件/marketplace CLI 原集成测试保留并标记 `#[ignore]`（策略拒绝断言另存 `plugin_policy.rs`/`product_policy.rs`）；app-server 既有 full-access 用例改为配置级 full-access 或 WorkspaceWrite 保持原意图 |
 | 29 | `faf8a03fb3` + `6a2f9a217a` | TODO-6/7/8/9 收尾 | app-server 消息边界统一拦截 `marketplace/add|remove|upgrade`、`plugin/install|uninstall`、`plugin/share/save|updateTargets|checkout|delete`（只读 list/read 保留）；`thread/settings/update` 拒绝 danger-full-access；engaged 时拒绝 `config/value/write`、`config/batchWrite`、`experimentalFeature/enablement/set`、`skills/config/write`、`skills/extraRoots/set`（未 engaged 行为不变）；`redact_turn_item` 扩展覆盖 CommandExecution/FileChange/WebSearch/CollabAgentToolCall/DynamicToolCall/McpToolCall 文本面（明文+路径红act），集成测试验证技能脚本回显明文在 rollout 中被红act；原 8 个 app-server 插件/市场测试文件保留并标记 `#[ignore]`（非删除），策略拒绝测试另存 `plugin_policy.rs` |
+| 32 | （squash 提交） | debug 沙箱 bypass | 新增 `FMSH_CODEX_AGENT_SECURITY_SANDBOX_BYPASS=1`：仅 `debug_assertions` 构建生效（release 恒 false），CLI/app-server 的 danger-full-access 拒绝与 engaged 运行期沙箱校验全部放行；插件禁令与 engaged 配置写拒绝不受影响；启用时打一次性 `tracing::warn!` |
 
 ## I28 补充说明：产品策略边界与决策记录
 

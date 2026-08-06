@@ -963,14 +963,14 @@
           "type": "string"
         },
         {
-          "description": "Real FMSH UKey backend (CMS SM2/SM4 envelope). Reserved: the backend is not wired into this branch; selecting it stays fail-closed.",
+          "description": "Real FMSH UKey backend (CMS SM2/SM4 envelope). Requires the `fmsh-ukey` feature and `FMSH_UKEY_SDK_DIR` at build time plus `FMSH_UKEY_PROVIDER`/`FMSH_UKEY_CONTAINER` at runtime.",
           "enum": [
             "ukey"
           ],
           "type": "string"
         },
         {
-          "description": "Local X25519 + AES-256-GCM envelope backend (no hardware). Reserved: not wired in; selecting it stays fail-closed.",
+          "description": "Local X25519 + AES-256-GCM envelope backend (no hardware). Requires the `fmsh-ukey` feature at build time.",
           "enum": [
             "local"
           ],

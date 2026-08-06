@@ -9,24 +9,24 @@
   - `.bazelrc` — fm-license 的 Bazel 配置。
   - `BUILD.bazel` — 仓库构建目标与 crate 注解。
   - `defs.bzl` — Bazel 规则辅助。
-  - `MODULE.bazel` / `MODULE.bazel.lock` — 依赖模块与锁（ukey 移除后需重新生成锁）。
+  - `MODULE.bazel` / `MODULE.bazel.lock` — 依赖模块与锁（含 fmsh-ukey-cipher 条目）。
   - `patches/` — `rules_rs_*`、`v8_module_deps` 构建补丁。
   - `third_party/lmclient/` — FMSH LMCLIENT SDK 的 Bazel 封装。
   - `release/` — 发布容器（Dockerfile、predownload-deps、BUILD.md）。
   - `scripts/format.py`、`.gitignore`、`.dockerignore` — 工具与忽略项。
 - `codex-rs/`
   - `Cargo.toml` — 新增 `fm-license`、`fm-encrypted-skills`、`zip` 等依赖。
-  - `Cargo.lock` — 对应依赖锁定（ukey 已剔除）。
+  - `Cargo.lock` — 对应依赖锁定（含 `fmsh-ukey-cipher`/`fmsh-ukey-wrapper` git 依赖）。
   - `fm/license/`（新增 crate）
     - `src/lib.rs` — LicenseManager 公共 API、`verify_at_startup`、`ensure_active`、测试 bypass。
     - `src/license.rs` — LMCLIENT 启动校验、LicenseGuard、信号处理器、心跳。
     - `src/license_tests.rs` — 测试。
     - `Cargo.toml` / `BUILD.bazel` / `README.md` — 依赖、Bazel 目标、说明。
   - `fm/encrypted-skills/`
-    - `Cargo.toml` — 依赖与（已移除）fmsh-ukey feature。
+    - `Cargo.toml` — 依赖（含可选 `fmsh-ukey` feature 与 `fmsh-ukey-cipher` git 依赖）。
     - `BUILD.bazel` — Bazel 目标。
     - `src/lib.rs` — crate 根与模块导出。
-    - `src/sdk.rs` — `EnvelopeSdk`、`TestZipSdk`、`UnavailableSdk`；`UKey`/`Local` 预留 fail-closed；容量上限（512 条目 / 16 MiB）。
+    - `src/sdk.rs` — `EnvelopeSdk`、`TestZipSdk`、`UnavailableSdk`、`UKeySdk`/`LocalSdk`（fmsh-ukey feature）；容量上限（512 条目 / 16 MiB）。
     - `src/cache.rs` — 内容缓存（上限/FIFO/引用回调）。
     - `src/registry.rs` — 会话注册表、替换记录返回与 wipe、生命周期锁。
     - `src/rehydrate.rs` — token 重水合（framing）。
@@ -38,7 +38,7 @@
     - `src/runtime.rs` — 解密/落盘/注册/TTL/sweep（Weak）/`unload_turn`/`is_engaged`/in-flight/进程级共享注册/`path_mappings`/unrewrite/redact。
     - `src/*_tests.rs` — 各模块单测。
   - `config/`
-    - `src/config_toml.rs` — `EncryptedSkillsToml`（sdk/TTL/audit_path/local_privkey），`ukey`/`local` 预留 fail-closed。
+    - `src/config_toml.rs` — `EncryptedSkillsToml`（sdk/TTL/audit_path/local_privkey），`ukey`/`local` 需 `fmsh-ukey` feature。
   - `core-skills/`
     - `src/model.rs` / `src/loader.rs` / `src/loader/environment.rs` — frontmatter 加密标记与字段解析。
     - `src/injection.rs` — `build_skill_injections` 加密分支（解密/token/幂等、`encryption.package`）。
@@ -76,7 +76,7 @@
     - `src/sandbox_tags_tests.rs` — 沙箱标签测试更新。
     - `tests/common/test_codex_exec.rs` / `tests/suite/cli_stream.rs` — 测试基建（license bypass）。
     - `tests/suite/encrypted_skills.rs` / `tests/suite/mod.rs` — 集成测试（沙箱执行、回显明文红act）。
-    - `config.schema.json` — 加密技能配置 schema（ukey/local 预留描述）。
+    - `config.schema.json` — 加密技能配置 schema（ukey/local 描述）。
   - `app-server-protocol/`
     - `src/protocol/v2/plugin.rs` — `SkillMetadata` 加密字段。
     - `schema/json/*`、`schema/typescript/v2/*` — schema 与 TS 定义。

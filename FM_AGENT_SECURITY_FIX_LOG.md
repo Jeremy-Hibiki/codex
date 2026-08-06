@@ -183,6 +183,7 @@ and unrelated to this fix set.
 | 32 | `a1e101d764` | debug 沙箱 bypass | 新增 `FMSH_CODEX_AGENT_SECURITY_SANDBOX_BYPASS=1`：仅 `debug_assertions` 构建生效（release 恒 false），CLI/app-server 的 danger-full-access 拒绝与 engaged 运行期沙箱校验全部放行；插件禁令与 engaged 配置写拒绝不受影响；启用时打一次性 `tracing::warn!` |
 | 33 | `a8ee85aa0e` | 四种加密模式与两阶段解密 | 同步 `fmsh-ukey-lib` 最新（`3516cd5`，`local` 更名 `software`，四种方式：`noop`/`software`(hpke 默认或 sm2-sm4-cbc)/`ukey`/`ukey-two-phase`）；`EncryptedSkillsSdkToml` 增加 `Noop`/`Software`/`UKeyTwoPhase` 与 `software_algorithm`/`software_privkey`/`key_envelope` 配置；`SdkKind` 同步扩展；新增 `memfd.rs`（软件私钥经 memfd 载入、瞬态密钥不落盘）；`UkeyTwoPhaseSdk` 每 Skill 一个 `key.enc`、一次 UKey 解开后在内存缓存 AES key，后续包软件解密；新增 noop/memfd 单测与 feature-gated software/two-phase 单测 |
 | 34 | `8102050b6d` | write_stdin / app-server stdin / lock poisoning | 二次安全复核三轮修复：① `guard_stdin_input` 守卫注入交互式 shell 的 stdin（write_stdin 的 pre_tool_use_payload 返回 None，spawn 时 guard 只检查启动命令，后续 `cat <skill路径>` 绕过信任层级）；② app-server `process/writeStdin` 解码 base64 delta 后过 `ensure_command_not_guarded`，关闭 spawn-time/unengaged→engaged 的 TOCTOU；③ `runtime.rs` 9 个只读安全查询方法（is_engaged/known_plaintexts/decrypted_dirs/path_mappings/rewrite_paths/unrewrite_paths/touch/has_engaged_state/engaged_session_paths）从 `unwrap_or(false)`/`unwrap_or_default()` 改为 `recover_lock`（`PoisonError::into_inner`），锁中毒后继续服务内存状态而非静默 fail-open；变更路径（load_or_register_inner/clear_session/sweep/rehydrate_framed）保持 `map_err(lock_error)` fail-safe；故意用 std Mutex 而非 parking_lot（poisoning 是 panic 检测锚点） |
+| 35 | `8b81ccc792` | 上游 fmsh-ukey-lib vendor SDK + thread-manager-sample 修复 | ① 上游 `8626472` vendor FMSH UKey SDK linux 库进仓库（`vendor/fmsh-ukey-sdk/linux/lib`），wrapper build.rs fallback 到 workspace vendor 目录，feature 构建不再需要 `FMSH_UKEY_SDK_DIR`；同步 rev `a37065c`→`8626472` 并验证：`cargo check/test -p fm-encrypted-skills --features fmsh-ukey` 无 SDK 环境变量全绿（**146/146**，含 `software_sdk_decrypts_hpke_package` 与 `two_phase_sdk_decrypts_package_with_in_memory_key` 真实软件解密；UKey 硬件路径返回 `HardwareKeyRequired`，测试经注入 `with_key_wrap` 不碰硬件）；② 修 thread-manager-sample 残留 API 漂移：`encrypted_skills_local_privkey` → `encrypted_skills_software_privkey`（I33 四模式重构改名），补 `software_algorithm`/`key_envelope` 字段——这是全量 clippy 唯一真实 error（其余为 pre-existing bwrap C 警告与 rmcp-client 弃用）。注意：vendored `.so` 为 Linux x86_64，macOS/Windows 仍需厂商 SDK 或对应平台变体；测试运行时需 `LD_LIBRARY_PATH` 指向 vendored lib（build.rs 的 rpath 只传播给 wrapper 自身产物） |
 
 ## I28 补充说明：产品策略边界与决策记录
 
@@ -225,3 +226,11 @@ and unrelated to this fix set.
 - `codex-core` encrypted_skills_guard/periodic: **85/85**（新增 6 个 stdin guard 测试：原始路径 Blocked、解密路径 Blocked、无害命令 Allow、脚本执行 Allow、链式走私 Blocked、unengaged 放行）
 - `cargo clippy -p fm-encrypted-skills -p codex-core --lib --tests`: 零 error 零 warning（1 个 pre-existing rmcp-client 弃用警告无关）
 - `cargo fmt`: 干净
+
+## I35 验证记录（2026-08-06）
+
+- 上游 `fmsh-ukey-lib` `8626472`（vendor SDK）：`cargo check -p fm-encrypted-skills --features fmsh-ukey` 无 `FMSH_UKEY_SDK_DIR` 编译通过（build.rs fallback `vendor/fmsh-ukey-sdk`）
+- `cargo test -p fm-encrypted-skills --features fmsh-ukey`（`LD_LIBRARY_PATH` 指向 vendored lib）：**146/146**，含 `software_sdk_decrypts_hpke_package`、`two_phase_sdk_decrypts_package_with_in_memory_key` 真实软件解密
+- 非 feature：**144/144** 无回归
+- `cargo clippy -p fm-encrypted-skills --features fmsh-ukey --all-targets`: 干净
+- 全量 `cargo clippy --workspace --all-targets`: 唯一真实 error（thread-manager-sample 字段漂移）已修；余下为 pre-existing bwrap C 警告（`nl_pid` 初始化）与 rmcp-client 弃用

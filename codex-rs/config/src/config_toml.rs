@@ -157,17 +157,17 @@ pub enum EncryptedSkillsSdkToml {
     #[serde(rename = "noop")]
     Noop,
     /// Software digital envelope (HPKE-X25519-AES256-GCM default or
-    /// standard CMS SM2-SM4-CBC). Requires the `fmsh-ukey` feature.
+    /// standard CMS SM2-SM4-CBC). Compiled on Linux x86_64 gnu.
     #[serde(rename = "software")]
     Software,
-    /// Real FMSH UKey backend (CMS SM2/SM4 envelope). Requires the
-    /// `fmsh-ukey` feature and `FMSH_UKEY_SDK_DIR` at build time plus
-    /// `FMSH_UKEY_PROVIDER`/`FMSH_UKEY_CONTAINER` at runtime.
+    /// Real FMSH UKey backend (CMS SM2/SM4 envelope). Compiled on Linux
+    /// x86_64 gnu; needs `FMSH_UKEY_PROVIDER`/`FMSH_UKEY_CONTAINER` (and the
+    /// hardware) at runtime.
     #[serde(rename = "ukey")]
     UKey,
     /// UKey two-phase: one UKey call unwraps a per-skill `key.enc`, then
     /// every package is decrypted in software AES-256-GCM with the in-memory
-    /// key. Requires the `fmsh-ukey` feature.
+    /// key. Compiled on Linux x86_64 gnu.
     #[serde(rename = "ukey-two-phase")]
     UKeyTwoPhase,
 }

@@ -12,13 +12,6 @@ doctest = false
 [lints]
 workspace = true
 
-[features]
-# Real envelope backends (software / ukey / ukey-two-phase) backed by
-# `fmsh-ukey-cipher`. Requires FMSH_UKEY_SDK_DIR at build time (the wrapper
-# links the vendor SDK) and FMSH_UKEY_PROVIDER / FMSH_UKEY_CONTAINER at
-# runtime for the ukey modes.
-fmsh-ukey = ["dep:fmsh-ukey-cipher"]
-
 [dependencies]
 libc = { workspace = true }
 rand = { workspace = true }
@@ -29,8 +22,13 @@ tracing = { workspace = true }
 unicode-normalization = { workspace = true }
 zip = { workspace = true, features = ["deflate"] }
 
+# Real envelope backends (software / ukey / ukey-two-phase) backed by
+# `fmsh-ukey-cipher`, hard-bound on the platform where the vendor SDK ships.
+# The upstream repo vendors `libfmsh_ukey_sdk.so` under vendor/, so no
+# FMSH_UKEY_SDK_DIR is needed at build time; the ukey modes still need
+# FMSH_UKEY_PROVIDER / FMSH_UKEY_CONTAINER (and the hardware) at runtime.
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
-fmsh-ukey-cipher = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "3516cd574812da50de8ddde31624d5ba863007b7", optional = true }
+fmsh-ukey-cipher = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "8626472c3171eb95b7a6d28e74babf4ac26a44f0" }
 
 [dev-dependencies]
 anyhow = { workspace = true }

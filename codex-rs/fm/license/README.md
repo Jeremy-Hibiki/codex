@@ -99,6 +99,25 @@ LMClient Rust SDK 只是 C 库的封装，C 库保持进程级全局状态：`lm
   （`~/.cargo/git/checkouts/lmclient-rust-sdk-*`）中 `LicenseClient` 的注释与
   `lmInit`/`lmExit` 的全局状态说明。
 
+## 后续方向（记录，暂不实施）：后台 lm client daemon
+
+可选架构：独立 daemon 进程持有唯一 `LicenseClient`（一条到 FMSH Server 的连接 + 一个
+heartbeat），所有 Codex 进程 / ACP 会话通过 Unix socket JSON-RPC 与 daemon 通信，
+调用 `acquire` / `release` / `keepalive`；acquire 映射一次 `check_out_incr`，
+release 映射一次 `check_in`，服务器侧计数不变；租约带 TTL，消费进程被
+SIGKILL/断开时由 TTL 兜底回收，从结构上解决“进程被杀不归还 license”的问题。
+
+可行性依据（SDK `client.rs`）：同一 client 可反复调用 `check_out_incr` / `check_in`
+（按 feature 增量/减量，调用不返回会话 id），因此单进程多 checkout 理论上可行，但
+必须用真实 FMSH_LIC_SERVER 实测确认：
+
+- 同一 feature 多次 checkout 后，C 库 heartbeat 是否覆盖全部 checkout；
+  `check_in(feature)` 是否能正确逐次减量。
+- 服务器端是否限制单连接的并发 checkout 数量；daemon 崩溃后服务器侧的
+  释放/回收语义（决定 TTL 与故障恢复设计）。
+
+当前决定：仅记录，不实施；保留现有“每进程直连 + SIGINT/SIGTERM 归还”方案。
+
 ## 环境变量开关（所有构建模式）
 
 `fm-license` 提供两个**所有构建模式（debug 与 release）都生效**的环境变量：

@@ -1088,16 +1088,30 @@ impl Session {
                     );
                     fm_encrypted_skills::sdk::SdkKind::TestZip
                 }
+                codex_config::config_toml::EncryptedSkillsSdkToml::Noop => {
+                    fm_encrypted_skills::sdk::SdkKind::Noop
+                }
+                codex_config::config_toml::EncryptedSkillsSdkToml::Software => {
+                    let algorithm = match config.encrypted_skills_software_algorithm {
+                        codex_config::config_toml::SoftwareAlgorithmToml::Sm2Sm4Cbc => {
+                            fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::Sm2Sm4Cbc
+                        }
+                        codex_config::config_toml::SoftwareAlgorithmToml::HpkeX25519Aes256Gcm => {
+                            fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::HpkeX25519Aes256Gcm
+                        }
+                    };
+                    fm_encrypted_skills::sdk::SdkKind::Software {
+                        algorithm,
+                        privkey: config.encrypted_skills_software_privkey.clone(),
+                    }
+                }
                 codex_config::config_toml::EncryptedSkillsSdkToml::UKey => {
                     fm_encrypted_skills::sdk::SdkKind::UKey
                 }
-                codex_config::config_toml::EncryptedSkillsSdkToml::Local => {
-                    fm_encrypted_skills::sdk::SdkKind::Local(
-                        config
-                            .encrypted_skills_local_privkey
-                            .clone()
-                            .unwrap_or_default(),
-                    )
+                codex_config::config_toml::EncryptedSkillsSdkToml::UKeyTwoPhase => {
+                    fm_encrypted_skills::sdk::SdkKind::UKeyTwoPhase {
+                        key_envelope: config.encrypted_skills_key_envelope.clone(),
+                    }
                 }
             });
             let encrypted_skills_audit_path = config

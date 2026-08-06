@@ -16,17 +16,18 @@
   - `scripts/format.py`、`.gitignore`、`.dockerignore` — 工具与忽略项。
 - `codex-rs/`
   - `Cargo.toml` — 新增 `fm-license`、`fm-encrypted-skills`、`zip` 等依赖。
-  - `Cargo.lock` — 对应依赖锁定（含 `fmsh-ukey-cipher`/`fmsh-ukey-wrapper` git 依赖）。
+  - `Cargo.lock` — 对应依赖锁定（含 `fmsh-ukey-cipher`/`fmsh-ukey-wrapper` git 依赖，同步至 `3516cd5`）。
   - `fm/license/`（新增 crate）
     - `src/lib.rs` — LicenseManager 公共 API、`verify_at_startup`、`ensure_active`、测试 bypass。
     - `src/license.rs` — LMCLIENT 启动校验、LicenseGuard、信号处理器、心跳。
     - `src/license_tests.rs` — 测试。
     - `Cargo.toml` / `BUILD.bazel` / `README.md` — 依赖、Bazel 目标、说明。
   - `fm/encrypted-skills/`
-    - `Cargo.toml` — 依赖（含可选 `fmsh-ukey` feature 与 `fmsh-ukey-cipher` git 依赖）。
+    - `Cargo.toml` — 依赖（含可选 `fmsh-ukey` feature 与 `fmsh-ukey-cipher` git 依赖，rev `3516cd5`）。
     - `BUILD.bazel` — Bazel 目标。
     - `src/lib.rs` — crate 根与模块导出。
-    - `src/sdk.rs` — `EnvelopeSdk`、`TestZipSdk`、`UnavailableSdk`、`UKeySdk`/`LocalSdk`（fmsh-ukey feature）；容量上限（512 条目 / 16 MiB）。
+    - `src/sdk.rs` — `EnvelopeSdk` 四种后端：`Noop`、`Software`（HPKE 默认或 sm2-sm4-cbc）、`UKey`、`UKeyTwoPhase`（每 Skill `key.enc`，内存 AES key 缓存）；软件私钥经 memfd 载入；容量上限（512 条目 / 16 MiB）。
+    - `src/memfd.rs`（新增）— 瞬态密钥材料的匿名内存文件（Linux memfd），避免落盘。
     - `src/cache.rs` — 内容缓存（上限/FIFO/引用回调）。
     - `src/registry.rs` — 会话注册表、替换记录返回与 wipe、生命周期锁。
     - `src/rehydrate.rs` — token 重水合（framing）。
@@ -38,7 +39,7 @@
     - `src/runtime.rs` — 解密/落盘/注册/TTL/sweep（Weak）/`unload_turn`/`is_engaged`/in-flight/进程级共享注册/`path_mappings`/unrewrite/redact。
     - `src/*_tests.rs` — 各模块单测。
   - `config/`
-    - `src/config_toml.rs` — `EncryptedSkillsToml`（sdk/TTL/audit_path/local_privkey），`ukey`/`local` 需 `fmsh-ukey` feature。
+    - `src/config_toml.rs` — `EncryptedSkillsToml`（sdk/TTL/audit_path/software_privkey/software_algorithm/key_envelope），支持 `noop`/`software`/`ukey`/`ukey-two-phase`。
   - `core-skills/`
     - `src/model.rs` / `src/loader.rs` / `src/loader/environment.rs` — frontmatter 加密标记与字段解析。
     - `src/injection.rs` — `build_skill_injections` 加密分支（解密/token/幂等、`encryption.package`）。

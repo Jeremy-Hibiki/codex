@@ -618,8 +618,12 @@ pub struct Config {
     /// Audit log path for encrypted-skill security events (persistent
     /// deployments should point this at a mounted volume).
     pub encrypted_skills_audit_path: Option<std::path::PathBuf>,
-    /// Static X25519 private key for the `local` envelope backend.
-    pub encrypted_skills_local_privkey: Option<std::path::PathBuf>,
+    /// Static private key for the `software` envelope backend.
+    pub encrypted_skills_software_privkey: Option<std::path::PathBuf>,
+    /// Software envelope algorithm (`sdk = "software"`).
+    pub encrypted_skills_software_algorithm: codex_config::config_toml::SoftwareAlgorithmToml,
+    /// Per-skill key envelope file name (`sdk = "ukey-two-phase"`).
+    pub encrypted_skills_key_envelope: String,
 
     /// Provenance for how this [`Config`] was derived (merged layers + enforced
     /// requirements).
@@ -4000,10 +4004,18 @@ impl Config {
                 .encrypted_skills
                 .audit_path
                 .map(std::path::PathBuf::from),
-            encrypted_skills_local_privkey: cfg
+            encrypted_skills_software_privkey: cfg
                 .encrypted_skills
-                .local_privkey
+                .software_privkey
                 .map(std::path::PathBuf::from),
+            encrypted_skills_software_algorithm: cfg
+                .encrypted_skills
+                .software_algorithm
+                .unwrap_or_default(),
+            encrypted_skills_key_envelope: cfg
+                .encrypted_skills
+                .key_envelope
+                .unwrap_or_else(|| "key.enc".to_string()),
             model,
             service_tier,
             review_model,

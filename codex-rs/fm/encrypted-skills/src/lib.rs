@@ -24,6 +24,7 @@ pub mod audit;
 pub mod cache;
 pub mod export_guard;
 pub mod mem_root;
+pub mod memfd;
 pub mod paths;
 pub mod registry;
 pub mod rehydrate;

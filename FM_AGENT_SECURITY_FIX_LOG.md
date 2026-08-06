@@ -96,6 +96,12 @@ guard test), `spawn` filter 102 passed.
 TODO-6/7/8/9 收尾后复跑：`codex-app-server` 全量 906/906；`codex-core`
 `encrypted_skills`+`encrypted_skills_guard`+`agent_security` 96/96；`just fix` 干净。
 
+四种加密模式（I33）后复跑：`codex-config` 224/224；`fm-encrypted-skills` 143/143；
+feature 构建（`--features fmsh-ukey` + stub SDK）下 `sdk::tests` 8/8，包含
+`software_sdk_decrypts_hpke_package`（软件私钥经 memfd 载入、HPKE 解密）与
+`two_phase_sdk_decrypts_package_with_in_memory_key`（key.enc 解开后内存密钥解密）；
+真实 UKey 硬件路径仍需带 `FMSH_UKEY_SDK_DIR` 与设备的环境验证。
+
 After I20–I21: `fm-encrypted-skills` 135 passed (4 new shared-sink tests +
 concurrent-load single-decryption assertion), `codex-core` `encrypted_skills`
 filter 74 passed, `spawn` filter 102 passed. F2 kept as-is (stale-token
@@ -175,6 +181,7 @@ and unrelated to this fix set.
 | 28 | `e29eda359d` | openspec: agent-security-product-policy | I6/I7/D10 落地：core `ensure_encrypted_skill_sandbox`（engaged 且无有效沙箱 → 拒绝执行）；CLI 拒绝 `--sandbox danger-full-access` 与 `dangerously-bypass-approvals-and-sandbox`（根级 `interactive.shared` 之外，覆盖 exec/resume/fork/archive/delete/unarchive 子命令自身 shared 参数），拒绝 `plugin`/`marketplace` 子命令；app-server `thread/start`/`turn/start` 请求参数携带 danger-full-access 时 `invalid_request` 拒绝；插件/marketplace CLI 原集成测试保留并标记 `#[ignore]`（策略拒绝断言另存 `plugin_policy.rs`/`product_policy.rs`）；app-server 既有 full-access 用例改为配置级 full-access 或 WorkspaceWrite 保持原意图 |
 | 29 | `faf8a03fb3` + `6a2f9a217a` | TODO-6/7/8/9 收尾 | app-server 消息边界统一拦截 `marketplace/add|remove|upgrade`、`plugin/install|uninstall`、`plugin/share/save|updateTargets|checkout|delete`（只读 list/read 保留）；`thread/settings/update` 拒绝 danger-full-access；engaged 时拒绝 `config/value/write`、`config/batchWrite`、`experimentalFeature/enablement/set`、`skills/config/write`、`skills/extraRoots/set`（未 engaged 行为不变）；`redact_turn_item` 扩展覆盖 CommandExecution/FileChange/WebSearch/CollabAgentToolCall/DynamicToolCall/McpToolCall 文本面（明文+路径红act），集成测试验证技能脚本回显明文在 rollout 中被红act；原 8 个 app-server 插件/市场测试文件保留并标记 `#[ignore]`（非删除），策略拒绝测试另存 `plugin_policy.rs` |
 | 32 | `a1e101d764` | debug 沙箱 bypass | 新增 `FMSH_CODEX_AGENT_SECURITY_SANDBOX_BYPASS=1`：仅 `debug_assertions` 构建生效（release 恒 false），CLI/app-server 的 danger-full-access 拒绝与 engaged 运行期沙箱校验全部放行；插件禁令与 engaged 配置写拒绝不受影响；启用时打一次性 `tracing::warn!` |
+| 33 | `a8ee85aa0e` | 四种加密模式与两阶段解密 | 同步 `fmsh-ukey-lib` 最新（`3516cd5`，`local` 更名 `software`，四种方式：`noop`/`software`(hpke 默认或 sm2-sm4-cbc)/`ukey`/`ukey-two-phase`）；`EncryptedSkillsSdkToml` 增加 `Noop`/`Software`/`UKeyTwoPhase` 与 `software_algorithm`/`software_privkey`/`key_envelope` 配置；`SdkKind` 同步扩展；新增 `memfd.rs`（软件私钥经 memfd 载入、瞬态密钥不落盘）；`UkeyTwoPhaseSdk` 每 Skill 一个 `key.enc`、一次 UKey 解开后在内存缓存 AES key，后续包软件解密；新增 noop/memfd 单测与 feature-gated software/two-phase 单测 |
 
 ## I28 补充说明：产品策略边界与决策记录
 

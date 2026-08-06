@@ -1,10 +1,12 @@
-# Agent Security 实施情况总结
+# Agent Security 实施状态与待办
 
-> 基线：`rust-v0.146.0`（`e363b08c91`）。本文件只汇总“已实施并验证”的内容；
-> 未实现/待办见 `analysis/AGENT_SECURITY_TODO_AND_RESIDUAL.md`。
-> 权威细节：`FM_AGENT_SECURITY_DESIGN.md`（实施契约）、`FM_AGENT_SECURITY_FIX_LOG.md`（逐条记录）。
+> 基线：`rust-v0.146.0`（`e363b08c91`）。本文件是“一次性读懂”的速览：
+> 已实施/已验证的内容与未实现/待办各占一节。
+> 权威细节：`FM_AGENT_SECURITY_DESIGN.md`（实施契约）、`FM_AGENT_SECURITY_FIX_LOG.md`（逐条记录 I1~I31）。
 
-## 1. 已完成变更（按顺序）
+## 一、已实施并验证
+
+### 1.1 已完成变更（按顺序）
 
 | # | 变更 | 提交 | 内容 |
 |---|------|------|------|
@@ -20,7 +22,7 @@
 | 10 | clippy 修复 | `c4a7dc6c8b` | thread-manager-sample 缺配置字段、bwrap 测试冗余 clone |
 | 11 | openspec 归档 | `61efb80a7f` 等 | 所有 openspec 变更（含历史基线 encrypt-agent-security-skills）已同步主 spec 并归档，`openspec list` 无活动变更 |
 
-## 2. 核心能力清单（已实现）
+### 1.2 核心能力清单
 
 - 加密 Skill 全生命周期：frontmatter 加密标记 → 数字信封 SDK 解密 → `/dev/shm` 0700 目录树 → token 化注入 → 请求时重水合 → 两级 TTL 卸载 → secure wipe。
 - 访问控制：shell 执行路径改写/execute-only、非 shell 工具明文导出拦截、链式走私分段判定、glob/读/搜/拷贝/重定向全拦截。
@@ -29,7 +31,7 @@
 - 强制沙箱：CLI/app-server/运行期三层；bwrap 只读 bind 到逻辑技能路径；D9 自动 Permit。
 - 未 engaged 零行为变化（I3）；普通会话不被 `/dev/shm` 策略污染。
 
-## 3. 决策记录（关键）
+### 1.3 关键决策（D1-D10）
 
 | 编号 | 决策 | 结论 |
 |---|---|---|
@@ -44,7 +46,7 @@
 | D9 | 技能脚本审批 | engaged execute-only 自动 Permit，不征询用户、不进 guardian |
 | D10 | 配置面 | 客户端不提供改配置/改模型配置入口；Skill 仅可配置启用/禁用；`thread/realtime/*` 产品不提供；配置由未来受信管理工具负责 |
 
-## 4. 验证结果（最近一次全量）
+### 1.4 验证结果（最近一次全量）
 
 | 范围 | 结果 |
 |---|---|
@@ -58,9 +60,50 @@
 | `just clippy`（workspace，含 tests） | 通过（仅 rmcp 弃用警告） |
 | bazel build | `//codex-rs/cli:codex`、`//codex-rs/app-server:codex-app-server`、`//codex-rs/linux-sandbox:codex-linux-sandbox`、`//codex-rs/fm/encrypted-skills:encrypted-skills` 成功 |
 
-## 5. 当前分支状态
+### 1.5 分支状态
 
 - 基线：`rust-v0.146.0`；相对基线无任何文件删除（`git diff --diff-filter=D` 为空）。
 - 所有 openspec 变更已归档；`openspec list` 为空。
 - 工作区仅剩未跟踪工具目录（`.codex/skills/openspec-*`、`.omp/`、`.serena/`），不提交。
-- 权威文档：`FM_AGENT_SECURITY_DESIGN.md`（含 TODO-1~10 结论）、`FM_AGENT_SECURITY_FIX_LOG.md`（I1~I31）。
+
+## 二、未实现/待办
+
+### 2.1 待产品决策后实施
+
+#### I31 / TODO-10：`/dev/shm` Swap 落盘与 Pin
+
+- 现状：Linux `/dev/shm` 为 tmpfs，内存压力下页可被换出到 swap；当前无 `mlock`/pin。
+- 方案：解密目录内文件 mmap+mlock；memfd 不适用（Skill 是 zip 展开的目录树，脚本/工具依赖真实路径与相对引用）。
+- 两种部署场景：
+  - 有 root（特权容器/systemd）：`LimitMEMLOCK=infinity` 或 `setrlimit` 提升上限，mmap+mlock，失败 fail-closed，可配合无 swap 设备。
+  - 无 root（普通容器）：`RLIMIT_MEMLOCK` 通常 8 MiB < 单包 16 MiB，无法保证全部 pin；默认接受 swap 属 root/取证威胁模型外，或对无法 pin 的 Skill fail-closed，或用 `/proc/self/status` `VmSwap` 监控告警，部署侧提 `LimitMEMLOCK` 后再启用。
+- 状态：分析模式，未实现；等待产品对“明文不落盘（含 swap）”承诺的决策。
+
+### 2.2 明确保留为未来/产品侧承接
+
+- **I30 / TODO-7/9 残留**：`features.plugins=true` 配置下插件启动加载/同步未在产品层强制关闭；TUI 插件管理入口未单独收敛。处置：产品默认配置禁用 plugins feature，或由受信管理工具下发配置；安全路线不得挂在用户可关闭的 flag 下。
+- **受信管理工具（D10）**：配置/模型配置由未来受信管理工具负责；客户端不暴露入口；工具本身待单独设计（高权限面）。
+- **MCP 范围（TODO-7 范围说明）**：当前产品 MCP 由官方提供、用户不能自装；MCP 输入输出与执行暂不纳入实施范围。若未来放开用户自装 MCP，需重新评估 guard/红act 覆盖。
+- **`thread/realtime/*`（D10）**：产品不提供该能力，明确排除在范围外。
+
+### 2.3 已接受/威胁模型外的项
+
+| 项 | 结论 |
+|---|---|
+| Rollout / State DB 被同 uid 脚本读取 | 持久化内容源头红act，磁盘无明文，不需要纳入受保护路径（TODO-3 已验证） |
+| `config.toml` 直改、环境变量、同 uid 直接读 `/dev/shm` | 同 uid 威胁模型外，产品官方入口已全部封住 |
+| Swap 内容 | 只有 root/取证可读；是否纳入威胁模型待产品决策（I31） |
+
+### 2.4 环境相关未闭环项（非本分支代码问题）
+
+- codex-core 全量测试中约 21 个失败 + 1 个超时：真实 `~/.agents/skills` 污染 skills 目录测试、项目信任状态、代理网络下的 approvals/network/unified_exec、MCP 超时。
+- codex-linux-sandbox 2 个网络用例（wget/socketpair）在代理环境超时。
+- app-server 4 个 zsh-fork 用例在全量负载下偶发超时，单独重跑全绿。
+- 这些用例在干净 CI/网络环境下应可复现为绿色；与本分支改动文件无关。
+
+### 2.5 后续建议顺序
+
+1. 产品决策 I31（swap 是否纳入威胁模型）→ 实施 mlock 或修正文档表述。
+2. 产品默认配置/受信管理工具承接 I30（插件启动加载关闭）。
+3. 若放开用户自装 MCP，按 TODO-7 重新评估。
+4. 每项完成后回填本文件与 FIX_LOG。

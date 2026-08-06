@@ -4,6 +4,9 @@ Each entry records one review finding and the commit that fixed it. Bazel/CI
 items were excluded per request; the skill-level TTL stays single-tier by
 design.
 
+历史备注：实施前计划 `FM_AGENT_SECURITY_FIX_PLAN.md`（I1~I17 问题清单与方案）已全部完成，
+逐条修复记录在本文件 I1~I31 中，原计划文档已删除。
+
 | # | Commit | Scope | Fix |
 |---|--------|-------|-----|
 | 1 | `43d91df7ae` | `fm/encrypted-skills` token | Require 32-hex-char token keys, reject ambiguous session ids (`:`, `]`); replace per-byte `format!` with `write!` in `hex_encode` |

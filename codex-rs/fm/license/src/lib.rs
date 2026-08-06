@@ -11,10 +11,12 @@
 //! until the license recovers. The process is never killed by the heartbeat
 //! callback.
 //!
-//! Verification is always enforced. The LMCLIENT SDK reads
-//! `FMSH_LIC_SERVER` internally (`<port>@<host>`). `FMSH_CODEX_LIC_FEATURE`
-//! and `FMSH_CODEX_LIC_VERSION` must be set explicitly. `FMSH_CODEX_LIC_DISPLAY_NAME`
-//! is optional and defaults to `"Codex"`.
+//! Verification is enforced in every build mode unless the product-level skip
+//! switch `FMSH_CODEX_LIC_TEST_BYPASS` is set (release builds honor it too).
+//! The LMCLIENT SDK reads `FMSH_LIC_SERVER` internally (`<port>@<host>`).
+//! `FMSH_CODEX_LIC_FEATURE` and `FMSH_CODEX_LIC_VERSION` must be set
+//! explicitly. `FMSH_CODEX_LIC_DISPLAY_NAME` is optional and defaults to
+//! `"Codex"`.
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 mod license;
@@ -31,6 +33,8 @@ pub use license::TEST_FORCE_LOST_ENV_VAR;
 pub use license::check_in_now;
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 pub use license::ensure_active;
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+pub use license::install_checkin_signal_handler;
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 pub use license::is_active;
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]

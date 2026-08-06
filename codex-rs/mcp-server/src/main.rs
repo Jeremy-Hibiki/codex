@@ -10,6 +10,7 @@ fn main() -> anyhow::Result<()> {
         // The standalone MCP server is a product entry point that can start
         // Codex work; it must hold a license for the process lifetime.
         let _license_guard = fm_license::verify_at_startup()?;
+        fm_license::install_checkin_signal_handler()?;
         run_main(
             arg0_paths,
             CliConfigOverrides::default(),

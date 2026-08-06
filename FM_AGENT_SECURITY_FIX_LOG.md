@@ -96,6 +96,12 @@ guard test), `spawn` filter 102 passed.
 TODO-6/7/8/9 收尾后复跑：`codex-app-server` 全量 906/906；`codex-core`
 `encrypted_skills`+`encrypted_skills_guard`+`agent_security` 96/96；`just fix` 干净。
 
+四种加密模式（I33）后复跑：`codex-config` 224/224；`fm-encrypted-skills` 143/143；
+feature 构建（`--features fmsh-ukey` + stub SDK）下 `sdk::tests` 8/8，包含
+`software_sdk_decrypts_hpke_package`（软件私钥经 memfd 载入、HPKE 解密）与
+`two_phase_sdk_decrypts_package_with_in_memory_key`（key.enc 解开后内存密钥解密）；
+真实 UKey 硬件路径仍需带 `FMSH_UKEY_SDK_DIR` 与设备的环境验证。
+
 After I20–I21: `fm-encrypted-skills` 135 passed (4 new shared-sink tests +
 concurrent-load single-decryption assertion), `codex-core` `encrypted_skills`
 filter 74 passed, `spawn` filter 102 passed. F2 kept as-is (stale-token

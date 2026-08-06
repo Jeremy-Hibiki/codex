@@ -338,7 +338,7 @@ mod fmsh {
     /// 32-byte AES key). One UKey call unwraps it; the key stays in process
     /// memory and every package of that skill decrypts in software AES-GCM.
     pub(crate) struct UkeyTwoPhaseSdk {
-        key_wrap: Arc<UkeyKeyWrap>,
+        key_wrap: Arc<dyn fmsh_ukey_cipher::KeyWrap>,
         key_envelope: String,
         ciphers: RwLock<HashMap<PathBuf, Arc<UkeyTwoPhaseCipher>>>,
     }

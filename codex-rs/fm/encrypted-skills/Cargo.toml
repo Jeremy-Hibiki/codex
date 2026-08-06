@@ -33,3 +33,4 @@ zip = { workspace = true, features = ["deflate"] }
 fmsh-ukey-cipher = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "3516cd574812da50de8ddde31624d5ba863007b7", optional = true }
 
 [dev-dependencies]
+anyhow = { workspace = true }

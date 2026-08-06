@@ -99,6 +99,24 @@ lmclient-rust-sdk 在源码树内打包了 `liblmclient.a`（CentOS 7 glibc 编�
 - `third_party/lmclient/additive.BUILD.bazel` — 定义 cc_import 和系统库链接
 - MODULE.bazel 的 `crate.annotation(gen_build_script = "off")` — 禁用 build.rs
 
+### fmsh-ukey SDK 动态库链接
+
+`fmsh-ukey-wrapper` 的 build.rs 会在上游仓库根目录找 `vendor/fmsh-ukey-sdk`，Bazel
+沙箱里同样不可见。处理方式（与 lmclient 同思路）：
+
+- `patches/fmsh_ukey_vendor_build.patch` — 给上游 git 仓库补
+  `vendor/fmsh-ukey-sdk/linux/lib/BUILD.bazel`，把 SDK 目录标记为 Bazel 包；
+- `third_party/fmsh-ukey/additive.BUILD.bazel` — 用 `cc_import` 链接
+  `libfmsh_ukey_sdk.so`（必须用不带版本号的文件名，rules_rust 会按库名生成
+  `-lfmsh_ukey_sdk`；若用 `libfmsh_ukey_sdk.so.0` 会在链接期找不到）；
+- MODULE.bazel 的 `crate.annotation(crate = "fmsh-ukey-wrapper", gen_build_script = "off",
+  patches = [...], deps = ["@crates//:fmsh_ukey_native"])` — 禁用 build.rs 并注入 native 依赖。
+
+运行期说明：`libfmsh_ukey_sdk.so` 的 SONAME 是 `libfmsh_ukey_sdk.so.0`，其 NEEDED
+`libcrypto.so.1.1` 由 Ubuntu 20.04 系统 OpenSSL 1.1 提供；发布镜像只需把
+`libfmsh_ukey_sdk.so.0` 放到二进制可找到的位置（`LD_LIBRARY_PATH` 或镜像内 lib 目录），
+开发环境按前文设置 `LD_LIBRARY_PATH=$PWD/vendor/fmsh-ukey-sdk/linux/lib` 即可。
+
 ## 版本号注入
 
 Bazel 的 rules_rust 默认将 `CARGO_PKG_VERSION` 设为 `0.0.0`（不像 Cargo 那样读 Cargo.toml）。

@@ -1,0 +1,27 @@
+"""Additive BUILD file for the fmsh-ukey-wrapper crate (Bazel).
+
+The upstream build.rs resolves the vendored SDK at
+`<repo-root>/vendor/fmsh-ukey-sdk` and emits `cargo:rustc-link-search` +
+`cargo:rustc-link-lib` + an absolute RPATH. Under Bazel the build script's
+sandbox runfiles are invisible to the separate rustc/link action (the same
+issue lmclient-rust-sdk had), so we disable the build script and link the SDK
+shared library through cc_import instead. The SDK's SONAME is
+`libfmsh_ukey_sdk.so.0` and it NEEDs `libcrypto.so.1.1`; both ship in this
+package and are added to runfiles of any binary that links the crate.
+"""
+
+load("@rules_cc//cc:defs.bzl", "cc_import", "cc_library")
+
+cc_import(
+    name = "fmsh_ukey_sdk_shared",
+    shared_library = "//vendor/fmsh-ukey-sdk/linux/lib:libfmsh_ukey_sdk.so",
+)
+
+cc_library(
+    name = "fmsh_ukey_native",
+    visibility = ["//visibility:public"],
+    # libcrypto.so.1.1 is a runtime NEEDED of libfmsh_ukey_sdk.so, not a
+    # link-time input; keep it in runfiles so packaged binaries can find it.
+    data = ["//vendor/fmsh-ukey-sdk/linux/lib:libcrypto.so.1.1"],
+    deps = [":fmsh_ukey_sdk_shared"],
+)

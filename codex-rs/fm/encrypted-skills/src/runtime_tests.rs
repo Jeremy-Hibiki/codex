@@ -783,3 +783,44 @@ fn oversized_package_is_rejected_before_decryption() {
         "decryption must not run when the capacity gate rejects the package"
     );
 }
+
+#[test]
+fn read_only_queries_survive_registry_poisoning() {
+    // Poison the registry mutex, then confirm the read-only security
+    // queries recover and keep serving the in-memory state instead of
+    // returning empty (which would silently disable the guard).
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let (runtime, _tmp) = test_runtime(sdk);
+    runtime
+        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+        .unwrap();
+    let before_dirs = runtime.decrypted_dirs("t1");
+    assert!(!before_dirs.is_empty(), "precondition: dirs registered");
+
+    // Poison the registry mutex by panicking on a thread while holding it.
+    let poison_runtime = Arc::new(runtime);
+    {
+        let inner = Arc::clone(&poison_runtime);
+        let handle = std::thread::spawn(move || {
+            let _guard = inner.registry.lock().unwrap();
+            panic!("intentional poisoning");
+        });
+        let _ = handle.join();
+    }
+
+    // After poisoning, the guard-critical read-only queries must still work
+    // and return the same state — not the empty fail-open default.
+    assert!(
+        poison_runtime.is_engaged("t1"),
+        "is_engaged must recover from poisoning, not fail open"
+    );
+    assert_eq!(
+        poison_runtime.decrypted_dirs("t1"),
+        before_dirs,
+        "decrypted_dirs must recover from poisoning, not return empty"
+    );
+    assert!(
+        !poison_runtime.known_plaintexts("t1").is_empty(),
+        "known_plaintexts must recover from poisoning, not return empty"
+    );
+}

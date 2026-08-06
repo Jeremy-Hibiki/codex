@@ -253,6 +253,73 @@ fn guard_export(
     GuardDecision::Allow
 }
 
+/// Guards bytes about to be written to the stdin of an already-running shell
+/// process. The spawn-time guard only inspected the command that *launched*
+/// the shell; subsequent stdin writes are fresh shell input it never saw, so
+/// they are checked the same way a new shell command is — with two
+/// differences:
+/// - Paths are never rewritten: the running shell's filesystem view was fixed
+///   at spawn time, so rewriting the injected text has no effect on what the
+///   shell can read.
+/// - Both original and decrypted skill paths are checked: a shell spawned with
+///   sandbox binds active sees the original path bound to the decrypted tree,
+///   while one spawned without binds only sees the decrypted path.
+pub(crate) fn guard_stdin_input(
+    runtime: &EncryptedSkillRuntime,
+    session_id: &str,
+    chars: &str,
+) -> GuardDecision {
+    if !runtime.is_engaged(session_id) {
+        return GuardDecision::Allow;
+    }
+    // A stdin write carrying known skill plaintext is an outbound channel
+    // (echo/printf/heredoc writing to disk, pipes to other processes, ...).
+    let known = runtime.known_plaintexts(session_id);
+    if !known.is_empty() {
+        let known: Vec<&str> = known.iter().map(String::as_str).collect();
+        if export_guard::args_contain_plaintext(&[chars], &known) {
+            return GuardDecision::Blocked {
+                message:
+                    "Blocked by encrypted skill policy: stdin input contains encrypted skill content"
+                        .to_string(),
+                reason: "shell_plaintext",
+            };
+        }
+    }
+    let mut guarded_paths: Vec<String> = runtime
+        .decrypted_dirs(session_id)
+        .into_iter()
+        .map(|dir| dir.to_string_lossy().into_owned())
+        .collect();
+    guarded_paths.push(runtime.mem_root().to_string_lossy().into_owned());
+    // Include original skill paths too: a shell spawned with sandbox binds
+    // active sees the original path bound to the decrypted directory.
+    guarded_paths.extend(
+        runtime
+            .path_mappings(session_id)
+            .into_iter()
+            .map(|(_, original)| original.to_string_lossy().into_owned()),
+    );
+    for segment in paths::split_command_segments(chars) {
+        if paths::command_references_dir(&segment, &guarded_paths) {
+            let script_execution = paths::is_script_execution(&segment);
+            if !script_execution
+                || !paths::script_execution_avoids_guarded_io(&segment, &guarded_paths)
+            {
+                return GuardDecision::Blocked {
+                    message: BLOCK_MESSAGE.to_string(),
+                    reason: if script_execution {
+                        "script_execution_io"
+                    } else {
+                        "non_execution_access"
+                    },
+                };
+            }
+        }
+    }
+    GuardDecision::Allow
+}
+
 /// True when `command` is an execute-only skill script execution for an
 /// engaged session (a guarded path referenced as a script argument, without
 /// guarded shell I/O channels). Used to auto-permit such executions (D9).

@@ -276,9 +276,7 @@ impl EncryptedSkillRuntime {
 
     /// Refreshes the skill's idle timestamp (mention or rehydration hit).
     pub fn touch(&self, session_id: &str, skill_name: &str) {
-        if let Ok(mut registry) = self.registry.lock() {
-            registry.touch_skill(session_id, skill_name);
-        }
+        recover_lock(self.registry.lock()).touch_skill(session_id, skill_name);
     }
 
     /// Rehydrates tokens with trust-tier framing, skill name, and the skill's
@@ -324,16 +322,10 @@ impl EncryptedSkillRuntime {
 
     /// Known plaintext fragments for a session (outbound export detection).
     pub fn known_plaintexts(&self, session_id: &str) -> Vec<String> {
-        self.cache
-            .lock()
-            .map_err(lock_error)
-            .map(|cache| {
-                cache
-                    .plaintexts(session_id)
-                    .map(ToOwned::to_owned)
-                    .collect()
-            })
-            .unwrap_or_default()
+        recover_lock(self.cache.lock())
+            .plaintexts(session_id)
+            .map(ToOwned::to_owned)
+            .collect()
     }
 
     /// Runs the skill-level TTL sweep and wipes evicted directories.
@@ -383,45 +375,29 @@ impl EncryptedSkillRuntime {
     /// Returns true while this session has decrypted plaintext available or a
     /// decryption is in flight. Derived purely from runtime state.
     pub fn is_engaged(&self, session_id: &str) -> bool {
-        let registered = self
-            .registry
-            .lock()
-            .map(|registry| registry.skills_for_session(session_id).next().is_some())
-            .unwrap_or(false);
-        let in_flight = self
-            .in_flight_sessions
-            .lock()
-            .map(|sessions| sessions.contains(session_id))
-            .unwrap_or(false);
+        let registered = recover_lock(self.registry.lock())
+            .skills_for_session(session_id)
+            .next()
+            .is_some();
+        let in_flight = recover_lock(self.in_flight_sessions.lock()).contains(session_id);
         registered || in_flight
     }
 
     /// True when this runtime has any engaged session or in-flight decryption.
     fn has_engaged_state(&self) -> bool {
-        if self
-            .in_flight_sessions
-            .lock()
-            .map(|sessions| !sessions.is_empty())
-            .unwrap_or(false)
-        {
+        if !recover_lock(self.in_flight_sessions.lock()).is_empty() {
             return true;
         }
-        self.registry
-            .lock()
-            .map(|registry| registry.has_any_session())
-            .unwrap_or(false)
+        recover_lock(self.registry.lock()).has_any_session()
     }
 
     /// Returns the mem root and every decrypted directory of engaged sessions.
     fn engaged_session_paths(&self) -> Vec<PathBuf> {
-        let mut sessions: std::collections::HashSet<String> = self
-            .registry
-            .lock()
-            .map(|registry| registry.session_ids().cloned().collect())
-            .unwrap_or_default();
-        if let Ok(in_flight) = self.in_flight_sessions.lock() {
-            sessions.extend(in_flight.iter().cloned());
-        }
+        let mut sessions: HashSet<String> = recover_lock(self.registry.lock())
+            .session_ids()
+            .cloned()
+            .collect();
+        sessions.extend(recover_lock(self.in_flight_sessions.lock()).iter().cloned());
         let mut out = Vec::new();
         for session_id in sessions {
             if self.is_engaged(&session_id) {
@@ -435,16 +411,11 @@ impl EncryptedSkillRuntime {
     /// Returns `(decrypted_dir, original_dir)` pairs for every skill
     /// registered to this session whose original directory is non-empty.
     pub fn path_mappings(&self, session_id: &str) -> Vec<(PathBuf, PathBuf)> {
-        self.registry
-            .lock()
-            .map(|registry| {
-                registry
-                    .skills_for_session(session_id)
-                    .filter(|record| !record.original_dir.as_os_str().is_empty())
-                    .map(|record| (record.dir.clone(), record.original_dir.clone()))
-                    .collect()
-            })
-            .unwrap_or_default()
+        recover_lock(self.registry.lock())
+            .skills_for_session(session_id)
+            .filter(|record| !record.original_dir.as_os_str().is_empty())
+            .map(|record| (record.dir.clone(), record.original_dir.clone()))
+            .collect()
     }
 
     /// Unloads one thread's decrypted state at the end of a turn. Encrypted
@@ -493,32 +464,19 @@ impl EncryptedSkillRuntime {
 
     /// All decrypted directories currently registered for a session.
     pub fn decrypted_dirs(&self, session_id: &str) -> Vec<PathBuf> {
-        self.registry
-            .lock()
-            .map_err(lock_error)
-            .map(|registry| {
-                registry
-                    .skills_for_session(session_id)
-                    .map(|record| record.dir.clone())
-                    .collect()
-            })
-            .unwrap_or_default()
+        recover_lock(self.registry.lock())
+            .skills_for_session(session_id)
+            .map(|record| record.dir.clone())
+            .collect()
     }
 
     /// Rewrites references to skill original directories to the decrypted
     /// directories (longest original first).
     pub fn rewrite_paths(&self, session_id: &str, text: &str) -> String {
-        let mappings: Vec<(PathBuf, PathBuf)> = self
-            .registry
-            .lock()
-            .map_err(lock_error)
-            .map(|registry| {
-                registry
-                    .skills_for_session(session_id)
-                    .map(|record| (record.original_dir.clone(), record.dir.clone()))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let mappings: Vec<(PathBuf, PathBuf)> = recover_lock(self.registry.lock())
+            .skills_for_session(session_id)
+            .map(|record| (record.original_dir.clone(), record.dir.clone()))
+            .collect();
         rewrite_skill_paths(text, &mappings)
     }
 
@@ -526,17 +484,10 @@ impl EncryptedSkillRuntime {
     /// tool output, so the model can see file names and reuse original paths
     /// without ever observing the /dev/shm location.
     pub fn unrewrite_paths(&self, session_id: &str, text: &str) -> String {
-        let mappings: Vec<(PathBuf, PathBuf)> = self
-            .registry
-            .lock()
-            .map_err(lock_error)
-            .map(|registry| {
-                registry
-                    .skills_for_session(session_id)
-                    .map(|record| (record.dir.clone(), record.original_dir.clone()))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let mappings: Vec<(PathBuf, PathBuf)> = recover_lock(self.registry.lock())
+            .skills_for_session(session_id)
+            .map(|record| (record.dir.clone(), record.original_dir.clone()))
+            .collect();
         rewrite_skill_paths(text, &mappings)
     }
 
@@ -674,6 +625,17 @@ fn extract_skill_md(entries: &[PackageEntry]) -> Result<String, EnvelopeError> {
         .ok_or_else(|| EnvelopeError::Decrypt("package has no SKILL.md entry".into()))?;
     String::from_utf8(skill_md.contents.clone())
         .map_err(|_| EnvelopeError::Decrypt("SKILL.md is not valid UTF-8".into()))
+}
+
+/// Recovers a poisoned mutex guard so read-only security queries keep working
+/// after an unrelated panic. The read-only query closures contain no panicking
+/// operations, and `into_inner` lets them serve the in-memory state unchanged
+/// instead of falling back to an empty result that would silently disable the
+/// encrypted-skill guard. Mutation paths (`clear_session`, `sweep`,
+/// `load_or_register_inner`) keep their `Err(_) => return` / `map_err(lock_error)`
+/// behavior so a poisoned write is never applied to a half-updated structure.
+fn recover_lock<T>(result: std::sync::LockResult<T>) -> T {
+    result.unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn lock_error<T>(_: std::sync::PoisonError<T>) -> EnvelopeError {

@@ -163,6 +163,10 @@ and unrelated to this fix set.
   方案不适用：Skill 解密后是 zip 展开出的目录树，脚本/工具都依赖真实路径与相对引用，memfd
   只有单个 blob 无目录层级。否则需修正文档中“明文仅在内存”的表述，并明确 swap 内容属
   root/取证威胁模型外。
+  两种部署场景记录：有 root（特权部署，可 `LimitMEMLOCK=infinity`/`setrlimit` 提升上限，
+  推荐 mmap+mlock、失败 fail-closed，可配合无 swap 设备）；无 root（普通容器，8 MiB 限制，
+  默认接受 swap 属威胁模型外，或对无法 pin 的 Skill fail-closed，或用 `VmSwap` 监控告警，
+  部署侧提 `LimitMEMLOCK` 后再启用 pin）。
 
 | 27 | `1c694a0269` + `5c44c17a17` | openspec: agent-security-rpc-guard | 进程级 engaged 注册表（Weak，`any_engaged`/`engaged_guarded_paths`）；telemetry 工具预览先包 `RedactingToolOutput` 再取 `log_preview`（日志不再含明文/路径）；core `agent_security::rpc` 纯函数（fs path/command/args）；app-server RPC 面接线：fs 读/枚举/watch/写/复制/删除、`command/exec`、`thread/shellCommand`、`process/spawn`、`thread/inject_items`、`thread/name|goal|metadata`；无 thread_id 的 RPC 采用进程级“任一 engaged”保守判定（决策记录）；E2E 集成测试：真实加载加密 Skill，在 turn in-flight 窗口内验证 fs/readFile、command/exec、thread/shellCommand、process/spawn 被拦截，普通路径放行，未 engaged 时不受影响 |
 | 28 | `e29eda359d` | openspec: agent-security-product-policy | I6/I7/D10 落地：core `ensure_encrypted_skill_sandbox`（engaged 且无有效沙箱 → 拒绝执行）；CLI 拒绝 `--sandbox danger-full-access` 与 `dangerously-bypass-approvals-and-sandbox`（根级 `interactive.shared` 之外，覆盖 exec/resume/fork/archive/delete/unarchive 子命令自身 shared 参数），拒绝 `plugin`/`marketplace` 子命令；app-server `thread/start`/`turn/start` 请求参数携带 danger-full-access 时 `invalid_request` 拒绝；插件/marketplace CLI 原集成测试保留并标记 `#[ignore]`（策略拒绝断言另存 `plugin_policy.rs`/`product_policy.rs`）；app-server 既有 full-access 用例改为配置级 full-access 或 WorkspaceWrite 保持原意图 |

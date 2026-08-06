@@ -275,6 +275,13 @@ mlock 可能失败。
   tmpfs 页与模型请求内存，内存压力下可能进入 swap”。
 - 无论哪种方案，补回归测试与文档结论回填（本条目）。
 
+两种部署场景（均需产品决策后落地）：
+
+| 场景 | mlock 可行性 | 处置 |
+|---|---|---|
+| 有 root（特权容器/系统服务，systemd unit 可设 `LimitMEMLOCK=infinity`） | 可行：启动期用 `setrlimit(RLIMIT_MEMLOCK)` 提升上限（或部署配置），解密后对目录内文件 mmap+mlock；`secure_wipe` 前先 munmap/munlock | 推荐实现 mmap+mlock，mlock 失败 fail-closed；可额外 `swapoff` 或确认无 swap 设备 |
+| 无 root（普通容器/多租户，`RLIMIT_MEMLOCK` 通常 8 MiB，低于单包 16 MiB 上限） | 受限：大 Skill 或并发多 Skill 无法全部 pin | 默认接受 swap 属 root/取证威胁模型外；或对无法 pin 的 Skill fail-closed（产品决策）；或用 `/proc/self/status` 的 `VmSwap` 监控换出并在检测到时告警/拒绝继续解密；部署侧可在 limits.conf/systemd 提 `LimitMEMLOCK` 后再启用 pin |
+
 ## 16. 暴露风险矩阵（场景 → 行为 → 潜在暴露 → 处置）
 
 | 场景 | 行为（当前/设计） | 潜在暴露风险 | 处置/状态 |

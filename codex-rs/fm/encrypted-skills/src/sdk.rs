@@ -541,6 +541,42 @@ mod tests {
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
     #[test]
+    fn software_sdk_decrypts_sm2_cms_package() {
+        use fmsh_ukey_cipher::Cipher;
+        use fmsh_ukey_cipher::SoftwareAlgorithm;
+        use fmsh_ukey_cipher::SoftwareCipher;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let pub_path = tmp.path().join("enc.pub.pem");
+        let priv_path = tmp.path().join("enc.priv.pem");
+        let cipher =
+            SoftwareCipher::generate_to_files(&pub_path, &priv_path, SoftwareAlgorithm::Sm2Sm4Cbc)
+                .unwrap();
+
+        let mut zip_buf = Vec::new();
+        {
+            let mut writer = zip::ZipWriter::new(std::io::Cursor::new(&mut zip_buf));
+            writer
+                .start_file("SKILL.md", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(b"# secret").unwrap();
+            writer.finish().unwrap();
+        }
+
+        let envelope = cipher.encrypt(&zip_buf).unwrap();
+        let package = tmp.path().join("secret.zip.enc");
+        std::fs::write(&package, &envelope).unwrap();
+
+        let sdk = super::fmsh::SoftwareSdk::new(SdkSoftwareAlgorithm::Sm2Sm4Cbc, Some(&priv_path))
+            .unwrap();
+        let entries = sdk.decrypt_package(&package).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].rel_path, PathBuf::from("SKILL.md"));
+        assert_eq!(entries[0].contents, b"# secret");
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    #[test]
     fn two_phase_sdk_decrypts_package_with_in_memory_key() {
         use std::sync::Arc;
 

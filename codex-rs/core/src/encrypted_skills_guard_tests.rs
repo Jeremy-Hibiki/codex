@@ -333,6 +333,74 @@ fn legacy_rewrite_without_binds_rewrites_to_decrypted_path() {
 }
 
 #[test]
+fn stdin_input_referencing_original_path_is_blocked() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = guard_stdin_input(&runtime, "t1", "cat /skills/SKILL.md");
+    assert!(
+        matches!(
+            decision,
+            GuardDecision::Blocked {
+                reason: "non_execution_access",
+                ..
+            }
+        ),
+        "stdin reading via the original skill path must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn stdin_input_referencing_decrypted_path_is_blocked() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decrypted = runtime.decrypted_dirs("t1").pop().unwrap();
+    let chars = format!("cat {}/SKILL.md", decrypted.to_string_lossy());
+    let decision = guard_stdin_input(&runtime, "t1", &chars);
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "stdin reading via the decrypted path must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn stdin_input_harmless_command_is_allowed() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = guard_stdin_input(&runtime, "t1", "ls /tmp");
+    assert!(
+        matches!(decision, GuardDecision::Allow),
+        "harmless stdin input must be allowed: {decision:?}"
+    );
+}
+
+#[test]
+fn stdin_input_script_execution_is_allowed() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = guard_stdin_input(&runtime, "t1", "bash /skills/run.sh");
+    assert!(
+        matches!(decision, GuardDecision::Allow),
+        "stdin script execution must be allowed: {decision:?}"
+    );
+}
+
+#[test]
+fn stdin_input_smuggled_read_after_script_is_blocked() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = guard_stdin_input(&runtime, "t1", "bash /skills/run.sh; cat /skills/SKILL.md");
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "smuggled read after a script must be blocked: {decision:?}"
+    );
+}
+
+#[test]
+fn stdin_input_unengaged_session_is_allowed() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decision = guard_stdin_input(&runtime, "other", "cat /skills/SKILL.md");
+    assert!(
+        matches!(decision, GuardDecision::Allow),
+        "unengaged session stdin must pass through: {decision:?}"
+    );
+}
+
+#[test]
 fn is_skill_script_execution_detects_execute_only_commands() {
     let (runtime, _tmp) = loaded_runtime();
     assert!(crate::encrypted_skills_guard::is_skill_script_execution(

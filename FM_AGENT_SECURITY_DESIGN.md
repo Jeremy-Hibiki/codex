@@ -258,6 +258,20 @@ skill/read|share/list` 保留（产品前端不暴露该入口，且内部验证
 未 engaged 时行为不变（内部工具与测试不受影响）；`thread/start`/`turn/start` 的 config 覆盖
 参数由产品前端不暴露（D10）+ danger-full-access 边界拒绝承接；受信管理工具仍待单独设计。
 
+### TODO-10 `/dev/shm` 与 Swap 落盘（I31，分析模式，未实施）
+
+现状：Linux 下 `/dev/shm` 为 tmpfs，解密明文以文件形式驻留其中；tmpfs 页在内存压力下可被
+内核换出到 swap，属于“落盘”。当前实现没有任何 `mlock`/pin；`secure_wipe` 仅删除文件，
+防不了自然换出。默认 `RLIMIT_MEMLOCK`（8 MiB 量级）低于单包明文上限（16 MiB），未提权时
+mlock 可能失败。
+
+待决策与处置方向：
+- 若产品承诺“明文永不落盘（含 swap）”：解密后对文件 mmap+mlock（或改 memfd 匿名内存+
+  mlock），失败时 fail-closed 或显式降级并记录；需处理多技能并发峰值与 RLIMIT_MEMLOCK。
+- 若接受 root/取证威胁模型外：不 pin，但需把“明文仅存在于请求瞬间/内存”改为“明文仅存在于
+  tmpfs 页与模型请求内存，内存压力下可能进入 swap”。
+- 无论哪种方案，补回归测试与文档结论回填（本条目）。
+
 ## 16. 暴露风险矩阵（场景 → 行为 → 潜在暴露 → 处置）
 
 | 场景 | 行为（当前/设计） | 潜在暴露风险 | 处置/状态 |

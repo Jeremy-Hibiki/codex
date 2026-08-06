@@ -153,14 +153,34 @@ pub enum EncryptedSkillsSdkToml {
     Unavailable,
     /// Test-only SDK that decrypts plain ZIP `.zip.enc` packages.
     TestZip,
+    /// Identity transform: the `.enc` package is the plain ZIP renamed.
+    #[serde(rename = "noop")]
+    Noop,
+    /// Software digital envelope (HPKE-X25519-AES256-GCM default or
+    /// standard CMS SM2-SM4-CBC). Requires the `fmsh-ukey` feature.
+    #[serde(rename = "software")]
+    Software,
     /// Real FMSH UKey backend (CMS SM2/SM4 envelope). Requires the
     /// `fmsh-ukey` feature and `FMSH_UKEY_SDK_DIR` at build time plus
     /// `FMSH_UKEY_PROVIDER`/`FMSH_UKEY_CONTAINER` at runtime.
     #[serde(rename = "ukey")]
     UKey,
-    /// Local X25519 + AES-256-GCM envelope backend (no hardware). Requires
-    /// the `fmsh-ukey` feature at build time.
-    Local,
+    /// UKey two-phase: one UKey call unwraps a per-skill `key.enc`, then
+    /// every package is decrypted in software AES-256-GCM with the in-memory
+    /// key. Requires the `fmsh-ukey` feature.
+    #[serde(rename = "ukey-two-phase")]
+    UKeyTwoPhase,
+}
+
+/// Selectable algorithm for the software envelope.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum SoftwareAlgorithmToml {
+    /// HPKE (RFC 9180) base mode: X25519 + HKDF-SHA256 + AES-256-GCM.
+    #[default]
+    HpkeX25519Aes256Gcm,
+    /// Standard CMS EnvelopedData (SM2 key transport + SM4-CBC, GM/T 0010).
+    Sm2Sm4Cbc,
 }
 
 /// Encrypted-skill settings.
@@ -179,10 +199,17 @@ pub struct EncryptedSkillsToml {
     /// this to a path on a mounted volume.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audit_path: Option<String>,
-    /// Static X25519 private key (PEM) for the `local` envelope backend.
-    /// Only used when `sdk = "local"`.
+    /// Static private key (PEM) for the `software` envelope backend.
+    /// Only used when `sdk = "software"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub local_privkey: Option<String>,
+    pub software_privkey: Option<String>,
+    /// Software envelope algorithm. Only used when `sdk = "software"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub software_algorithm: Option<SoftwareAlgorithmToml>,
+    /// Per-skill key envelope file name for `sdk = "ukey-two-phase"`.
+    /// The file lives next to the skill package (default `key.enc`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_envelope: Option<String>,
 }
 
 /// Base config deserialized from ~/.codex/config.toml.
@@ -1108,13 +1135,30 @@ command = "   "
     }
 
     #[test]
-    fn encrypted_skills_toml_parses_ukey_and_local_sdks() {
+    fn encrypted_skills_toml_parses_all_sdk_modes() {
         let ukey: EncryptedSkillsToml = toml::from_str("sdk = \"ukey\"").unwrap();
         assert_eq!(ukey.sdk, Some(EncryptedSkillsSdkToml::UKey));
 
-        let local: EncryptedSkillsToml =
-            toml::from_str("sdk = \"local\"\nlocal_privkey = \"/keys/enc.priv.pem\"").unwrap();
-        assert_eq!(local.sdk, Some(EncryptedSkillsSdkToml::Local));
-        assert_eq!(local.local_privkey.as_deref(), Some("/keys/enc.priv.pem"));
+        let noop: EncryptedSkillsToml = toml::from_str("sdk = \"noop\"").unwrap();
+        assert_eq!(noop.sdk, Some(EncryptedSkillsSdkToml::Noop));
+
+        let software: EncryptedSkillsToml = toml::from_str(
+            "sdk = \"software\"\nsoftware_privkey = \"/keys/enc.priv.pem\"\nsoftware_algorithm = \"sm2-sm4-cbc\"\n",
+        )
+        .unwrap();
+        assert_eq!(software.sdk, Some(EncryptedSkillsSdkToml::Software));
+        assert_eq!(
+            software.software_privkey.as_deref(),
+            Some("/keys/enc.priv.pem")
+        );
+        assert_eq!(
+            software.software_algorithm,
+            Some(SoftwareAlgorithmToml::Sm2Sm4Cbc)
+        );
+
+        let two_phase: EncryptedSkillsToml =
+            toml::from_str("sdk = \"ukey-two-phase\"\nkey_envelope = \"key.enc\"").unwrap();
+        assert_eq!(two_phase.sdk, Some(EncryptedSkillsSdkToml::UKeyTwoPhase));
+        assert_eq!(two_phase.key_envelope.as_deref(), Some("key.enc"));
     }
 }

@@ -6214,20 +6214,22 @@ dependencies = [
 [[package]]
 name = "fmsh-ukey-cipher"
 version = "0.3.0"
-source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=f09dc46e977ad34f63275ff7a240f1533b9a58e3#f09dc46e977ad34f63275ff7a240f1533b9a58e3"
+source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=3516cd574812da50de8ddde31624d5ba863007b7#3516cd574812da50de8ddde31624d5ba863007b7"
 dependencies = [
  "anyhow",
  "clap",
  "fmsh-ukey-wrapper",
+ "hpke",
  "openssl",
  "parking_lot",
+ "rand 0.9.3",
  "zeroize",
 ]
 
 [[package]]
 name = "fmsh-ukey-wrapper"
 version = "0.3.0"
-source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=f09dc46e977ad34f63275ff7a240f1533b9a58e3#f09dc46e977ad34f63275ff7a240f1533b9a58e3"
+source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=3516cd574812da50de8ddde31624d5ba863007b7#3516cd574812da50de8ddde31624d5ba863007b7"
 dependencies = [
  "parking_lot",
  "thiserror 2.0.18",
@@ -7681,6 +7683,26 @@ dependencies = [
  "cfg-if",
  "libc",
  "windows-link",
+]
+
+[[package]]
+name = "hpke"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f65d16b699dd1a1fa2d851c970b0c971b388eeeb40f744252b8de48860980c8f"
+dependencies = [
+ "aead",
+ "aes-gcm",
+ "chacha20poly1305",
+ "digest 0.10.7",
+ "generic-array",
+ "hkdf 0.12.4",
+ "hmac 0.12.1",
+ "rand_core 0.9.5",
+ "sha2 0.10.9",
+ "subtle",
+ "x25519-dalek",
+ "zeroize",
 ]
 
 [[package]]

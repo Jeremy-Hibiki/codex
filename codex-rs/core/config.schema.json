@@ -963,6 +963,20 @@
           "type": "string"
         },
         {
+          "description": "Identity transform: the `.enc` package is the plain ZIP renamed.",
+          "enum": [
+            "noop"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Software digital envelope (HPKE-X25519-AES256-GCM default or standard CMS SM2-SM4-CBC). Requires the `fmsh-ukey` feature.",
+          "enum": [
+            "software"
+          ],
+          "type": "string"
+        },
+        {
           "description": "Real FMSH UKey backend (CMS SM2/SM4 envelope). Requires the `fmsh-ukey` feature and `FMSH_UKEY_SDK_DIR` at build time plus `FMSH_UKEY_PROVIDER`/`FMSH_UKEY_CONTAINER` at runtime.",
           "enum": [
             "ukey"
@@ -970,9 +984,9 @@
           "type": "string"
         },
         {
-          "description": "Local X25519 + AES-256-GCM envelope backend (no hardware). Requires the `fmsh-ukey` feature at build time.",
+          "description": "UKey two-phase: one UKey call unwraps a per-skill `key.enc`, then every package is decrypted in software AES-256-GCM with the in-memory key. Requires the `fmsh-ukey` feature.",
           "enum": [
-            "local"
+            "ukey-two-phase"
           ],
           "type": "string"
         }
@@ -986,8 +1000,8 @@
           "description": "Audit log path for encrypted-skill security events. Defaults to the process temp directory (ephemeral); persistent deployments should set this to a path on a mounted volume.",
           "type": "string"
         },
-        "local_privkey": {
-          "description": "Static X25519 private key (PEM) for the `local` envelope backend. Only used when `sdk = \"local\"`.",
+        "key_envelope": {
+          "description": "Per-skill key envelope file name for `sdk = \"ukey-two-phase\"`. The file lives next to the skill package (default `key.enc`).",
           "type": "string"
         },
         "sdk": {
@@ -1003,6 +1017,18 @@
           "format": "uint64",
           "minimum": 0.0,
           "type": "integer"
+        },
+        "software_algorithm": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/SoftwareAlgorithmToml"
+            }
+          ],
+          "description": "Software envelope algorithm. Only used when `sdk = \"software\"`."
+        },
+        "software_privkey": {
+          "description": "Static private key (PEM) for the `software` envelope backend. Only used when `sdk = \"software\"`.",
+          "type": "string"
         }
       },
       "type": "object"
@@ -3116,6 +3142,25 @@
         }
       },
       "type": "object"
+    },
+    "SoftwareAlgorithmToml": {
+      "description": "Selectable algorithm for the software envelope.",
+      "oneOf": [
+        {
+          "description": "HPKE (RFC 9180) base mode: X25519 + HKDF-SHA256 + AES-256-GCM.",
+          "enum": [
+            "hpke-x25519-aes256-gcm"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Standard CMS EnvelopedData (SM2 key transport + SM4-CBC, GM/T 0010).",
+          "enum": [
+            "sm2-sm4-cbc"
+          ],
+          "type": "string"
+        }
+      ]
     },
     "ThreadStoreToml": {
       "oneOf": [

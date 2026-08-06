@@ -154,6 +154,7 @@ in-flight 窗口定义：`load_or_register` 从 `decrypt_package()` 之后、`re
 | D9 | 技能脚本执行的审批 | engaged 时自动 Permit，不向用户征询、不进 guardian 评审 | 用户不应看到加载加密 Skill 后的 Turn 内执行过程；命令本身也走逻辑路径/红act |
 | D10 | 配置与模型配置的修改途径 | 客户端不提供任何改配置/改模型配置的入口；Skill 仅可配置启用/禁用；配置由未来受信管理工具负责 | `thread/start` config 覆盖、`experimentalFeature/enablement/set`、`skills/config/write` 等客户端入口不暴露；`thread/realtime/*` 产品不提供，排除在范围外 |
 | D11 | 强制沙箱的 debug 后门 | `FMSH_CODEX_AGENT_SECURITY_SANDBOX_BYPASS=1`，仅 `debug_assertions` 构建生效，release 忽略 | 本地开发/CI 需要 full-access 时使用；插件禁令与 engaged 配置写拒绝不受影响；产品发布构建不受影响 |
+| D12 | 加密模式选用与两阶段默认 | `sdk` 可选 `noop`/`software`/`ukey`/`ukey-two-phase`，产品默认 `ukey-two-phase`；`software` 算法可选 `hpke-x25519-aes256-gcm`（默认）与 `sm2-sm4-cbc`；每 Skill 携带一个 `key.enc`，UKey 解开后的 AES key 仅驻内存，后续包解密不再调用硬件 | 上游 `fmsh-ukey-lib` 同步最新（`local` 更名 `software`，四种加密方式）；瞬态密钥材料（软件私钥 PEM 等）走 memfd，不落盘 |
 
 ## 14. 相关记录
 
@@ -346,8 +347,13 @@ default_permissions = ":workspace" # 与 workspace-write 一致的命名档案
 plugins = false                    # I7/I30：禁止插件
 
 [encrypted_skills]
-sdk = "ukey"                       # 或 "local"（需下面 local_privkey）
-# local_privkey = "/etc/codex/keys/enc.priv.pem"
+sdk = "ukey-two-phase"             # 默认：一次 UKey 解开 key.enc，之后内存密钥解密
+# sdk = "software"                 # 纯软件：HPKE 默认或 sm2-sm4-cbc
+# sdk = "ukey"                     # 单次 UKey CMS 解密（每个包一次硬件调用）
+# sdk = "noop"                     # 透传（仅测试/迁移）
+software_algorithm = "hpke-x25519-aes256-gcm"
+# software_privkey = "/etc/codex/keys/enc.priv.pem"   # sdk="software" 时
+key_envelope = "key.enc"           # 每个 Skill 目录内的密钥信封
 audit_path = "/var/log/codex/encrypted-skills-audit.jsonl"
 skill_idle_ttl_secs = 600
 ```
@@ -364,8 +370,13 @@ sandbox_mode = "workspace-write"
   `read-only` 会破坏该能力；`danger-full-access` 违反 I6，CLI/ACP 与运行期都会拒绝。
 - 不要写：`sandbox_mode = "danger-full-access"`、`default_permissions = ":danger-full-access"`、
   `features.plugins = true`、`sdk = "test_zip"`（仅测试，生产 fail-closed）。
-- `sdk` 生产用 `ukey`（FMSH UKey，需编译期 `fmsh-ukey` feature）或 `local`
-  （X25519+AES-GCM，配 `local_privkey`）。
+- 加密模式四种：`noop`（透传）、`software`（HPKE 默认或标准 CMS SM2-SM4-CBC，
+  配 `software_privkey`）、`ukey`（每次包一次 UKey 调用）、`ukey-two-phase`
+  （默认：每 Skill 一个 `key.enc`，一次 UKey 解开后密钥仅驻内存，后续包用软件
+  AES-256-GCM 解密，避免串行硬件调用）。均需编译期 `fmsh-ukey` feature。
+- 密钥驻留策略：两阶段解开的 AES key 与软件私钥 PEM 只存在于进程内存；软件私钥
+  经 memfd 载入，任何瞬态密钥材料不落盘（中间生成的公钥若未来出现在加密侧，同样
+  走 memfd）。
 - 部署侧配套：`/dev/shm` 容量按技能包估算调大（容量门控预留 ≥4 MiB）；有 root 时按 I31
   配置 `LimitMEMLOCK`/无 swap，无 root 则接受威胁模型或 `VmSwap` 监控；审计日志目录收紧权限
   （文件本身按 0600 写）。

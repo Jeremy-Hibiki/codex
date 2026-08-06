@@ -2357,7 +2357,6 @@ dependencies = [
  "regex-lite",
  "serde",
  "serde_json",
- "signal-hook",
  "sqlx",
  "supports-color 3.0.2",
  "sys-locale",
@@ -6209,6 +6208,7 @@ dependencies = [
  "anyhow",
  "lmclient-rust-sdk",
  "pretty_assertions",
+ "signal-hook",
  "tracing",
 ]
 

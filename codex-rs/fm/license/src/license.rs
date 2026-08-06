@@ -31,17 +31,18 @@ const LICENSE_STATE_LOST: u8 = 1;
 pub const LICENSE_UNAVAILABLE_MESSAGE: &str =
     "Codex license is unavailable; new requests are blocked until the license recovers";
 
-/// Debug/test-only environment variable that bypasses FMSH verification.
+/// Environment variable that bypasses FMSH license verification.
 ///
-/// The bypass is only honored in `debug_assertions` builds; release builds are
-/// always fail-closed. Integration tests that spawn gated binaries set this so
-/// the repo test suite does not require a live FMSH license server.
+/// This is a product-level skip switch honored in every build mode, including
+/// release builds. It lets environments without access to the FMSH
+/// LicenseService run Codex without a checkout. Integration tests that spawn
+/// gated binaries also set it so the repo test suite does not require a live
+/// FMSH license server.
 pub const TEST_BYPASS_ENV_VAR: &str = "FMSH_CODEX_LIC_TEST_BYPASS";
 
-/// Debug/test-only environment variable that starts the process with the
-/// license already lost so request gates can be exercised without a real
-/// license server. Only honored together with [`TEST_BYPASS_ENV_VAR`] in
-/// `debug_assertions` builds.
+/// Environment variable that starts the process with the license already lost
+/// so request gates can be exercised without a real license server. Only
+/// honored together with [`TEST_BYPASS_ENV_VAR`] in every build mode.
 pub const TEST_FORCE_LOST_ENV_VAR: &str = "FMSH_CODEX_LIC_TEST_FORCE_LOST";
 
 /// Process-wide license state, updated by the LMCLIENT heartbeat thread.
@@ -87,13 +88,11 @@ fn mark_license_active() {
     LICENSE_STATE.store(LICENSE_STATE_ACTIVE, Ordering::Release);
 }
 
-#[cfg(debug_assertions)]
 fn test_bypass_enabled() -> bool {
     std::env::var(TEST_BYPASS_ENV_VAR)
         .is_ok_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
 }
 
-#[cfg(debug_assertions)]
 fn test_force_lost_enabled() -> bool {
     std::env::var(TEST_FORCE_LOST_ENV_VAR)
         .is_ok_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
@@ -200,26 +199,44 @@ pub fn check_in_now() {
     }
 }
 
+/// Install a handler that returns the checked-out license on SIGINT/SIGTERM.
+///
+/// Some shutdown paths bypass normal destructor ordering: a SIGINT during
+/// startup, `std::process::exit` from deep call stacks, or an ACP adapter
+/// terminating the app-server process. The license must therefore be returned
+/// from the signal handler itself before the process terminates. The process
+/// exits with `128 + signal` after checking in, matching shell conventions.
+pub fn install_checkin_signal_handler() -> Result<()> {
+    use signal_hook::consts::signal::SIGINT;
+    use signal_hook::consts::signal::SIGTERM;
+    use signal_hook::iterator::Signals;
+
+    let mut signals = Signals::new([SIGINT, SIGTERM])?;
+    std::thread::spawn(move || {
+        if let Some(signal) = signals.forever().next() {
+            check_in_now();
+            std::process::exit(128 + signal);
+        }
+    });
+    Ok(())
+}
+
 /// Check out the configured license feature at startup.
 ///
-/// All build modes enforce verification unconditionally. There is no escape
-/// hatch — tests must use a mock license server or `cfg`-gate the call site.
+/// All build modes enforce verification unless [`TEST_BYPASS_ENV_VAR`] is set.
+/// The bypass is a product-level skip switch, not a debug-only test hook, so
+/// release builds honor the same environment variable.
 ///
 /// The LMCLIENT SDK reads `FMSH_LIC_SERVER` internally (`<port>@<host>`).
 /// This function reads `FMSH_CODEX_LIC_FEATURE` and `FMSH_CODEX_LIC_VERSION`
 /// (both required) and optionally `FMSH_CODEX_LIC_DISPLAY_NAME` (defaults to `"Codex"`).
 pub fn verify_at_startup() -> Result<LicenseGuard> {
-    #[cfg(debug_assertions)]
     if test_bypass_enabled() {
         if test_force_lost_enabled() {
             mark_license_lost();
-            tracing::warn!(
-                "{TEST_FORCE_LOST_ENV_VAR} is set; starting with the license lost (debug builds only)"
-            );
+            tracing::warn!("{TEST_FORCE_LOST_ENV_VAR} is set; starting with the license lost");
         } else {
-            tracing::warn!(
-                "{TEST_BYPASS_ENV_VAR} is set; skipping FMSH license verification (debug builds only)"
-            );
+            tracing::warn!("{TEST_BYPASS_ENV_VAR} is set; skipping FMSH license verification");
         }
         return Ok(LicenseGuard { client: None });
     }

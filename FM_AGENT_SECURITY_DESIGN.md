@@ -206,6 +206,14 @@ in-flight 窗口定义：`load_or_register` 从 `decrypt_package()` 之后、`re
 `rpc_guard`/处理器边界；`readonly_binds` 走 serde default 兼容；测试放在对应 crate；
 被改动的公共文件已由 FIX_LOG 逐提交记录。
 
+后续解耦方向（分析，未实施）：第二阶段 core 共 21 个文件 +1,019/-44，其中约 880 行是新增
+文件/测试（`agent_security.rs`+测试、guard 测试），既有文件侵入多为追加式小改动。可进一步：
+（1）`agent_security.rs` 纯逻辑移入 `fm-encrypted-skills`（core 仅 re-export）；（2）core 定义
+窄 `AgentSecurityPolicy` trait、实现放 fm crate 并由 Session services 注入 `Arc<dyn>`，
+调用点收敛为 4-5 处；（3）D9 自动 Permit 从 shell/unified_exec/unix_escalation 三处收敛到
+orchestrator 审批解析单点。预计既有文件改动从约 15 个降到 10 个以内；guard 本体因依赖
+`ToolOutput`/`GuardianApprovalRequest` 等 core 类型，暂留 core。
+
 ### TODO-6 强制启用沙箱的实施面盘点（I6）
 
 现状：Codex 存在多条可关闭/降级沙箱的入口：`config.toml` 的 `sandbox_mode`、permission profile 选择（含 `danger-full-access`）、`dangerously_bypass_approvals_and_sandbox`、CLI `--sandbox`/`--full-auto` 类参数、TUI `/permissions` 切换、app-server `thread/start`/`turn/start` 的 sandbox/permissions 覆盖参数、以及 requirements.toml/managed config 的约束（已有 `permission_profile_constraint` 机制可复用）。
@@ -275,6 +283,19 @@ mlock 可能失败。
   tmpfs 页与模型请求内存，内存压力下可能进入 swap”。
 - 无论哪种方案，补回归测试与文档结论回填（本条目）。
 
+### TODO-11 writable roots 的通配支持（分析，未实施）
+
+现状：`FileSystemSandboxPolicy` 的可写根只接受具体路径与特殊占位符（`:workspace`/
+`:project_roots`/`:slash_tmp`/`:tmpdir`）；glob 只在 deny/只读规则中生效（运行时
+ripgrep 展开），写规则中的 glob 会被 `resolve_file_system_path` 静默忽略。
+
+影响：多 worktree 场景无法用一条通配规则放行所有 `.git/worktrees/<name>` 的写权限，
+只能逐个列具体路径，或把 git 写操作放到沙箱外（require_escalated/CI runner）。
+
+待决策：若产品需要“任意 worktree 内沙箱可写 git”，可在权限解析与 bwrap 构造处增加
+writable roots 的 glob 展开（复用 `expand_unreadable_globs_with_ripgrep` 的先例），
+并在配置文档中明确 glob 语义与匹配范围。
+
 两种部署场景（均需产品决策后落地）：
 
 | 场景 | mlock 可行性 | 处置 |
@@ -324,8 +345,9 @@ default_permissions = ":workspace" # 与 workspace-write 一致的命名档案
 plugins = false                    # I7/I30：禁止插件
 
 [encrypted_skills]
-sdk = "ukey"                       # 或 "local"（需下面 local_privkey）
-# local_privkey = "/etc/codex/keys/enc.priv.pem"
+# sdk 的 "ukey"/"local" 为预留值（后端未接入，选择后 fail-closed）
+sdk = "unavailable"
+# local_privkey = "/etc/codex/keys/enc.priv.pem"   # 预留，待后端接入后使用
 audit_path = "/var/log/codex/encrypted-skills-audit.jsonl"
 skill_idle_ttl_secs = 600
 ```
@@ -342,8 +364,8 @@ sandbox_mode = "workspace-write"
   `read-only` 会破坏该能力；`danger-full-access` 违反 I6，CLI/ACP 与运行期都会拒绝。
 - 不要写：`sandbox_mode = "danger-full-access"`、`default_permissions = ":danger-full-access"`、
   `features.plugins = true`、`sdk = "test_zip"`（仅测试，生产 fail-closed）。
-- `sdk` 生产用 `ukey`（FMSH UKey，需编译期 `fmsh-ukey` feature）或 `local`
-  （X25519+AES-GCM，配 `local_privkey`）。
+- `sdk` 的 `ukey`/`local` 为预留值，后端未接入（不再依赖/ vendor fmsh-ukey），
+  选择后 fail-closed；当前产品保持 `unavailable`（fail-closed），待真实后端接入。
 - 部署侧配套：`/dev/shm` 容量按技能包估算调大（容量门控预留 ≥4 MiB）；有 root 时按 I31
   配置 `LimitMEMLOCK`/无 swap，无 root 则接受威胁模型或 `VmSwap` 监控；审计日志目录收紧权限
   （文件本身按 0600 写）。

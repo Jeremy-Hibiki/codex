@@ -49,7 +49,7 @@ prompt。I23 在 `run_guardian_review` 入口统一红act，评审模型只看�
 - 默认 workspace-write 的 bwrap 沙箱把 `/dev/shm` 挂成私有空 tmpfs，重写后的真实路径在沙箱内
   不可见，导致技能脚本执行与沙箱隔离存在张力；根治方案是把解密目录以只读 bind 挂到沙箱内的
   逻辑技能路径（`--ro-bind <decrypted> <logical>`），使命令永不包含 `/dev/shm`。
-| 23 | `41c2632016` + `33f94b4371` | fmsh-ukey integration | Add `fmsh-ukey-cipher` as optional git dependency pinned to upstream `f09dc46` (openssl >= 0.10.76), add optional `fmsh-ukey` feature, implement `UKeySdk`/`LocalSdk`, wire `local_privkey` config; openssl lock bumped 0.10.75 -> 0.10.81; feature build verified with a stub SDK (`136 passed`) |
+| 23 | `41c2632016` + `33f94b4371`（后按决策移除） | fmsh-ukey integration | 曾以 git 依赖接入 `fmsh-ukey-cipher`（upstream `f09dc46`）并实现 `UKeySdk`/`LocalSdk`、接入 `local_privkey`；后续决策：不再 vendor/依赖 ukey，git 依赖、feature 与实现已移除，`UKey`/`Local` 恢复为预留 fail-closed（见 I22 语义） |
 
 ## Verification
 

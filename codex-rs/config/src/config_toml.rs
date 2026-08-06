@@ -153,13 +153,12 @@ pub enum EncryptedSkillsSdkToml {
     Unavailable,
     /// Test-only SDK that decrypts plain ZIP `.zip.enc` packages.
     TestZip,
-    /// Real FMSH UKey backend (CMS SM2/SM4 envelope). Requires the
-    /// `fmsh-ukey` feature and `FMSH_UKEY_SDK_DIR` at build time plus
-    /// `FMSH_UKEY_PROVIDER`/`FMSH_UKEY_CONTAINER` at runtime.
+    /// Real FMSH UKey backend (CMS SM2/SM4 envelope). Reserved: the backend
+    /// is not wired into this branch; selecting it stays fail-closed.
     #[serde(rename = "ukey")]
     UKey,
-    /// Local X25519 + AES-256-GCM envelope backend (no hardware). Requires
-    /// the `fmsh-ukey` feature at build time.
+    /// Local X25519 + AES-256-GCM envelope backend (no hardware). Reserved:
+    /// not wired in; selecting it stays fail-closed.
     Local,
 }
 

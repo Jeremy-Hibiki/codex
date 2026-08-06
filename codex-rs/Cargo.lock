@@ -6190,7 +6190,6 @@ dependencies = [
 name = "fm-encrypted-skills"
 version = "0.146.0-fm.1"
 dependencies = [
- "fmsh-ukey-cipher",
  "libc",
  "rand 0.9.3",
  "serde_json",
@@ -6209,28 +6208,6 @@ dependencies = [
  "lmclient-rust-sdk",
  "pretty_assertions",
  "tracing",
-]
-
-[[package]]
-name = "fmsh-ukey-cipher"
-version = "0.3.0"
-source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=f09dc46e977ad34f63275ff7a240f1533b9a58e3#f09dc46e977ad34f63275ff7a240f1533b9a58e3"
-dependencies = [
- "anyhow",
- "clap",
- "fmsh-ukey-wrapper",
- "openssl",
- "parking_lot",
- "zeroize",
-]
-
-[[package]]
-name = "fmsh-ukey-wrapper"
-version = "0.3.0"
-source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=f09dc46e977ad34f63275ff7a240f1533b9a58e3#f09dc46e977ad34f63275ff7a240f1533b9a58e3"
-dependencies = [
- "parking_lot",
- "thiserror 2.0.18",
 ]
 
 [[package]]

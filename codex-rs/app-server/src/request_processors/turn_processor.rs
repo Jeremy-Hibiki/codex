@@ -185,9 +185,7 @@ impl TurnRequestProcessor {
             && (params.sandbox_policy
                 == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess)
                 || params.permissions.as_deref()
-                    == Some(
-                        codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS,
-                    ))
+                    == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS))
         {
             return Err(crate::error_code::invalid_request(
                 "danger-full-access is disabled by product policy",
@@ -226,9 +224,7 @@ impl TurnRequestProcessor {
             && (params.sandbox_policy
                 == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess)
                 || params.permissions.as_deref()
-                    == Some(
-                        codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS,
-                    ))
+                    == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS))
         {
             return Err(crate::error_code::invalid_request(
                 "danger-full-access is disabled by product policy",

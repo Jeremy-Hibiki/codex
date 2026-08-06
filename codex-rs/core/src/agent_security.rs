@@ -76,7 +76,8 @@ static SANDBOX_BYPASS_WARNED: std::sync::atomic::AtomicBool =
 pub fn sandbox_policy_bypassed() -> bool {
     #[cfg(debug_assertions)]
     {
-        let active = sandbox_policy_bypassed_for(std::env::var(SANDBOX_BYPASS_ENV_VAR).ok().as_deref());
+        let active =
+            sandbox_policy_bypassed_for(std::env::var(SANDBOX_BYPASS_ENV_VAR).ok().as_deref());
         if active && !SANDBOX_BYPASS_WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
             tracing::warn!(
                 "{SANDBOX_BYPASS_ENV_VAR}=1 is active: full-access execution is allowed in this debug build"

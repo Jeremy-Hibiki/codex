@@ -1029,10 +1029,11 @@ async fn cli_main(
 
     // Product policy (I6/I7): full-access execution and plugin/marketplace
     // management are disabled in this build.
-    if requests_full_access(&interactive.shared)
-        || subcommand
-            .as_ref()
-            .is_some_and(subcommand_requests_full_access)
+    if !codex_core::agent_security::sandbox_policy_bypassed()
+        && (requests_full_access(&interactive.shared)
+            || subcommand
+                .as_ref()
+                .is_some_and(subcommand_requests_full_access))
     {
         return Err(anyhow::anyhow!(
             "full-access execution is disabled by product policy; use a sandboxed permission profile"

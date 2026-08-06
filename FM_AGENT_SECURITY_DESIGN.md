@@ -153,6 +153,7 @@ in-flight 窗口定义：`load_or_register` 从 `decrypt_package()` 之后、`re
 | D8 | 插件与 MCP 的禁用范围 | 插件/marketplace 全禁；MCP server 允许 | MCP 不能注册 Codex Hook，暴露面限于工具参数/输出（guard 已覆盖）与同 uid 进程（威胁模型外） |
 | D9 | 技能脚本执行的审批 | engaged 时自动 Permit，不向用户征询、不进 guardian 评审 | 用户不应看到加载加密 Skill 后的 Turn 内执行过程；命令本身也走逻辑路径/红act |
 | D10 | 配置与模型配置的修改途径 | 客户端不提供任何改配置/改模型配置的入口；Skill 仅可配置启用/禁用；配置由未来受信管理工具负责 | `thread/start` config 覆盖、`experimentalFeature/enablement/set`、`skills/config/write` 等客户端入口不暴露；`thread/realtime/*` 产品不提供，排除在范围外 |
+| D11 | 强制沙箱的 debug 后门 | `FMSH_CODEX_AGENT_SECURITY_SANDBOX_BYPASS=1`，仅 `debug_assertions` 构建生效，release 忽略 | 本地开发/CI 需要 full-access 时使用；插件禁令与 engaged 配置写拒绝不受影响；产品发布构建不受影响 |
 
 ## 14. 相关记录
 
@@ -205,6 +206,14 @@ in-flight 窗口定义：`load_or_register` 从 `decrypt_package()` 之后、`re
 `encrypted_skills_guard`/`agent_security`（护栏与判定）、`linux-sandbox` bwrap、app-server
 `rpc_guard`/处理器边界；`readonly_binds` 走 serde default 兼容；测试放在对应 crate；
 被改动的公共文件已由 FIX_LOG 逐提交记录。
+
+后续解耦方向（分析，未实施）：第二阶段 core 共 21 个文件 +1,019/-44，其中约 880 行是新增
+文件/测试（`agent_security.rs`+测试、guard 测试），既有文件侵入多为追加式小改动。可进一步：
+（1）`agent_security.rs` 纯逻辑移入 `fm-encrypted-skills`（core 仅 re-export）；（2）core 定义
+窄 `AgentSecurityPolicy` trait、实现放 fm crate 并由 Session services 注入 `Arc<dyn>`，
+调用点收敛为 4-5 处；（3）D9 自动 Permit 从 shell/unified_exec/unix_escalation 三处收敛到
+orchestrator 审批解析单点。预计既有文件改动从约 15 个降到 10 个以内；guard 本体因依赖
+`ToolOutput`/`GuardianApprovalRequest` 等 core 类型，暂留 core。
 
 ### TODO-6 强制启用沙箱的实施面盘点（I6）
 
@@ -274,6 +283,19 @@ mlock 可能失败。
 - 若接受 root/取证威胁模型外：不 pin，但需把“明文仅存在于请求瞬间/内存”改为“明文仅存在于
   tmpfs 页与模型请求内存，内存压力下可能进入 swap”。
 - 无论哪种方案，补回归测试与文档结论回填（本条目）。
+
+### TODO-11 writable roots 的通配支持（分析，未实施）
+
+现状：`FileSystemSandboxPolicy` 的可写根只接受具体路径与特殊占位符（`:workspace`/
+`:project_roots`/`:slash_tmp`/`:tmpdir`）；glob 只在 deny/只读规则中生效（运行时
+ripgrep 展开），写规则中的 glob 会被 `resolve_file_system_path` 静默忽略。
+
+影响：多 worktree 场景无法用一条通配规则放行所有 `.git/worktrees/<name>` 的写权限，
+只能逐个列具体路径，或把 git 写操作放到沙箱外（require_escalated/CI runner）。
+
+待决策：若产品需要“任意 worktree 内沙箱可写 git”，可在权限解析与 bwrap 构造处增加
+writable roots 的 glob 展开（复用 `expand_unreadable_globs_with_ripgrep` 的先例），
+并在配置文档中明确 glob 语义与匹配范围。
 
 两种部署场景（均需产品决策后落地）：
 

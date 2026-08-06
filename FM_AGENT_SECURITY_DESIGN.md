@@ -308,3 +308,43 @@ mlock 可能失败。
 | `experimentalFeature/enablement/set` | 客户端可切换 feature | 若安全路线挂在 feature flag 下可被关闭 | engaged 时拒绝；客户端不暴露（D10/TODO-9 已验证） |
 | `skills/config/write`、`skills/extraRoots/set`、`config/value/write`、`config/batchWrite` | 客户端可写配置 | 配置完整性（根目录、加密开关）可能被篡改 | engaged 时拒绝；Skill 仅可配置启用/禁用，加密/根目录由受信管理工具负责（D10/TODO-9 已验证） |
 | fork/resume 出的新会话 | 从持久化（已红act）重建历史 | 若持久化红act有遗漏，新会话未 engaged 却携带明文历史 | 扩展 TODO-3 验证持久化红act完整性；fork 后新会话 `is_engaged` 必须为 false 且历史无明文 |
+
+## 17. 推荐默认配置模板（产品构建）
+
+### 用户 `config.toml`
+
+```toml
+model = "gpt-5.5"
+model_provider = "openai"          # 内网推理服务则换成对应 provider
+approval_policy = "never"          # 无人值守；要人工审批就改 "onRequest"
+sandbox_mode = "workspace-write"   # I6/D7：产品最低强制级别
+default_permissions = ":workspace" # 与 workspace-write 一致的命名档案
+
+[features]
+plugins = false                    # I7/I30：禁止插件
+
+[encrypted_skills]
+sdk = "ukey"                       # 或 "local"（需下面 local_privkey）
+# local_privkey = "/etc/codex/keys/enc.priv.pem"
+audit_path = "/var/log/codex/encrypted-skills-audit.jsonl"
+skill_idle_ttl_secs = 600
+```
+
+### 产品侧 `managed_config.toml`（用户不可改的安全兜底）
+
+```toml
+sandbox_mode = "workspace-write"
+```
+
+### 说明与禁忌
+
+- 默认必须 `workspace-write`：技能脚本（D9 execute-only）需要在沙箱内执行并写工作区，
+  `read-only` 会破坏该能力；`danger-full-access` 违反 I6，CLI/ACP 与运行期都会拒绝。
+- 不要写：`sandbox_mode = "danger-full-access"`、`default_permissions = ":danger-full-access"`、
+  `features.plugins = true`、`sdk = "test_zip"`（仅测试，生产 fail-closed）。
+- `sdk` 生产用 `ukey`（FMSH UKey，需编译期 `fmsh-ukey` feature）或 `local`
+  （X25519+AES-GCM，配 `local_privkey`）。
+- 部署侧配套：`/dev/shm` 容量按技能包估算调大（容量门控预留 ≥4 MiB）；有 root 时按 I31
+  配置 `LimitMEMLOCK`/无 swap，无 root 则接受威胁模型或 `VmSwap` 监控；审计日志目录收紧权限
+  （文件本身按 0600 写）。
+- 插件/配置修改入口按 D10 由产品前端不暴露、未来受信管理工具负责；用户配置仅保留非安全项。

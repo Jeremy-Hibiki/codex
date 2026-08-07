@@ -6190,13 +6190,16 @@ name = "fm-encrypted-skills"
 version = "0.146.0-fm.1"
 dependencies = [
  "anyhow",
+ "codex-shell-command",
  "fmsh-ukey-cipher",
  "libc",
+ "pretty_assertions",
  "rand 0.9.3",
  "serde_json",
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
+ "tree-sitter",
  "unicode-normalization",
  "zip",
 ]

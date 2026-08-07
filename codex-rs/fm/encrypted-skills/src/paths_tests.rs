@@ -110,6 +110,27 @@ fn command_references_decrypted_dir() {
 }
 
 #[test]
+fn command_references_parent_directory() {
+    let dirs = vec!["/dev/shm/fm-agent-security/fm_skill_security_abc".to_string()];
+    // 父目录引用可以触达全部解密树：`find /dev/shm` 不拼出 MEM_ROOT 也能列出明文路径。
+    for command in [
+        "find /dev/shm",
+        "ls /dev/shm",
+        "du -sh /dev/shm/*",
+        "find /dev/shm -exec cat {} \\;",
+        "cat /dev/shm/fm-agent-security/p1/fm_skill_security_abc/SKILL.md",
+    ] {
+        assert!(
+            command_references_dir(command, &dirs),
+            "must flag parent-directory reference: {command}"
+        );
+    }
+    // 边界：/dev/shmx 不是 /dev/shm 下的路径，不应误报。
+    assert!(!command_references_dir("cat /dev/shmx/foo", &dirs));
+    assert!(!command_references_dir("bash /tmp/run.sh", &dirs));
+}
+
+#[test]
 fn split_at_semicolon() {
     assert_eq!(
         split_command_segments("cat /a; cat /b"),

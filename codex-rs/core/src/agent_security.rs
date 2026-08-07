@@ -144,7 +144,7 @@ pub mod rpc {
             return false;
         }
         let guarded = guarded_strings();
-        guarded.iter().any(|guard| command.contains(guard.as_str()))
+        fm_encrypted_skills::paths::command_references_dir(command, &guarded)
     }
 
     /// True when any string value in `value` references a guarded path.
@@ -155,7 +155,7 @@ pub mod rpc {
         let guarded = guarded_strings();
         let mut hit = false;
         collect_string_values(value, &mut |text| {
-            if guarded.iter().any(|guard| text.contains(guard.as_str())) {
+            if fm_encrypted_skills::paths::command_references_dir(text, &guarded) {
                 hit = true;
             }
         });

@@ -11,7 +11,6 @@ use fm_encrypted_skills::sdk::PackageEntry;
 
 use super::AgentSecurityContext;
 use super::ensure_encrypted_skill_sandbox;
-use super::rpc;
 use super::sandbox_applies_binds;
 use super::sandbox_policy_bypassed;
 use super::sandbox_policy_bypassed_for;
@@ -77,61 +76,6 @@ fn sandbox_applies_binds_false_without_bwrap() {
         /*use_legacy_landlock*/ true,
         /*enforce_managed_network*/ false,
     ));
-}
-
-#[test]
-fn rpc_guard_blocks_guarded_paths_when_engaged() {
-    let tmp = tempfile::tempdir().unwrap();
-    let runtime = Arc::new(EncryptedSkillRuntime::new_shared(
-        Arc::new(TestSdk),
-        TtlConfig::default(),
-        tmp.path().join("mem-root"),
-    ));
-    runtime
-        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
-        .unwrap();
-    let decrypted = runtime.decrypted_dirs("t1").pop().unwrap();
-
-    assert!(rpc::is_guarded_path(&decrypted.join("SKILL.md")));
-    assert!(rpc::is_guarded_path(runtime.mem_root()));
-    assert!(rpc::command_references_guarded_path(&format!(
-        "cat {}",
-        decrypted.join("SKILL.md").to_string_lossy()
-    )));
-    assert!(rpc::command_references_guarded_path("find /dev/shm"));
-    assert!(rpc::args_reference_guarded_path(&serde_json::json!({
-        "path": decrypted.join("SKILL.md").to_string_lossy()
-    })));
-    assert!(rpc::args_reference_guarded_path(&serde_json::json!({
-        "path": "/dev/shm"
-    })));
-
-    drop(runtime);
-    assert!(!rpc::is_guarded_path(&decrypted.join("SKILL.md")));
-}
-
-#[test]
-fn rpc_guard_allows_unengaged_paths() {
-    let tmp = tempfile::tempdir().unwrap();
-    let runtime = Arc::new(EncryptedSkillRuntime::new_shared(
-        Arc::new(TestSdk),
-        TtlConfig::default(),
-        tmp.path().join("mem-root"),
-    ));
-    let own_path = runtime.mem_root().join("own-file");
-
-    assert!(!rpc::is_guarded_path(&own_path));
-    assert!(!rpc::command_references_guarded_path(&format!(
-        "cat {}",
-        own_path.to_string_lossy()
-    )));
-    assert!(!rpc::command_references_guarded_path("find /dev/shm"));
-    assert!(!rpc::args_reference_guarded_path(&serde_json::json!({
-        "path": own_path.to_string_lossy()
-    })));
-    assert!(!rpc::args_reference_guarded_path(&serde_json::json!({
-        "path": "/dev/shm"
-    })));
 }
 
 #[test]

@@ -34,6 +34,8 @@ pub use license::check_in_now;
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 pub use license::ensure_active;
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+pub use license::init_entry;
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 pub use license::install_checkin_signal_handler;
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 pub use license::is_active;

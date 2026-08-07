@@ -1014,14 +1014,10 @@ async fn cli_main(
                 .as_ref()
                 .is_some_and(subcommand_requests_full_access))
     {
-        return Err(anyhow::anyhow!(
-            "full-access execution is disabled by product policy; use a sandboxed permission profile"
-        ));
+        return Err(fm_product_policy::full_access_error());
     }
     if matches!(subcommand.as_ref(), Some(Subcommand::Plugin(_))) {
-        return Err(anyhow::anyhow!(
-            "plugin and marketplace management is disabled by product policy"
-        ));
+        return Err(fm_product_policy::plugin_management_error());
     }
 
     // Verify the product license before entering any of the main product
@@ -1042,16 +1038,12 @@ async fn cli_main(
     };
     #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
     let _license_guard = if license_required {
-        Some(fm_license::verify_at_startup()?)
+        Some(fm_license::init_entry()?)
     } else {
         None
     };
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
     let _license_guard: Option<()> = None;
-    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
-    if _license_guard.is_some() {
-        fm_license::install_checkin_signal_handler()?;
-    }
 
     match subcommand {
         None => {

@@ -221,6 +221,15 @@ pub fn install_checkin_signal_handler() -> Result<()> {
     Ok(())
 }
 
+/// One-call product entry point: verify the license and install the
+/// SIGINT/SIGTERM check-in handler. Hold the returned guard for the process
+/// lifetime; it returns the license on drop.
+pub fn init_entry() -> Result<LicenseGuard> {
+    let guard = verify_at_startup()?;
+    install_checkin_signal_handler()?;
+    Ok(guard)
+}
+
 /// Check out the configured license feature at startup.
 ///
 /// All build modes enforce verification unless [`TEST_BYPASS_ENV_VAR`] is set.

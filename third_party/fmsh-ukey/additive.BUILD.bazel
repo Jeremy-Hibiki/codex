@@ -19,9 +19,9 @@ cc_import(
 
 cc_library(
     name = "fmsh_ukey_native",
-    visibility = ["//visibility:public"],
     # libcrypto.so.1.1 is a runtime NEEDED of libfmsh_ukey_sdk.so, not a
     # link-time input; keep it in runfiles so packaged binaries can find it.
     data = ["//vendor/fmsh-ukey-sdk/linux/lib:libcrypto.so.1.1"],
+    visibility = ["//visibility:public"],
     deps = [":fmsh_ukey_sdk_shared"],
 )

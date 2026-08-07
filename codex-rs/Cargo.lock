@@ -1997,7 +1997,9 @@ dependencies = [
  "codex-windows-sandbox",
  "core_test_support",
  "flate2",
+ "fm-encrypted-skills",
  "fm-license",
+ "fm-product-policy",
  "futures",
  "hmac 0.12.1",
  "opentelemetry",
@@ -2347,6 +2349,7 @@ dependencies = [
  "codex-windows-sandbox",
  "crossterm",
  "fm-license",
+ "fm-product-policy",
  "http 1.4.0",
  "insta",
  "libc",
@@ -6190,7 +6193,9 @@ name = "fm-encrypted-skills"
 version = "0.146.0-fm.1"
 dependencies = [
  "anyhow",
+ "codex-protocol",
  "codex-shell-command",
+ "codex-utils-path-uri",
  "fmsh-ukey-cipher",
  "libc",
  "pretty_assertions",
@@ -6213,6 +6218,13 @@ dependencies = [
  "pretty_assertions",
  "signal-hook",
  "tracing",
+]
+
+[[package]]
+name = "fm-product-policy"
+version = "0.146.0-fm.1"
+dependencies = [
+ "anyhow",
 ]
 
 [[package]]

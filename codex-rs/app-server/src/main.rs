@@ -78,11 +78,10 @@ fn main() -> anyhow::Result<()> {
         } = AppServerArgs::parse();
         // The standalone app-server binary is a product entry point that can
         // start Codex work; it must hold a license for the process lifetime.
-        let _license_guard = fm_license::verify_at_startup()?;
         // ACP adapters terminate this process with SIGTERM when the client
-        // disconnects; return the license before the process exits so it is
-        // released immediately instead of waiting for the server lease.
-        fm_license::install_checkin_signal_handler()?;
+        // disconnects; `init_entry` installs a handler that returns the
+        // license before the process exits.
+        let _license_guard = fm_license::init_entry()?;
         let loader_overrides = if disable_managed_config_from_debug_env() {
             LoaderOverrides::without_managed_config_for_tests()
         } else {

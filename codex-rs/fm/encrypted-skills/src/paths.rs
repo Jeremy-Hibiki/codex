@@ -5,6 +5,11 @@ use std::path::Path;
 use std::path::PathBuf;
 
 pub const MEM_ROOT: &str = "/dev/shm/fm-agent-security";
+/// Parent directory of the memory root. While a session is engaged, any
+/// reference to this directory (or anything beneath it) can reach decrypted
+/// storage — `find /dev/shm` lists the real plaintext tree even though it
+/// never spells out [`MEM_ROOT`] — so it is guarded like the root itself.
+pub const MEM_ROOT_PARENT: &str = "/dev/shm";
 pub const REDACTED_MARKER: &str = "[REDACTED]";
 pub const RUNNERS: [&str; 10] = [
     "python", "python3", "bash", "zsh", "sh", "node", "deno", "ruby", "perl", "pwsh",
@@ -211,10 +216,60 @@ fn unquote(token: &str) -> &str {
     token.trim_matches(|c| c == '\'' || c == '"')
 }
 
-/// True when a command mentions the memory root or any known decrypted dir.
+/// True when `text` contains `prefix` at a path-component boundary: the
+/// character after the match is `/`, whitespace, a quote, an operator, or the
+/// end of the text. `find /dev/shm` and `cat /dev/shm/x` match, while an
+/// unrelated name such as `/dev/shmx` does not.
+pub(crate) fn contains_path_prefix(text: &str, prefix: &str) -> bool {
+    let bytes = text.as_bytes();
+    let prefix_len = prefix.len();
+    let mut search_from = 0usize;
+    while let Some(offset) = text[search_from..].find(prefix) {
+        let end = search_from + offset + prefix_len;
+        if end == bytes.len()
+            || matches!(
+                bytes[end],
+                b'/' | b' '
+                    | b'\t'
+                    | b'\n'
+                    | b'\r'
+                    | b'\''
+                    | b'"'
+                    | b'\\'
+                    | b'|'
+                    | b'&'
+                    | b';'
+                    | b'('
+                    | b')'
+                    | b'<'
+                    | b'>'
+                    | b'$'
+                    | b'`'
+                    | b'*'
+                    | b'?'
+                    | b'['
+                    | b']'
+                    | b'{'
+                    | b'}'
+                    | b','
+                    | b':'
+            )
+        {
+            return true;
+        }
+        search_from = end;
+    }
+    false
+}
+
+/// True when a command mentions the memory root, its parent directory, or any
+/// known decrypted dir.
 /// Substring matching means globs (`/dev/shm/.../p*/f*/SKILL.md`) and
 /// cross-session directories under the shared root are also caught.
 pub fn command_references_dir(cmd: &str, decrypted_dirs: &[String]) -> bool {
+    if contains_path_prefix(cmd, MEM_ROOT_PARENT) {
+        return true;
+    }
     if cmd.contains(MEM_ROOT) {
         return true;
     }

@@ -98,8 +98,12 @@ fn rpc_guard_blocks_guarded_paths_when_engaged() {
         "cat {}",
         decrypted.join("SKILL.md").to_string_lossy()
     )));
+    assert!(rpc::command_references_guarded_path("find /dev/shm"));
     assert!(rpc::args_reference_guarded_path(&serde_json::json!({
         "path": decrypted.join("SKILL.md").to_string_lossy()
+    })));
+    assert!(rpc::args_reference_guarded_path(&serde_json::json!({
+        "path": "/dev/shm"
     })));
 
     drop(runtime);
@@ -121,8 +125,12 @@ fn rpc_guard_allows_unengaged_paths() {
         "cat {}",
         own_path.to_string_lossy()
     )));
+    assert!(!rpc::command_references_guarded_path("find /dev/shm"));
     assert!(!rpc::args_reference_guarded_path(&serde_json::json!({
         "path": own_path.to_string_lossy()
+    })));
+    assert!(!rpc::args_reference_guarded_path(&serde_json::json!({
+        "path": "/dev/shm"
     })));
 }
 

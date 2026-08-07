@@ -3,7 +3,13 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::guardian::GuardianApprovalRequest;
+use crate::audit::AuditEvent;
+use crate::audit::AuditSink;
+use crate::registry::TtlConfig;
+use crate::runtime::EncryptedSkillRuntime;
+use crate::sdk::EnvelopeError;
+use crate::sdk::EnvelopeSdk;
+use crate::sdk::PackageEntry;
 use codex_protocol::items::AgentMessageContent;
 use codex_protocol::items::CommandExecutionItem;
 use codex_protocol::items::CommandExecutionStatus;
@@ -24,20 +30,10 @@ use codex_protocol::models::ReasoningItemReasoningSummary;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::models::WebSearchAction;
 use codex_protocol::protocol::ExecCommandSource;
-use fm_encrypted_skills::audit::AuditEvent;
-use fm_encrypted_skills::audit::AuditSink;
-use fm_encrypted_skills::registry::TtlConfig;
-use fm_encrypted_skills::runtime::EncryptedSkillRuntime;
-use fm_encrypted_skills::sdk::EnvelopeError;
-use fm_encrypted_skills::sdk::EnvelopeSdk;
-use fm_encrypted_skills::sdk::PackageEntry;
+use codex_utils_path_uri::PathUri;
 use serde_json::json;
 
 use super::*;
-use crate::tools::context::FunctionToolOutput;
-use crate::tools::hook_names::HookToolName;
-use codex_utils_absolute_path::AbsolutePathBuf;
-use codex_utils_path_uri::PathUri;
 
 #[derive(Default)]
 struct GuardCollectingSink {
@@ -121,170 +117,12 @@ fn loaded_long_runtime() -> (EncryptedSkillRuntime, tempfile::TempDir) {
 }
 
 #[test]
-fn guardian_request_redacts_mem_root_paths() {
-    let (runtime, _tmp) = loaded_runtime();
-    let decrypted_dir = runtime
-        .decrypted_dirs("t1")
-        .pop()
-        .expect("loaded skill should register a decrypted dir");
-    let mem_root = runtime.mem_root().to_string_lossy().into_owned();
-
-    let request = GuardianApprovalRequest::Shell {
-        id: "approval-1".to_string(),
-        command: vec![
-            "bash".to_string(),
-            decrypted_dir
-                .join("script.sh")
-                .to_string_lossy()
-                .into_owned(),
-        ],
-        cwd: AbsolutePathBuf::try_from(Path::new("/tmp")).expect("absolute cwd"),
-        sandbox_permissions: crate::sandboxing::SandboxPermissions::UseDefault,
-        additional_permissions: None,
-        justification: None,
-    };
-
-    let GuardianApprovalRequest::Shell { command, .. } =
-        redact_guardian_request(&runtime, "t1", request)
-    else {
-        panic!("expected Shell request after redaction");
-    };
-    let joined = command.join(" ");
-    assert!(
-        !joined.contains(&mem_root),
-        "reviewer command must not contain the memory root: {joined}"
-    );
-    assert!(
-        joined.contains("/skills/script.sh"),
-        "decrypted dir should be rewritten back to the original skill path: {joined}"
-    );
-}
-
-#[test]
-fn unengaged_shell_command_mentioning_mem_root_is_allowed() {
-    let (runtime, _tmp) = empty_runtime();
-    let command = format!("cat {}", runtime.mem_root().to_string_lossy());
-    let decision = before_tool_with_runtime(
-        &runtime,
-        "t1",
-        &HookToolName::bash(),
-        &json!({ "command": command }),
-    );
-    assert!(
-        matches!(decision, GuardDecision::Allow),
-        "unengaged shell command must pass through: {decision:?}"
-    );
-}
-
-#[test]
-fn unengaged_view_image_under_mem_root_is_allowed() {
-    let (runtime, _tmp) = empty_runtime();
-    let path = runtime
-        .mem_root()
-        .join("fm_skill_security_abc")
-        .to_string_lossy()
-        .into_owned();
-    let decision = before_tool_with_runtime(
-        &runtime,
-        "t1",
-        &HookToolName::view_image(),
-        &json!({ "path": path }),
-    );
-    assert!(
-        matches!(decision, GuardDecision::Allow),
-        "unengaged view_image must pass through: {decision:?}"
-    );
-}
-
-#[test]
-fn unengaged_export_arguments_mentioning_mem_root_are_allowed() {
-    let (runtime, _tmp) = empty_runtime();
-    let patch = format!(
-        "*** Begin Patch\n*** Update File: {}\n@@\n+leak\n",
-        runtime.mem_root().to_string_lossy()
-    );
-    let decision = before_tool_with_runtime(
-        &runtime,
-        "t1",
-        &HookToolName::apply_patch(),
-        &json!({ "patch": patch }),
-    );
-    assert!(
-        matches!(decision, GuardDecision::Allow),
-        "unengaged export tool must pass through: {decision:?}"
-    );
-}
-
-#[test]
-fn redacting_tool_output_passes_through_when_unengaged() {
-    let (runtime, _tmp) = empty_runtime();
-    let runtime = Arc::new(runtime);
-    let output = RedactingToolOutput {
-        inner: Box::new(FunctionToolOutput::from_text(
-            "unused".to_string(),
-            Some(true),
-        )),
-        runtime: Arc::clone(&runtime),
-        session_id: "t1".to_string(),
-        engaged: false,
-    };
-    let input = format!("script at {}", runtime.mem_root().to_string_lossy());
-    assert_eq!(output.redact_text(&input), input);
-}
-
-#[test]
-fn redacting_tool_output_redacts_when_engaged() {
-    let (runtime, _tmp) = loaded_runtime();
-    let runtime = Arc::new(runtime);
-    let output = RedactingToolOutput {
-        inner: Box::new(FunctionToolOutput::from_text(
-            "unused".to_string(),
-            Some(true),
-        )),
-        runtime: Arc::clone(&runtime),
-        session_id: "t1".to_string(),
-        engaged: true,
-    };
-    let decrypted = runtime.decrypted_dirs("t1").pop().unwrap();
-    let input = format!("script at {}", decrypted.join("run.sh").to_string_lossy());
-    let redacted = output.redact_text(&input);
-    assert!(!redacted.contains(&runtime.mem_root().to_string_lossy().to_string()));
-    assert!(
-        redacted.contains("/skills/run.sh"),
-        "decrypted dir should unrewrite to original skill path: {redacted}"
-    );
-}
-
-#[test]
-fn redacting_tool_output_log_preview_is_redacted_when_engaged() {
-    let (runtime, _tmp) = loaded_runtime();
-    let runtime = Arc::new(runtime);
-    let decrypted = runtime.decrypted_dirs("t1").pop().unwrap();
-    let raw_preview = format!("preview {}", decrypted.join("run.sh").to_string_lossy());
-    let output = RedactingToolOutput {
-        inner: Box::new(FunctionToolOutput::from_text(raw_preview, Some(true))),
-        runtime: Arc::clone(&runtime),
-        session_id: "t1".to_string(),
-        engaged: true,
-    };
-    let preview = output.log_preview();
-    assert!(
-        !preview.contains(&runtime.mem_root().to_string_lossy().to_string()),
-        "telemetry preview must not contain the memory root: {preview}"
-    );
-    assert!(
-        preview.contains("/skills/run.sh"),
-        "decrypted dir should unrewrite to the original skill path in preview: {preview}"
-    );
-}
-
-#[test]
 fn binds_active_logical_script_execution_is_allowed() {
     let (runtime, _tmp) = loaded_runtime();
-    let decision = before_tool_with_runtime_and_binds(
+    let decision = before_tool(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "bash /skills/run.sh" }),
         /*binds_active*/ true,
     );
@@ -297,10 +135,10 @@ fn binds_active_logical_script_execution_is_allowed() {
 #[test]
 fn binds_active_logical_read_is_blocked() {
     let (runtime, _tmp) = loaded_runtime();
-    let decision = before_tool_with_runtime_and_binds(
+    let decision = before_tool(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "cat /skills/SKILL.md" }),
         /*binds_active*/ true,
     );
@@ -313,10 +151,10 @@ fn binds_active_logical_read_is_blocked() {
 #[test]
 fn legacy_rewrite_without_binds_rewrites_to_decrypted_path() {
     let (runtime, _tmp) = loaded_runtime();
-    let decision = before_tool_with_runtime_and_binds(
+    let decision = before_tool(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "bash /skills/run.sh" }),
         /*binds_active*/ false,
     );
@@ -403,17 +241,17 @@ fn stdin_input_unengaged_session_is_allowed() {
 #[test]
 fn is_skill_script_execution_detects_execute_only_commands() {
     let (runtime, _tmp) = loaded_runtime();
-    assert!(crate::encrypted_skills_guard::is_skill_script_execution(
+    assert!(crate::guard::is_skill_script_execution(
         &runtime,
         "t1",
         "bash /skills/run.sh"
     ));
-    assert!(!crate::encrypted_skills_guard::is_skill_script_execution(
+    assert!(!crate::guard::is_skill_script_execution(
         &runtime,
         "t1",
         "cat /skills/SKILL.md"
     ));
-    assert!(!crate::encrypted_skills_guard::is_skill_script_execution(
+    assert!(!crate::guard::is_skill_script_execution(
         &runtime,
         "t1",
         "git status"
@@ -423,7 +261,7 @@ fn is_skill_script_execution_detects_execute_only_commands() {
 #[test]
 fn is_skill_script_execution_false_when_unengaged() {
     let (runtime, _tmp) = empty_runtime();
-    assert!(!crate::encrypted_skills_guard::is_skill_script_execution(
+    assert!(!crate::guard::is_skill_script_execution(
         &runtime,
         "t1",
         "bash /skills/run.sh"
@@ -436,7 +274,7 @@ fn blocks_cat_script_under_mem_root() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "cat /dev/shm/fm-agent-security/fm_skill_security_abc/scripts/run.sh" }),
     );
     assert!(matches!(decision, GuardDecision::Blocked { .. }));
@@ -448,7 +286,7 @@ fn blocks_cat_script_referencing_original_skill_paths() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "cat /skills/secret/scripts/run.sh" }),
     );
     assert!(
@@ -463,7 +301,7 @@ fn blocks_cat_text_file_referencing_original_skill_paths() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "cat /skills/secret/SKILL.md" }),
     );
     assert!(
@@ -480,7 +318,7 @@ fn recursive_grep_on_decrypted_dir_is_blocked() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": command }),
     );
     assert!(
@@ -495,7 +333,7 @@ fn recursive_grep_on_original_dir_is_blocked() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "grep -r secret /skills/secret" }),
     );
     assert!(
@@ -512,7 +350,7 @@ fn grep_specific_script_file_is_blocked() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": command }),
     );
     assert!(matches!(decision, GuardDecision::Blocked { .. }));
@@ -525,7 +363,7 @@ fn blocks_listing_decrypted_dir() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": format!("ls {}", dirs[0].to_string_lossy()) }),
     );
     assert!(
@@ -542,7 +380,7 @@ fn blocks_find_in_decrypted_dir() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": command }),
     );
     assert!(
@@ -559,7 +397,7 @@ fn blocks_cat_text_file_in_decrypted_dir() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": command }),
     );
     assert!(
@@ -576,7 +414,7 @@ fn blocks_cat_script_in_decrypted_dir() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": command }),
     );
     assert!(
@@ -596,7 +434,7 @@ fn blocks_copy_of_script_file() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": command }),
     );
     assert!(
@@ -613,7 +451,7 @@ fn blocks_archive_of_script_file() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": command }),
     );
     assert!(matches!(decision, GuardDecision::Blocked { .. }));
@@ -627,7 +465,7 @@ fn blocks_bash_c_inner_script_read() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": command }),
     );
     assert!(
@@ -649,7 +487,7 @@ fn blocks_modern_listing_commands() {
         let decision = before_tool_with_runtime(
             &runtime,
             "t1",
-            &HookToolName::bash(),
+            BASH_TOOL_NAME,
             &json!({ "command": command }),
         );
         assert!(
@@ -664,12 +502,8 @@ fn blocks_modern_text_reader_on_decrypted_storage() {
     let (runtime, _tmp) = loaded_runtime();
     let dirs = runtime.decrypted_dirs("t1");
     let text = format!("bat {}/SKILL.md", dirs[0].to_string_lossy());
-    let decision = before_tool_with_runtime(
-        &runtime,
-        "t1",
-        &HookToolName::bash(),
-        &json!({ "command": text }),
-    );
+    let decision =
+        before_tool_with_runtime(&runtime, "t1", BASH_TOOL_NAME, &json!({ "command": text }));
     assert!(
         matches!(decision, GuardDecision::Blocked { .. }),
         "bat on decrypted storage must be blocked: {decision:?}"
@@ -682,7 +516,7 @@ fn rewrites_original_skill_path_in_execution_commands() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "bash /skills/secret/scripts/build.sh" }),
     );
     match decision {
@@ -702,7 +536,7 @@ fn blocks_chain_smuggled_read_after_script_execution() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "bash /skills/secret/scripts/build.sh; cat /skills/secret/SKILL.md" }),
     );
     assert!(
@@ -717,7 +551,7 @@ fn blocks_chain_smuggled_read_via_logical_and() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "bash /skills/secret/scripts/build.sh && cat /skills/secret/SKILL.md" }),
     );
     assert!(
@@ -732,7 +566,7 @@ fn blocks_pipe_smuggled_read() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "bash /skills/secret/scripts/build.sh | cat /skills/secret/SKILL.md" }),
     );
     assert!(
@@ -747,7 +581,7 @@ fn blocks_glob_probing_decrypted_storage() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "cat /dev/shm/fm-agent-security/p*/f*/SKILL.md" }),
     );
     assert!(
@@ -762,7 +596,7 @@ fn blocks_cross_session_directory_access() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "cat /dev/shm/fm-agent-security/p99999/fm_skill_security_deadbeef/SKILL.md" }),
     );
     assert!(
@@ -779,7 +613,7 @@ fn blocks_copy_escape_from_decrypted_storage() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": command }),
     );
     assert!(
@@ -796,7 +630,7 @@ fn blocks_redirect_escape_from_decrypted_storage() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": command }),
     );
     assert!(
@@ -813,7 +647,7 @@ fn blocks_base64_escape_from_decrypted_storage() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": command }),
     );
     assert!(
@@ -830,7 +664,7 @@ fn allows_script_execution_in_decrypted_storage() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": command }),
     );
     assert!(
@@ -856,7 +690,7 @@ fn blocks_script_execution_reading_through_io_channels() {
         let decision = before_tool_with_runtime(
             &runtime,
             "t1",
-            &HookToolName::bash(),
+            BASH_TOOL_NAME,
             &json!({ "command": command }),
         );
         assert!(
@@ -876,7 +710,7 @@ fn allows_script_execution_with_plain_guarded_arguments() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": command }),
     );
     assert!(
@@ -892,7 +726,7 @@ fn blocks_view_image_on_decrypted_directory() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::view_image(),
+        VIEW_IMAGE_TOOL_NAME,
         &json!({ "path": format!("{}/image.png", dirs[0].to_string_lossy()) }),
     );
     assert!(matches!(decision, GuardDecision::Blocked { .. }));
@@ -905,7 +739,7 @@ fn blocks_view_image_on_unknown_mem_root_subpath() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::view_image(),
+        VIEW_IMAGE_TOOL_NAME,
         &json!({ "path": format!("{root}/whatever/image.png") }),
     );
     assert!(matches!(decision, GuardDecision::Blocked { .. }));
@@ -1432,7 +1266,7 @@ fn blocks_shell_command_containing_known_plaintext() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "echo \"# Guarded content\" > /tmp/leak.txt" }),
     );
     assert!(
@@ -1453,7 +1287,7 @@ fn blocks_shell_command_with_normalized_plaintext_variant() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "echo '**# Guarded content**'" }),
     );
     assert!(
@@ -1483,7 +1317,7 @@ fn blocks_sed_and_head_on_decrypted_storage() {
         let decision = before_tool_with_runtime(
             &runtime,
             "t1",
-            &HookToolName::bash(),
+            BASH_TOOL_NAME,
             &json!({ "command": command }),
         );
         assert!(
@@ -1555,7 +1389,7 @@ fn blocks_view_image_on_default_mem_root_prefix() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::view_image(),
+        VIEW_IMAGE_TOOL_NAME,
         &json!({ "path": "/dev/shm/fm-agent-security/other/image.png" }),
     );
     assert!(matches!(decision, GuardDecision::Blocked { .. }));
@@ -1567,7 +1401,7 @@ fn allows_view_image_outside_mem_root() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::view_image(),
+        VIEW_IMAGE_TOOL_NAME,
         &json!({ "path": "/tmp/workspace/image.png" }),
     );
     assert!(matches!(decision, GuardDecision::Allow));
@@ -1579,7 +1413,7 @@ fn unrelated_commands_pass_through() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "echo hello" }),
     );
     assert!(matches!(decision, GuardDecision::Allow));
@@ -1591,7 +1425,7 @@ fn allows_mcp_tool_without_storage_references() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::new("mcp__server__tool"),
+        "mcp__server__tool",
         &json!({ "path": "/tmp/unrelated.txt" }),
     );
     assert!(matches!(decision, GuardDecision::Allow));
@@ -1603,7 +1437,7 @@ fn blocks_mcp_tool_probing_mem_root_path() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::new("mcp__server__tool"),
+        "mcp__server__tool",
         &json!({ "path": "/dev/shm/fm-agent-security/whatever" }),
     );
     assert!(
@@ -1619,7 +1453,7 @@ fn blocks_extension_tool_probing_decrypted_dir() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::new("some_extension_tool"),
+        "some_extension_tool",
         &json!({ "directory": dirs[0].to_string_lossy() }),
     );
     assert!(
@@ -1645,7 +1479,7 @@ fn blocked_path_probe_records_storage_probe_reason() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::new("mcp__server__tool"),
+        "mcp__server__tool",
         &json!({ "path": "/dev/shm/fm-agent-security/whatever" }),
     );
     assert!(matches!(decision, GuardDecision::Blocked { .. }));
@@ -1672,13 +1506,13 @@ fn blocked_audit_records_specific_reason() {
     let _ = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": "cat /dev/shm/fm-agent-security/x/scripts/run.sh" }),
     );
     let _ = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::apply_patch(),
+        "apply_patch",
         &json!({ "command": "patch with # Guarded content" }),
     );
 
@@ -1700,7 +1534,7 @@ fn blocks_listing_the_runtime_mem_root() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::bash(),
+        BASH_TOOL_NAME,
         &json!({ "command": format!("ls {root}") }),
     );
     assert!(
@@ -1715,7 +1549,7 @@ fn blocks_export_tool_containing_known_plaintext() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::apply_patch(),
+        "apply_patch",
         &json!({ "command": "*** Begin Patch\n+ # Guarded content\n*** End Patch" }),
     );
     assert!(matches!(decision, GuardDecision::Blocked { .. }));
@@ -1727,7 +1561,7 @@ fn allows_export_tool_without_known_plaintext() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::apply_patch(),
+        "apply_patch",
         &json!({ "command": "*** Begin Patch\n+ normal user content\n*** End Patch" }),
     );
     assert!(matches!(decision, GuardDecision::Allow));
@@ -1741,7 +1575,7 @@ fn blocks_web_search_tool_containing_known_plaintext() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::new("webrun"),
+        "webrun",
         &json!({ "query": "# Guarded content" }),
     );
     assert!(
@@ -1756,7 +1590,7 @@ fn allows_web_search_tool_without_known_plaintext() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::new("webrun"),
+        "webrun",
         &json!({ "query": "rust async trait" }),
     );
     assert!(matches!(decision, GuardDecision::Allow));
@@ -1768,7 +1602,7 @@ fn blocks_extension_tool_args_containing_known_plaintext() {
     let decision = before_tool_with_runtime(
         &runtime,
         "t1",
-        &HookToolName::new("some_extension_tool"),
+        "some_extension_tool",
         &json!({ "payload": "prefix # Guarded content suffix" }),
     );
     assert!(

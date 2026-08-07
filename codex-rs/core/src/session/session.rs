@@ -1077,7 +1077,7 @@ impl Session {
             let session_extension_data =
                 codex_extension_api::ExtensionData::new(session_id.to_string());
             let encrypted_skills_sdk = fm_encrypted_skills::sdk::sdk_for(match config
-                .encrypted_skills_sdk
+                .encrypted_skills.sdk
             {
                 codex_config::config_toml::EncryptedSkillsSdkToml::Unavailable => {
                     fm_encrypted_skills::sdk::SdkKind::Unavailable
@@ -1092,7 +1092,7 @@ impl Session {
                     fm_encrypted_skills::sdk::SdkKind::Noop
                 }
                 codex_config::config_toml::EncryptedSkillsSdkToml::Software => {
-                    let algorithm = match config.encrypted_skills_software_algorithm {
+                    let algorithm = match config.encrypted_skills.software_algorithm {
                         codex_config::config_toml::SoftwareAlgorithmToml::Sm2Sm4Cbc => {
                             fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::Sm2Sm4Cbc
                         }
@@ -1102,7 +1102,7 @@ impl Session {
                     };
                     fm_encrypted_skills::sdk::SdkKind::Software {
                         algorithm,
-                        privkey: config.encrypted_skills_software_privkey.clone(),
+                        privkey: config.encrypted_skills.software_privkey.clone(),
                     }
                 }
                 codex_config::config_toml::EncryptedSkillsSdkToml::UKey => {
@@ -1110,12 +1110,12 @@ impl Session {
                 }
                 codex_config::config_toml::EncryptedSkillsSdkToml::UKeyTwoPhase => {
                     fm_encrypted_skills::sdk::SdkKind::UKeyTwoPhase {
-                        key_envelope: config.encrypted_skills_key_envelope.clone(),
+                        key_envelope: config.encrypted_skills.key_envelope.clone(),
                     }
                 }
             });
             let encrypted_skills_audit_path = config
-                .encrypted_skills_audit_path
+                .encrypted_skills.audit_path
                 .clone()
                 .unwrap_or_else(|| std::env::temp_dir().join("fm_skill_security_audit.log"));
             let encrypted_skills_audit: Option<
@@ -1172,7 +1172,7 @@ impl Session {
                 skills_service,
                 encrypted_skills_runtime: fm_encrypted_skills::runtime::EncryptedSkillRuntime::new_shared_with_audit(
                     encrypted_skills_sdk,
-                    config.encrypted_skills_ttl.clone(),
+                    config.encrypted_skills.ttl.clone(),
                     encrypted_skills_mem_root.clone(),
                     encrypted_skills_audit,
                 ),

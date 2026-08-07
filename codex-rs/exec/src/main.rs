@@ -32,8 +32,7 @@ fn main() -> anyhow::Result<()> {
         // start Codex work; it must hold a license for the process lifetime.
         // Helper dispatches (apply_patch, sandbox) exit inside
         // `arg0_dispatch_or_else` before this closure runs.
-        let _license_guard = fm_license::verify_at_startup()?;
-        fm_license::install_checkin_signal_handler()?;
+        let _license_guard = fm_license::init_entry()?;
         // Merge root-level overrides into inner CLI struct so downstream logic remains unchanged.
         let mut inner = top_cli.inner;
         inner

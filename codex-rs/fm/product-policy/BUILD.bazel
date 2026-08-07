@@ -1,0 +1,6 @@
+load("//:defs.bzl", "codex_rust_crate")
+
+codex_rust_crate(
+    name = "product-policy",
+    crate_name = "fm_product_policy",
+)

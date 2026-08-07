@@ -608,22 +608,43 @@ pub enum ThreadStoreConfig {
     InMemory { id: String },
 }
 
+/// Runtime settings for encrypted skills, resolved from
+/// `[encrypted_skills]` in `config.toml`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EncryptedSkillsRuntimeConfig {
+    /// Envelope SDK selection (fail-closed by default).
+    pub sdk: codex_config::config_toml::EncryptedSkillsSdkToml,
+    /// Two-tier TTL configuration.
+    pub ttl: fm_encrypted_skills::registry::TtlConfig,
+    /// Audit log path for security events (persistent deployments should
+    /// point this at a mounted volume).
+    pub audit_path: Option<std::path::PathBuf>,
+    /// Static private key for the `software` envelope backend.
+    pub software_privkey: Option<std::path::PathBuf>,
+    /// Software envelope algorithm (`sdk = "software"`).
+    pub software_algorithm: codex_config::config_toml::SoftwareAlgorithmToml,
+    /// Per-skill key envelope file name (`sdk = "ukey-two-phase"`).
+    pub key_envelope: String,
+}
+
+impl Default for EncryptedSkillsRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            sdk: Default::default(),
+            ttl: fm_encrypted_skills::registry::TtlConfig::default(),
+            audit_path: None,
+            software_privkey: None,
+            software_algorithm: Default::default(),
+            key_envelope: "key.enc".to_string(),
+        }
+    }
+}
+
 /// Application configuration loaded from disk and merged with overrides.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
-    /// Envelope SDK selection for encrypted skills (fail-closed by default).
-    pub encrypted_skills_sdk: codex_config::config_toml::EncryptedSkillsSdkToml,
-    /// Encrypted-skill two-tier TTL configuration.
-    pub encrypted_skills_ttl: fm_encrypted_skills::registry::TtlConfig,
-    /// Audit log path for encrypted-skill security events (persistent
-    /// deployments should point this at a mounted volume).
-    pub encrypted_skills_audit_path: Option<std::path::PathBuf>,
-    /// Static private key for the `software` envelope backend.
-    pub encrypted_skills_software_privkey: Option<std::path::PathBuf>,
-    /// Software envelope algorithm (`sdk = "software"`).
-    pub encrypted_skills_software_algorithm: codex_config::config_toml::SoftwareAlgorithmToml,
-    /// Per-skill key envelope file name (`sdk = "ukey-two-phase"`).
-    pub encrypted_skills_key_envelope: String,
+    /// Encrypted-skill runtime settings resolved from `[encrypted_skills]`.
+    pub encrypted_skills: EncryptedSkillsRuntimeConfig,
 
     /// Provenance for how this [`Config`] was derived (merged layers + enforced
     /// requirements).
@@ -3994,28 +4015,30 @@ impl Config {
         .map_err(std::io::Error::from)?;
         let otel = otel::resolve_config(cfg.otel.unwrap_or_default(), &mut startup_warnings);
         let config = Self {
-            encrypted_skills_sdk: cfg.encrypted_skills.sdk.unwrap_or_default(),
-            encrypted_skills_ttl: fm_encrypted_skills::registry::TtlConfig {
-                skill_idle: std::time::Duration::from_secs(
-                    cfg.encrypted_skills.skill_idle_ttl_secs.unwrap_or(600),
-                ),
+            encrypted_skills: EncryptedSkillsRuntimeConfig {
+                sdk: cfg.encrypted_skills.sdk.unwrap_or_default(),
+                ttl: fm_encrypted_skills::registry::TtlConfig {
+                    skill_idle: std::time::Duration::from_secs(
+                        cfg.encrypted_skills.skill_idle_ttl_secs.unwrap_or(600),
+                    ),
+                },
+                audit_path: cfg
+                    .encrypted_skills
+                    .audit_path
+                    .map(std::path::PathBuf::from),
+                software_privkey: cfg
+                    .encrypted_skills
+                    .software_privkey
+                    .map(std::path::PathBuf::from),
+                software_algorithm: cfg
+                    .encrypted_skills
+                    .software_algorithm
+                    .unwrap_or_default(),
+                key_envelope: cfg
+                    .encrypted_skills
+                    .key_envelope
+                    .unwrap_or_else(|| "key.enc".to_string()),
             },
-            encrypted_skills_audit_path: cfg
-                .encrypted_skills
-                .audit_path
-                .map(std::path::PathBuf::from),
-            encrypted_skills_software_privkey: cfg
-                .encrypted_skills
-                .software_privkey
-                .map(std::path::PathBuf::from),
-            encrypted_skills_software_algorithm: cfg
-                .encrypted_skills
-                .software_algorithm
-                .unwrap_or_default(),
-            encrypted_skills_key_envelope: cfg
-                .encrypted_skills
-                .key_envelope
-                .unwrap_or_else(|| "key.enc".to_string()),
             model,
             service_tier,
             review_model,

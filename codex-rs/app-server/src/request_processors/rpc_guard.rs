@@ -9,14 +9,12 @@ use std::path::Path;
 
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::JSONRPCErrorError;
-use codex_core::agent_security::rpc;
+use fm_encrypted_skills::rpc;
 
 use crate::error_code::invalid_request;
 
 pub(crate) const RPC_BLOCK_MESSAGE: &str =
     "Blocked by encrypted skill policy: operation is not allowed while encrypted skills are in use";
-pub(crate) const PLUGIN_POLICY_ERROR: &str =
-    "plugin and marketplace management is disabled by product policy";
 pub(crate) const CONFIG_MUTATION_POLICY_ERROR: &str =
     "configuration changes are disabled while encrypted skills are in use";
 
@@ -69,7 +67,9 @@ pub(crate) fn ensure_plugin_management_allowed(
             | ClientRequest::PluginInstall { .. }
             | ClientRequest::PluginUninstall { .. }
     ) {
-        Err(invalid_request(PLUGIN_POLICY_ERROR))
+        Err(invalid_request(
+            fm_product_policy::PLUGIN_MANAGEMENT_DISABLED_MESSAGE,
+        ))
     } else {
         Ok(())
     }

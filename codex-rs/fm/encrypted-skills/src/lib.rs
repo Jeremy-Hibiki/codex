@@ -23,11 +23,13 @@
 pub mod audit;
 pub mod cache;
 pub mod export_guard;
+pub mod guard;
 pub mod mem_root;
 pub mod memfd;
 pub mod paths;
 pub mod registry;
 pub mod rehydrate;
+pub mod rpc;
 pub mod runtime;
 pub mod sdk;
 pub mod token;
@@ -39,3 +41,7 @@ mod ts_paths;
 #[cfg(test)]
 #[path = "ts_paths_tests.rs"]
 mod ts_paths_tests;
+
+#[cfg(test)]
+#[path = "rpc_tests.rs"]
+mod rpc_tests;

@@ -96,7 +96,7 @@ async fn encrypted_skill_keeps_plaintext_out_of_context_and_rollout() -> Result<
     let server = start_mock_server().await;
     let mut builder = test_codex()
         .with_config(|config| {
-            config.encrypted_skills_sdk = EncryptedSkillsSdkToml::TestZip;
+            config.encrypted_skills.sdk = EncryptedSkillsSdkToml::TestZip;
         })
         .with_workspace_setup(move |cwd, fs| async move { write_encrypted_skill(cwd, fs).await });
     let test = builder.build_with_auto_env(&server).await?;
@@ -276,7 +276,7 @@ async fn build_test_with_encrypted_skill(
 ) -> Result<core_test_support::test_codex::TestCodex> {
     let mut builder = test_codex()
         .with_config(|config| {
-            config.encrypted_skills_sdk = EncryptedSkillsSdkToml::TestZip;
+            config.encrypted_skills.sdk = EncryptedSkillsSdkToml::TestZip;
         })
         .with_workspace_setup(move |cwd, fs| async move { write_encrypted_skill(cwd, fs).await });
     builder.build_with_auto_env(server).await
@@ -464,8 +464,8 @@ async fn skill_ttl_expiry_forces_redecryption_on_reminder() -> Result<()> {
     let server = start_mock_server().await;
     let mut builder = test_codex()
         .with_config(|config| {
-            config.encrypted_skills_sdk = EncryptedSkillsSdkToml::TestZip;
-            config.encrypted_skills_ttl.skill_idle = std::time::Duration::from_secs(1);
+            config.encrypted_skills.sdk = EncryptedSkillsSdkToml::TestZip;
+            config.encrypted_skills.ttl.skill_idle = std::time::Duration::from_secs(1);
         })
         .with_workspace_setup(move |cwd, fs| async move { write_encrypted_skill(cwd, fs).await });
     let test = builder.build_with_auto_env(&server).await?;
@@ -606,7 +606,7 @@ async fn resumed_session_keeps_stale_skill_tokens_unreplaced() -> Result<()> {
     .await;
 
     let builder = test_codex().with_config(|config| {
-        config.encrypted_skills_sdk = EncryptedSkillsSdkToml::TestZip;
+        config.encrypted_skills.sdk = EncryptedSkillsSdkToml::TestZip;
     });
     let initial = builder
         .with_workspace_setup(move |cwd, fs| async move { write_encrypted_skill(cwd, fs).await })
@@ -624,7 +624,7 @@ async fn resumed_session_keeps_stale_skill_tokens_unreplaced() -> Result<()> {
     // Resume into a fresh session whose runtime cache is empty: the token in
     // the resumed history must stay as a stale placeholder, never plaintext.
     let mut resume_builder = test_codex().with_config(|config| {
-        config.encrypted_skills_sdk = EncryptedSkillsSdkToml::TestZip;
+        config.encrypted_skills.sdk = EncryptedSkillsSdkToml::TestZip;
     });
     let resumed = resume_builder.resume(&server, home, rollout_path).await?;
     submit_single_turn(&resumed, "continue without mentioning skills").await?;

@@ -19,6 +19,7 @@ workspace = true
 
 [dependencies]
 fm-license = { workspace = true }
+fm-product-policy = { workspace = true }
 
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }

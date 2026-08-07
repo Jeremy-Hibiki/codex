@@ -143,6 +143,7 @@ license = "Apache-2.0"
 [workspace.dependencies]
 fm-license = { path = "fm/license" }
 fm-encrypted-skills = { path = "fm/encrypted-skills" }
+fm-product-policy = { path = "fm/product-policy" }
 
 # Internal
 app_test_support = { path = "app-server/tests/common" }

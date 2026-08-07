@@ -32,6 +32,6 @@ fmsh-ukey-cipher = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-l
 
 [dev-dependencies]
 anyhow = { workspace = true }
+codex-shell-command = { workspace = true }
 pretty_assertions = { workspace = true }
 tree-sitter = { workspace = true }
-tree-sitter-bash = { workspace = true }

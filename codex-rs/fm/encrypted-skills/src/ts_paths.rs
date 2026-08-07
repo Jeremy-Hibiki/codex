@@ -7,15 +7,11 @@
 //! bypass-shaped commands, so we can decide whether (and how) to migrate.
 
 use tree_sitter::Node;
-use tree_sitter::Parser;
-use tree_sitter_bash::LANGUAGE as BASH;
 
 use super::paths;
 
 pub(crate) fn parse(src: &str) -> Option<tree_sitter::Tree> {
-    let mut parser = Parser::new();
-    parser.set_language(&BASH.into()).ok()?;
-    parser.parse(src, None)
+    codex_shell_command::bash::try_parse_shell(src)
 }
 
 fn node_text<'a>(node: Node, src: &'a str) -> &'a str {
@@ -86,7 +82,9 @@ pub fn command_references_dir(cmd: &str, guarded: &[String]) -> bool {
     let mut tokens = Vec::new();
     collect_literal_tokens(tree.root_node(), cmd, &mut tokens);
     tokens.iter().any(|token| {
-        token.contains(paths::MEM_ROOT) || guarded.iter().any(|dir| token.contains(dir.as_str()))
+        paths::contains_path_prefix(token, paths::MEM_ROOT_PARENT)
+            || token.contains(paths::MEM_ROOT)
+            || guarded.iter().any(|dir| token.contains(dir.as_str()))
     })
 }
 
@@ -215,9 +213,10 @@ pub fn script_execution_avoids_guarded_io(command: &str, guarded: &[String]) -> 
                 }
             }
             "command_substitution" | "process_substitution"
-                if contains_guarded(node_text(node, command), guarded) => {
-                    return false;
-                }
+                if contains_guarded(node_text(node, command), guarded) =>
+            {
+                return false;
+            }
             _ => {}
         }
         let mut cursor = node.walk();

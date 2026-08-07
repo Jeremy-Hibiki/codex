@@ -105,6 +105,9 @@ fn corpus() -> Vec<(String, Vec<String>)> {
             vec![d.clone()],
         ),
         (format!("cat <<'EOF'\n{d}/SKILL.md\nEOF"), vec![d.clone()]),
+        ("find /dev/shm".to_string(), vec![d.clone()]),
+        ("ls /dev/shm".to_string(), vec![d.clone()]),
+        ("cat /dev/shmx/foo".to_string(), vec![d.clone()]),
         ("echo hi # ; cat /b".to_string(), vec![d]),
     ]
 }

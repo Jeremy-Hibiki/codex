@@ -42,6 +42,15 @@ pub(crate) fn ensure_args_not_guarded(value: &serde_json::Value) -> Result<(), J
     }
 }
 
+pub(crate) fn ensure_serializable_args_not_guarded<T: serde::Serialize>(
+    params: &T,
+    invalid_message: &str,
+) -> Result<(), JSONRPCErrorError> {
+    let value = serde_json::to_value(params)
+        .map_err(|err| invalid_request(format!("{invalid_message}: {err}")))?;
+    ensure_args_not_guarded(&value)
+}
+
 pub(crate) fn ensure_not_engaged_unsandboxed() -> Result<(), JSONRPCErrorError> {
     if rpc::any_engaged() {
         Err(invalid_request(RPC_BLOCK_MESSAGE))

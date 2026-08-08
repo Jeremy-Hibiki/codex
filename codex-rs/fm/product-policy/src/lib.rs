@@ -17,3 +17,10 @@ pub fn full_access_error() -> anyhow::Error {
 pub fn plugin_management_error() -> anyhow::Error {
     anyhow::anyhow!(PLUGIN_MANAGEMENT_DISABLED_MESSAGE)
 }
+
+/// True when a request or command asks for full-access execution: an explicit
+/// danger-full-access sandbox mode or the dangerous approvals/sandbox bypass
+/// flag. Hosts keep their own error types and apply their own bypass checks.
+pub fn full_access_requested(sandbox_danger: bool, permissions_danger: bool) -> bool {
+    sandbox_danger || permissions_danger
+}

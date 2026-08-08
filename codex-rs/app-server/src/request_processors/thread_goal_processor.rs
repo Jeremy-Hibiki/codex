@@ -42,9 +42,7 @@ impl ThreadGoalRequestProcessor {
         request_id: ConnectionRequestId,
         params: ThreadGoalSetParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        let value = serde_json::to_value(&params)
-            .map_err(|err| invalid_request(format!("invalid goal params: {err}")))?;
-        rpc_guard::ensure_args_not_guarded(&value)?;
+        rpc_guard::ensure_serializable_args_not_guarded(&params, "invalid goal params")?;
         self.thread_goal_set_inner(request_id, params)
             .await
             .map(|()| None)

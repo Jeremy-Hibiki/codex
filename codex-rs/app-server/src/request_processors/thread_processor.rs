@@ -454,9 +454,11 @@ impl ThreadRequestProcessor {
         request_context: RequestContext,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
         if !codex_core::agent_security::sandbox_policy_bypassed()
-            && (params.sandbox == Some(codex_app_server_protocol::SandboxMode::DangerFullAccess)
-                || params.permissions.as_deref()
-                    == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS))
+            && fm_product_policy::full_access_requested(
+                params.sandbox == Some(codex_app_server_protocol::SandboxMode::DangerFullAccess),
+                params.permissions.as_deref()
+                    == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS),
+            )
         {
             return Err(crate::error_code::invalid_request(
                 "danger-full-access is disabled by product policy",
@@ -591,9 +593,7 @@ impl ThreadRequestProcessor {
         &self,
         params: ThreadMetadataUpdateParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        let value = serde_json::to_value(&params)
-            .map_err(|err| invalid_request(format!("invalid thread metadata params: {err}")))?;
-        rpc_guard::ensure_args_not_guarded(&value)?;
+        rpc_guard::ensure_serializable_args_not_guarded(&params, "invalid thread metadata params")?;
         self.thread_metadata_update_response_inner(params)
             .await
             .map(|response| Some(response.into()))

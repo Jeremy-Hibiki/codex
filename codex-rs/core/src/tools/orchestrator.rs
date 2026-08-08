@@ -255,7 +255,7 @@ impl ToolOrchestrator {
             SandboxType::None
         };
         let session_engaged = tool_ctx.session.encrypted_skills_guard().is_engaged();
-        if let Err(message) = crate::agent_security::ensure_encrypted_skill_sandbox(
+        if let Err(message) = fm_encrypted_skills::sandbox_policy::ensure_encrypted_skill_sandbox(
             session_engaged,
             initial_sandbox != SandboxType::None,
         ) {
@@ -264,7 +264,7 @@ impl ToolOrchestrator {
 
         // Platform-specific flag gating is handled by SandboxManager::select_initial.
         let use_legacy_landlock = turn_ctx.config.features.use_legacy_landlock();
-        let skill_binds = if crate::agent_security::sandbox_applies_binds(
+        let skill_binds = if fm_encrypted_skills::sandbox_policy::sandbox_applies_binds(
             &file_system_sandbox_policy,
             network_sandbox_policy,
             use_legacy_landlock,

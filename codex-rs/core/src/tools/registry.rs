@@ -515,7 +515,7 @@ impl ToolRegistry {
         notify_tool_start(&invocation).await;
 
         if let Some(pre_tool_use_payload) = tool.pre_tool_use_payload(&invocation) {
-            let binds_active = crate::agent_security::sandbox_applies_binds(
+            let binds_active = fm_encrypted_skills::sandbox_policy::sandbox_applies_binds(
                 &invocation.turn.file_system_sandbox_policy(),
                 invocation.turn.network_sandbox_policy(),
                 invocation.turn.config.features.use_legacy_landlock(),

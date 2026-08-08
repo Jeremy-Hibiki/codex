@@ -1,3 +1,4 @@
+use anyhow::Context;
 use clap::Args;
 use clap::CommandFactory;
 use clap::Parser;
@@ -1010,7 +1011,7 @@ async fn cli_main(
 
     // Product policy (I6/I7): full-access execution and plugin/marketplace
     // management are disabled in this build.
-    if !codex_core::agent_security::sandbox_policy_bypassed()
+    if !fm_product_policy::sandbox_policy_bypassed()
         && (requests_full_access(&interactive.shared)
             || subcommand
                 .as_ref()
@@ -1018,10 +1019,6 @@ async fn cli_main(
     {
         return Err(fm_product_policy::full_access_error());
     }
-    if matches!(subcommand.as_ref(), Some(Subcommand::Plugin(_))) {
-        return Err(fm_product_policy::plugin_management_error());
-    }
-
     // Verify the product license before entering any of the main product
     // flows (interactive, exec, review, app-server, mcp-server, resume, fork,
     // remote-control). The FMSH LMCLIENT SDK only ships a CentOS 7 / x86_64
@@ -1135,28 +1132,43 @@ async fn cli_main(
                 subcommand,
             } = plugin_cli;
             prepend_config_flags(&mut config_overrides, root_config_overrides.clone());
+            // Product policy toggles come from `[product_policy]`; defaults are
+            // open so upstream plugin/marketplace behavior is preserved.
+            let plugin_overrides = config_overrides
+                .parse_overrides()
+                .map_err(anyhow::Error::msg)?;
+            let policy_config =
+                codex_core::config::Config::load_with_cli_overrides(plugin_overrides.clone())
+                    .await
+                    .context("failed to load configuration")?;
+            match &subcommand {
+                PluginSubcommand::Marketplace(_)
+                    if policy_config.product_policy.marketplace_management_disabled =>
+                {
+                    return Err(fm_product_policy::plugin_management_error());
+                }
+                PluginSubcommand::Add(_)
+                | PluginSubcommand::List(_)
+                | PluginSubcommand::Remove(_)
+                    if policy_config.product_policy.plugin_management_disabled =>
+                {
+                    return Err(fm_product_policy::plugin_management_error());
+                }
+                _ => {}
+            }
             match subcommand {
                 PluginSubcommand::Add(args) => {
-                    let overrides = config_overrides
-                        .parse_overrides()
-                        .map_err(anyhow::Error::msg)?;
-                    plugin_cmd::run_plugin_add(overrides, args).await?;
+                    plugin_cmd::run_plugin_add(plugin_overrides, args).await?;
                 }
                 PluginSubcommand::List(args) => {
-                    let overrides = config_overrides
-                        .parse_overrides()
-                        .map_err(anyhow::Error::msg)?;
-                    plugin_cmd::run_plugin_list(overrides, args).await?;
+                    plugin_cmd::run_plugin_list(plugin_overrides, args).await?;
                 }
                 PluginSubcommand::Marketplace(mut marketplace_cli) => {
                     prepend_config_flags(&mut marketplace_cli.config_overrides, config_overrides);
                     marketplace_cli.run().await?;
                 }
                 PluginSubcommand::Remove(args) => {
-                    let overrides = config_overrides
-                        .parse_overrides()
-                        .map_err(anyhow::Error::msg)?;
-                    plugin_cmd::run_plugin_remove(overrides, args).await?;
+                    plugin_cmd::run_plugin_remove(plugin_overrides, args).await?;
                 }
             }
         }

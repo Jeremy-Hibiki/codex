@@ -31,6 +31,7 @@ pub mod registry;
 pub mod rehydrate;
 pub mod rpc;
 pub mod runtime;
+pub mod sandbox_policy;
 pub mod sdk;
 pub mod session_guard;
 pub mod token;

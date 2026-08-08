@@ -59,23 +59,31 @@ pub(crate) fn ensure_not_engaged_unsandboxed() -> Result<(), JSONRPCErrorError> 
     }
 }
 
-/// Product policy (I7): plugin and marketplace management are disabled across
-/// the RPC surface, matching the CLI ban.
+/// Product policy: plugin and marketplace management can be disabled via
+/// `[product_policy]`; defaults are open so upstream behavior is preserved.
 pub(crate) fn ensure_plugin_management_allowed(
     request: &ClientRequest,
+    plugin_management_disabled: bool,
+    marketplace_management_disabled: bool,
 ) -> Result<(), JSONRPCErrorError> {
-    if matches!(
-        request,
-        ClientRequest::MarketplaceAdd { .. }
-            | ClientRequest::MarketplaceRemove { .. }
-            | ClientRequest::MarketplaceUpgrade { .. }
-            | ClientRequest::PluginShareSave { .. }
-            | ClientRequest::PluginShareUpdateTargets { .. }
-            | ClientRequest::PluginShareCheckout { .. }
-            | ClientRequest::PluginShareDelete { .. }
-            | ClientRequest::PluginInstall { .. }
-            | ClientRequest::PluginUninstall { .. }
-    ) {
+    let marketplace_blocked = marketplace_management_disabled
+        && matches!(
+            request,
+            ClientRequest::MarketplaceAdd { .. }
+                | ClientRequest::MarketplaceRemove { .. }
+                | ClientRequest::MarketplaceUpgrade { .. }
+        );
+    let plugin_blocked = plugin_management_disabled
+        && matches!(
+            request,
+            ClientRequest::PluginShareSave { .. }
+                | ClientRequest::PluginShareUpdateTargets { .. }
+                | ClientRequest::PluginShareCheckout { .. }
+                | ClientRequest::PluginShareDelete { .. }
+                | ClientRequest::PluginInstall { .. }
+                | ClientRequest::PluginUninstall { .. }
+        );
+    if marketplace_blocked || plugin_blocked {
         Err(invalid_request(
             fm_product_policy::PLUGIN_MANAGEMENT_DISABLED_MESSAGE,
         ))

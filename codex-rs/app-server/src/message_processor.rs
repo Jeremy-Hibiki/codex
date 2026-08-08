@@ -121,6 +121,7 @@ pub(crate) struct MessageProcessor {
     turn_processor: TurnRequestProcessor,
     windows_sandbox_processor: WindowsSandboxRequestProcessor,
     request_serialization_queues: RequestSerializationQueues,
+    product_policy: codex_core::config::ProductPolicyRuntimeConfig,
 }
 
 #[derive(Debug)]
@@ -513,6 +514,7 @@ impl MessageProcessor {
             turn_processor,
             windows_sandbox_processor,
             request_serialization_queues,
+            product_policy: config.product_policy.clone(),
         }
     }
 
@@ -771,7 +773,11 @@ impl MessageProcessor {
         request_context: RequestContext,
     ) -> Result<(), JSONRPCErrorError> {
         let connection_id = connection_request_id.connection_id;
-        crate::request_processors::rpc_guard::ensure_plugin_management_allowed(&codex_request)?;
+        crate::request_processors::rpc_guard::ensure_plugin_management_allowed(
+            &codex_request,
+            self.product_policy.plugin_management_disabled,
+            self.product_policy.marketplace_management_disabled,
+        )?;
         crate::request_processors::rpc_guard::ensure_config_mutation_allowed(&codex_request)?;
         if let ClientRequest::Initialize { request_id, params } = codex_request {
             let connection_initialized = self

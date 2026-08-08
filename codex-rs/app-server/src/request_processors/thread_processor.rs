@@ -453,7 +453,7 @@ impl ThreadRequestProcessor {
         supports_openai_form_elicitation: bool,
         request_context: RequestContext,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        if !codex_core::agent_security::sandbox_policy_bypassed()
+        if !fm_product_policy::sandbox_policy_bypassed()
             && fm_product_policy::full_access_requested(
                 params.sandbox == Some(codex_app_server_protocol::SandboxMode::DangerFullAccess),
                 params.permissions.as_deref()

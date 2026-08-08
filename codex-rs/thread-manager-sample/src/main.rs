@@ -314,6 +314,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         tool_suggest: ToolSuggestConfig::default(),
         otel: OtelConfig::default(),
         encrypted_skills: Default::default(),
+        product_policy: Default::default(),
     };
     config
         .features

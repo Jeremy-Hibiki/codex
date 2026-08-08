@@ -181,7 +181,7 @@ impl TurnRequestProcessor {
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        if !codex_core::agent_security::sandbox_policy_bypassed()
+        if !fm_product_policy::sandbox_policy_bypassed()
             && fm_product_policy::full_access_requested(
                 params.sandbox_policy
                     == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
@@ -220,7 +220,7 @@ impl TurnRequestProcessor {
         request_id: &ConnectionRequestId,
         params: ThreadSettingsUpdateParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        if !codex_core::agent_security::sandbox_policy_bypassed()
+        if !fm_product_policy::sandbox_policy_bypassed()
             && fm_product_policy::full_access_requested(
                 params.sandbox_policy
                     == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),

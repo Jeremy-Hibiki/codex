@@ -19,7 +19,6 @@ use crate::runtime::EncryptedSkillRuntime;
 ///
 /// The session id is owned so the guard can be constructed from a temporary
 /// `thread_id.to_string()` without lifetime issues.
-#[derive(Clone)]
 pub struct SessionGuard<'a> {
     runtime: &'a EncryptedSkillRuntime,
     session_id: String,

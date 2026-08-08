@@ -479,6 +479,38 @@ impl Session {
         self.thread_id
     }
 
+    /// Rehydrator for encrypted skill tokens scoped to this thread.
+    pub(crate) fn encrypted_skill_rehydrator(
+        &self,
+    ) -> crate::client_common::EncryptedSkillRehydrator {
+        crate::client_common::EncryptedSkillRehydrator {
+            runtime: Arc::clone(&self.services.encrypted_skills_runtime),
+            session_id: self.thread_id.to_string(),
+        }
+    }
+
+    /// Session-scoped encrypted-skill guard for this thread.
+    pub(crate) fn encrypted_skills_guard(
+        &self,
+    ) -> fm_encrypted_skills::session_guard::SessionGuard<'_> {
+        self.services
+            .encrypted_skills_runtime
+            .guard(self.thread_id.to_string())
+    }
+
+    /// Rewrites decrypted skill paths back to original skill paths in a
+    /// guardian approval request before a reviewer model sees it.
+    pub(crate) fn redact_guardian_request(
+        &self,
+        request: crate::guardian::GuardianApprovalRequest,
+    ) -> crate::guardian::GuardianApprovalRequest {
+        crate::encrypted_skills_guard::redact_guardian_request(
+            &self.services.encrypted_skills_runtime,
+            &self.thread_id.to_string(),
+            request,
+        )
+    }
+
     /// Returns the identity shared by the root thread and all descendant threads.
     pub(crate) fn session_id(&self) -> SessionId {
         self.services.agent_control.session_id()
@@ -1076,48 +1108,9 @@ impl Session {
             ));
             let session_extension_data =
                 codex_extension_api::ExtensionData::new(session_id.to_string());
-            let encrypted_skills_sdk = fm_encrypted_skills::sdk::sdk_for(match config
-                .encrypted_skills.sdk
-            {
-                codex_config::config_toml::EncryptedSkillsSdkToml::Unavailable => {
-                    fm_encrypted_skills::sdk::SdkKind::Unavailable
-                }
-                codex_config::config_toml::EncryptedSkillsSdkToml::TestZip => {
-                    tracing::warn!(
-                        "encrypted-skill envelope SDK is test_zip: packages are plain ZIPs and are NOT encrypted"
-                    );
-                    fm_encrypted_skills::sdk::SdkKind::TestZip
-                }
-                codex_config::config_toml::EncryptedSkillsSdkToml::Noop => {
-                    fm_encrypted_skills::sdk::SdkKind::Noop
-                }
-                codex_config::config_toml::EncryptedSkillsSdkToml::Software => {
-                    let algorithm = match config.encrypted_skills.software_algorithm {
-                        codex_config::config_toml::SoftwareAlgorithmToml::Sm2Sm4Cbc => {
-                            fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::Sm2Sm4Cbc
-                        }
-                        codex_config::config_toml::SoftwareAlgorithmToml::HpkeX25519Aes256Gcm => {
-                            fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::HpkeX25519Aes256Gcm
-                        }
-                    };
-                    fm_encrypted_skills::sdk::SdkKind::Software {
-                        algorithm,
-                        privkey: config.encrypted_skills.software_privkey.clone(),
-                    }
-                }
-                codex_config::config_toml::EncryptedSkillsSdkToml::UKey => {
-                    fm_encrypted_skills::sdk::SdkKind::UKey
-                }
-                codex_config::config_toml::EncryptedSkillsSdkToml::UKeyTwoPhase => {
-                    fm_encrypted_skills::sdk::SdkKind::UKeyTwoPhase {
-                        key_envelope: config.encrypted_skills.key_envelope.clone(),
-                    }
-                }
-            });
-            let encrypted_skills_audit_path = config
-                .encrypted_skills.audit_path
-                .clone()
-                .unwrap_or_else(|| std::env::temp_dir().join("fm_skill_security_audit.log"));
+            let encrypted_skills_sdk =
+                fm_encrypted_skills::sdk::sdk_for(config.encrypted_skills.into_sdk());
+            let encrypted_skills_audit_path = config.encrypted_skills.audit_path();
             let encrypted_skills_audit: Option<
                 Arc<dyn fm_encrypted_skills::audit::AuditSink>,
             > = match fm_encrypted_skills::audit::shared_file_sink(

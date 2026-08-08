@@ -73,19 +73,11 @@ impl WriteStdinHandler {
         // Stdin written to a running shell is command text the spawn-time
         // guard never inspected — write_stdin intentionally emits no pre-tool
         // payload so it does not re-trigger PreToolUse hooks. Check it here.
-        let thread_id = session.thread_id.to_string();
+        let guard = session.encrypted_skills_guard();
         if let crate::encrypted_skills_guard::GuardDecision::Blocked { message, reason } =
-            crate::encrypted_skills_guard::guard_stdin_input(
-                &session.services.encrypted_skills_runtime,
-                &thread_id,
-                &args.chars,
-            )
+            guard.guard_stdin_input(&args.chars)
         {
-            session.services.encrypted_skills_runtime.record_blocked(
-                &thread_id,
-                "write_stdin",
-                reason,
-            );
+            guard.record_blocked("write_stdin", reason);
             return Err(FunctionCallError::RespondToModel(message));
         }
         let response = session

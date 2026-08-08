@@ -634,13 +634,7 @@ pub(crate) async fn record_additional_contexts(
     // that content before it enters history or persistence.
     let additional_contexts = additional_contexts
         .into_iter()
-        .map(|text| {
-            crate::encrypted_skills_guard::redact_text(
-                &sess.services.encrypted_skills_runtime,
-                &sess.thread_id.to_string(),
-                &text,
-            )
-        })
+        .map(|text| sess.encrypted_skills_guard().redact_text(&text))
         .collect();
     let developer_messages = additional_context_messages(additional_contexts);
     if developer_messages.is_empty() {

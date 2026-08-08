@@ -11,15 +11,7 @@ use fm_encrypted_skills::runtime::EncryptedSkillRuntime;
 use serde_json::Value;
 
 pub(crate) use fm_encrypted_skills::guard::GuardDecision;
-pub(crate) use fm_encrypted_skills::guard::guard_stdin_input;
-pub(crate) use fm_encrypted_skills::guard::is_skill_script_execution;
-pub(crate) use fm_encrypted_skills::guard::redact_all_response_item_text;
-pub(crate) use fm_encrypted_skills::guard::redact_assistant_reply_item;
-pub(crate) use fm_encrypted_skills::guard::redact_assistant_reply_items;
 pub(crate) use fm_encrypted_skills::guard::redact_storage_paths;
-pub(crate) use fm_encrypted_skills::guard::redact_text;
-pub(crate) use fm_encrypted_skills::guard::redact_tool_output_plaintext_for_persistence;
-pub(crate) use fm_encrypted_skills::guard::redact_turn_item;
 
 use crate::guardian::GuardianApprovalRequest;
 use crate::tools::context::ToolOutput;

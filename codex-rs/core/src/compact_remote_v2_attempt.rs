@@ -76,10 +76,7 @@ pub(super) async fn run_remote_compact_v2_attempt(
         base_instructions,
         output_schema: None,
         output_schema_strict: true,
-        encrypted_skills: Some(crate::client_common::EncryptedSkillRehydrator {
-            runtime: Arc::clone(&sess.services.encrypted_skills_runtime),
-            session_id: sess.thread_id.to_string(),
-        }),
+        encrypted_skills: Some(sess.encrypted_skill_rehydrator()),
     };
 
     let window_id = sess.current_window_id().await;
@@ -110,11 +107,8 @@ pub(super) async fn run_remote_compact_v2_attempt(
     // The compaction output is model-generated from rehydrated skill content;
     // redact known plaintext and decrypted paths before the trace records it.
     let redacted_output = compaction_output_result.as_ref().map(|output| {
-        crate::encrypted_skills_guard::redact_all_response_item_text(
-            &sess.services.encrypted_skills_runtime,
-            &sess.thread_id.to_string(),
-            std::slice::from_ref(&output.compaction_output),
-        )
+        sess.encrypted_skills_guard()
+            .redact_all_response_item_text(std::slice::from_ref(&output.compaction_output))
     });
     trace_attempt.record_result(
         redacted_output

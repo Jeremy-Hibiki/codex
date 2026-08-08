@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 codex-shell-command = { workspace = true }
 codex-protocol = { workspace = true }
+fm-product-policy = { workspace = true }
 libc = { workspace = true }
 rand = { workspace = true }
 serde_json = { workspace = true }

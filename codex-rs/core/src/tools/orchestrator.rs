@@ -254,11 +254,7 @@ impl ToolOrchestrator {
         } else {
             SandboxType::None
         };
-        let session_engaged = tool_ctx
-            .session
-            .services
-            .encrypted_skills_runtime
-            .is_engaged(&tool_ctx.session.thread_id.to_string());
+        let session_engaged = tool_ctx.session.encrypted_skills_guard().is_engaged();
         if let Err(message) = crate::agent_security::ensure_encrypted_skill_sandbox(
             session_engaged,
             initial_sandbox != SandboxType::None,
@@ -276,9 +272,8 @@ impl ToolOrchestrator {
         ) {
             tool_ctx
                 .session
-                .services
-                .encrypted_skills_runtime
-                .path_mappings(&tool_ctx.session.thread_id.to_string())
+                .encrypted_skills_guard()
+                .path_mappings()
                 .into_iter()
                 .map(|(source, target)| ReadonlyBind { source, target })
                 .collect()

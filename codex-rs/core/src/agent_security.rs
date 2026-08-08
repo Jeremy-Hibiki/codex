@@ -2,8 +2,6 @@
 
 use std::sync::Arc;
 
-use codex_protocol::permissions::FileSystemSandboxPolicy;
-use codex_protocol::permissions::NetworkSandboxPolicy;
 use fm_encrypted_skills::runtime::EncryptedSkillRuntime;
 
 /// Carries the encrypted-skill runtime and session identity for one turn.
@@ -35,31 +33,17 @@ impl std::fmt::Debug for AgentSecurityContext {
 /// a full-disk-write profile with globs still returns false, which preserves
 /// the pre-change legacy rewrite behavior for that rare case.
 pub(crate) fn sandbox_applies_binds(
-    file_system_policy: &FileSystemSandboxPolicy,
-    network_policy: NetworkSandboxPolicy,
+    file_system_policy: &codex_protocol::permissions::FileSystemSandboxPolicy,
+    network_policy: codex_protocol::permissions::NetworkSandboxPolicy,
     use_legacy_landlock: bool,
     enforce_managed_network: bool,
 ) -> bool {
-    #[cfg(target_os = "linux")]
-    {
-        if use_legacy_landlock {
-            return false;
-        }
-        let full_disk_skip = file_system_policy.has_full_disk_write_access()
-            && network_policy == NetworkSandboxPolicy::Enabled
-            && !enforce_managed_network;
-        !full_disk_skip
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = (
-            file_system_policy,
-            network_policy,
-            use_legacy_landlock,
-            enforce_managed_network,
-        );
-        false
-    }
+    fm_encrypted_skills::guard::sandbox_applies_binds(
+        file_system_policy,
+        network_policy,
+        use_legacy_landlock,
+        enforce_managed_network,
+    )
 }
 
 /// Debug-only escape hatch for the forced-sandbox product policy (I6).
@@ -68,31 +52,17 @@ pub(crate) fn sandbox_applies_binds(
 /// `false` so the env var can never weaken production enforcement. Intended
 /// for local development and CI harnesses that need full-access execution
 /// without editing the product policy.
-pub const SANDBOX_BYPASS_ENV_VAR: &str = "FMSH_CODEX_AGENT_SECURITY_SANDBOX_BYPASS";
+/// Debug-only escape hatch for the forced-sandbox product policy (I6).
+pub const SANDBOX_BYPASS_ENV_VAR: &str = fm_product_policy::SANDBOX_BYPASS_ENV_VAR;
 
-static SANDBOX_BYPASS_WARNED: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
+/// Delegates to the fm product-policy implementation.
 pub fn sandbox_policy_bypassed() -> bool {
-    #[cfg(debug_assertions)]
-    {
-        let active =
-            sandbox_policy_bypassed_for(std::env::var(SANDBOX_BYPASS_ENV_VAR).ok().as_deref());
-        if active && !SANDBOX_BYPASS_WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
-            tracing::warn!(
-                "{SANDBOX_BYPASS_ENV_VAR}=1 is active: full-access execution is allowed in this debug build"
-            );
-        }
-        active
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        false
-    }
+    fm_product_policy::sandbox_policy_bypassed()
 }
 
+/// Delegates to the fm product-policy implementation.
 pub fn sandbox_policy_bypassed_for(value: Option<&str>) -> bool {
-    matches!(value, Some("1"))
+    fm_product_policy::sandbox_policy_bypassed_for(value)
 }
 
 /// Product policy (I6): engaged sessions must execute under an active
@@ -101,11 +71,7 @@ pub fn ensure_encrypted_skill_sandbox(
     engaged: bool,
     sandbox_requested: bool,
 ) -> Result<(), &'static str> {
-    if engaged && !sandbox_requested && !sandbox_policy_bypassed() {
-        Err("encrypted skills require an active sandbox; full-access execution is disabled")
-    } else {
-        Ok(())
-    }
+    fm_encrypted_skills::guard::ensure_encrypted_skill_sandbox(engaged, sandbox_requested)
 }
 
 impl AgentSecurityContext {

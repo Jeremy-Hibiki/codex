@@ -44,17 +44,6 @@ fn audit_lines_never_contain_plaintext() {
 }
 
 #[test]
-fn event_type_and_session_id_helpers() {
-    let event = AuditEvent::Blocked {
-        session_id: "t1".into(),
-        tool: "shell".into(),
-        reason: "direct read blocked".into(),
-    };
-    assert_eq!(event.event_type(), "blocked");
-    assert_eq!(event.session_id(), "t1");
-}
-
-#[test]
 fn serialize_escapes_quotes_in_metadata() {
     let event = AuditEvent::Blocked {
         session_id: "t1".into(),

@@ -44,38 +44,44 @@ fn agent_security_context_reflects_live_engagement() {
 }
 
 #[test]
-fn sandbox_applies_binds_under_bwrap_profiles() {
+fn sandbox_applies_binds_only_under_bwrap_profiles() {
     let restricted = FileSystemSandboxPolicy::restricted(Vec::new());
-    assert!(sandbox_applies_binds(
-        &restricted,
-        NetworkSandboxPolicy::Enabled,
-        /*use_legacy_landlock*/ false,
-        /*enforce_managed_network*/ false,
-    ));
-    assert!(sandbox_applies_binds(
-        &restricted,
-        NetworkSandboxPolicy::Restricted,
-        /*use_legacy_landlock*/ false,
-        /*enforce_managed_network*/ false,
-    ));
-}
-
-#[test]
-fn sandbox_applies_binds_false_without_bwrap() {
     let unrestricted = FileSystemSandboxPolicy::unrestricted();
-    assert!(!sandbox_applies_binds(
-        &unrestricted,
-        NetworkSandboxPolicy::Enabled,
-        /*use_legacy_landlock*/ false,
-        /*enforce_managed_network*/ false,
-    ));
-    let restricted = FileSystemSandboxPolicy::restricted(Vec::new());
-    assert!(!sandbox_applies_binds(
-        &restricted,
-        NetworkSandboxPolicy::Enabled,
-        /*use_legacy_landlock*/ true,
-        /*enforce_managed_network*/ false,
-    ));
+    for (policy, network, legacy_landlock, enforced_network, expected) in [
+        (
+            &restricted,
+            NetworkSandboxPolicy::Enabled,
+            false,
+            false,
+            true,
+        ),
+        (
+            &restricted,
+            NetworkSandboxPolicy::Restricted,
+            false,
+            false,
+            true,
+        ),
+        (
+            &unrestricted,
+            NetworkSandboxPolicy::Enabled,
+            false,
+            false,
+            false,
+        ),
+        (
+            &restricted,
+            NetworkSandboxPolicy::Enabled,
+            true,
+            false,
+            false,
+        ),
+    ] {
+        assert_eq!(
+            sandbox_applies_binds(policy, network, legacy_landlock, enforced_network),
+            expected
+        );
+    }
 }
 
 #[test]

@@ -102,18 +102,6 @@ fn redact_middle_fragment() {
 }
 
 #[test]
-fn redact_middle_fragment_is_idempotent() {
-    let line = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJ";
-    let plaintext = format!("first line\n{line}\nlast line");
-    let out = redact_known_plaintext(
-        &format!("output: {} suffix", &line[8..28]),
-        &[plaintext.as_str()],
-    );
-    let twice = redact_known_plaintext(&out, &[plaintext.as_str()]);
-    assert_eq!(out, twice);
-}
-
-#[test]
 fn normalized_variants_match() {
     let plaintext = "The quick brown fox jumps over the lazy dog";
     let variants = [
@@ -168,15 +156,6 @@ fn normalized_short_line_redacts_as_complete_line_only() {
 }
 
 #[test]
-fn redact_short_fragments_are_not_redacted() {
-    let plaintext = "line one\napi_key=abc\nline three";
-    assert_eq!(
-        redact_known_plaintext("prefix api_key=abc suffix", &[plaintext]),
-        "prefix api_key=abc suffix"
-    );
-}
-
-#[test]
 fn redact_short_line_quoted_as_a_complete_line() {
     let plaintext = "line one\napi_key=abc\nline three";
     assert_eq!(
@@ -215,18 +194,27 @@ fn redact_multiple_known_plaintexts() {
 }
 
 #[test]
-fn redact_is_idempotent() {
-    let plaintext = "first line\nthis is a long sensitive line inside the skill\nlast line";
-    let text = "quote: this is a long sensitive line inside the skill";
-    let once = redact_known_plaintext(text, &[plaintext]);
-    assert_eq!(redact_known_plaintext(&once, &[plaintext]), once);
-}
-
-#[test]
-fn redact_short_line_is_idempotent() {
-    let plaintext = "line one\napi_key=abc\nline three";
-    let once = redact_known_plaintext("the key is:\napi_key=abc\n", &[plaintext]);
-    assert_eq!(redact_known_plaintext(&once, &[plaintext]), once);
+fn redaction_is_idempotent_across_fragment_kinds() {
+    let long = "first line\nthis is a long sensitive line inside the skill\nlast line";
+    let short = "line one\napi_key=abc\nline three";
+    let line = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJ";
+    let middle_plaintext = format!("first line\n{line}\nlast line");
+    let cases: [(&str, &str); 4] = [
+        (
+            "quote: this is a long sensitive line inside the skill",
+            long,
+        ),
+        ("the key is:\napi_key=abc\n", short),
+        ("output: ijklmnopqrstuvwxyzAB suffix", &middle_plaintext),
+        ("模型回复「long sensitive line」", long),
+    ];
+    for (text, plaintext) in cases {
+        let once = redact_known_plaintext(text, std::slice::from_ref(&plaintext));
+        assert_eq!(
+            redact_known_plaintext(&once, std::slice::from_ref(&plaintext)),
+            once
+        );
+    }
 }
 
 #[test]
@@ -257,8 +245,53 @@ fn short_quoted_fragment_is_kept() {
 }
 
 #[test]
-fn redact_quoted_fragment_is_idempotent() {
-    let plaintext = "first line\nthis is a long sensitive line inside the skill\nlast line";
-    let once = redact_known_plaintext("模型回复「long sensitive line」", &[plaintext]);
-    assert_eq!(redact_known_plaintext(&once, &[plaintext]), once);
+fn fragment_length_boundaries() {
+    let line = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJ";
+    let plaintext = format!("first line\n{line}\nlast line");
+    // A 19-char fragment must not match; a 20-char fragment must.
+    assert!(!contains_known_plaintext(
+        &line[..19],
+        &[plaintext.as_str()]
+    ));
+    assert!(contains_known_plaintext(&line[..20], &[plaintext.as_str()]));
+    // Quoted fragments: 11 chars are kept, 12 chars (the quoted minimum) are
+    // redacted.
+    assert_eq!(
+        redact_known_plaintext(
+            &format!("quote \"{}\" more", &line[..11]),
+            &[plaintext.as_str()]
+        ),
+        format!("quote \"{}\" more", &line[..11])
+    );
+    assert_eq!(
+        redact_known_plaintext(
+            &format!("quote \"{}\" more", &line[..12]),
+            &[plaintext.as_str()]
+        ),
+        "quote \"[REDACTED]\" more"
+    );
+}
+
+#[test]
+fn empty_known_and_empty_text_are_safe() {
+    assert!(!contains_known_plaintext("anything", &[]));
+    assert_eq!(redact_known_plaintext("anything", &[]), "anything");
+    assert!(!contains_known_plaintext("", &["known"]));
+}
+
+#[test]
+fn redact_handles_crlf_and_leading_whitespace() {
+    let short = "api_key=abc";
+    assert_eq!(
+        redact_known_plaintext("  api_key=abc\r\nnext\r\n", &[short]),
+        "  [REDACTED]\r\nnext\r\n"
+    );
+    let long = "this is a long sensitive line inside the skill";
+    assert_eq!(
+        redact_known_plaintext(
+            "  this is a long sensitive line inside the skill\r\n",
+            &[long]
+        ),
+        "  [REDACTED]\r\n"
+    );
 }

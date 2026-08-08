@@ -200,32 +200,26 @@ fn missing_skill_md_entry_is_an_error() {
 }
 
 #[test]
-fn clear_thread_wipes_dirs_and_cache() {
-    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
-    let (runtime, _tmp) = test_runtime(sdk);
-    let token = runtime
-        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
-        .unwrap();
+fn clear_thread_and_unload_turn_wipe_dirs_and_cache() {
+    for unload in [
+        |runtime: &EncryptedSkillRuntime| runtime.clear_thread("t1"),
+        |runtime: &EncryptedSkillRuntime| runtime.unload_turn("t1"),
+    ] {
+        let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+        let (runtime, _tmp) = test_runtime(sdk);
+        let token = runtime
+            .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+            .unwrap();
+        let decrypted = runtime.decrypted_dirs("t1");
+        assert_eq!(decrypted.len(), 1);
 
-    runtime.clear_thread("t1");
+        unload(&runtime);
 
-    assert_eq!(runtime.rehydrate_framed(Some("t1"), &token), token);
-    assert!(runtime.known_plaintexts("t1").is_empty());
-}
-
-#[test]
-fn unload_turn_wipes_dirs_and_cache() {
-    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
-    let (runtime, _tmp) = test_runtime(sdk);
-    let token = runtime
-        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
-        .unwrap();
-
-    runtime.unload_turn("t1");
-
-    assert_eq!(runtime.rehydrate_framed(Some("t1"), &token), token);
-    assert!(runtime.known_plaintexts("t1").is_empty());
-    assert!(runtime.decrypted_dirs("t1").is_empty());
+        assert_eq!(runtime.rehydrate_framed(Some("t1"), &token), token);
+        assert!(runtime.known_plaintexts("t1").is_empty());
+        assert!(runtime.decrypted_dirs("t1").is_empty());
+        assert!(!decrypted[0].exists());
+    }
 }
 
 #[test]

@@ -74,21 +74,31 @@ fn is_hex_rejects_empty_and_non_hex() {
     assert!(is_hex("0123456789abcdef"));
 }
 #[test]
-fn strip_tokens_replaces_all_sentinels() {
-    let text = "do [SENSITIVE_SKILL_TOKEN:abc:ff00] then [SENSITIVE_SKILL_TOKEN:abc:00ff]";
-    assert_eq!(
-        strip_tokens(text, "[REMOVED]"),
-        "do [REMOVED] then [REMOVED]"
-    );
-}
-
-#[test]
-fn strip_tokens_keeps_surrounding_text() {
-    let text = "prefix [SENSITIVE_SKILL_TOKEN:abc:ff00] suffix";
-    assert_eq!(strip_tokens(text, "X"), "prefix X suffix");
-}
-
-#[test]
-fn strip_tokens_without_sentinels_is_identity() {
-    assert_eq!(strip_tokens("nothing here", "X"), "nothing here");
+fn strip_tokens_replaces_sentinels_and_keeps_surrounding_text() {
+    for (input, replacement, expected) in [
+        (
+            "do [SENSITIVE_SKILL_TOKEN:abc:ff00] then [SENSITIVE_SKILL_TOKEN:abc:00ff]",
+            "[REMOVED]",
+            "do [REMOVED] then [REMOVED]",
+        ),
+        (
+            "prefix [SENSITIVE_SKILL_TOKEN:abc:ff00] suffix",
+            "X",
+            "prefix X suffix",
+        ),
+        ("token [SENSITIVE_SKILL_TOKEN:abc:ff00]", "X", "token X"),
+        (
+            "[SENSITIVE_SKILL_TOKEN:abc:ff00][SENSITIVE_SKILL_TOKEN:abc:00ff]",
+            "X",
+            "XX",
+        ),
+        (
+            "unclosed [SENSITIVE_SKILL_TOKEN:abc:ff00",
+            "X",
+            "unclosed [SENSITIVE_SKILL_TOKEN:abc:ff00",
+        ),
+        ("nothing here", "X", "nothing here"),
+    ] {
+        assert_eq!(strip_tokens(input, replacement), expected);
+    }
 }

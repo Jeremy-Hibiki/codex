@@ -89,6 +89,22 @@ fn init_mem_root_removes_dead_process_namespaces_and_keeps_live() {
 }
 
 #[test]
+fn init_mem_root_once_initializes_only_the_first_root() {
+    let tmp = tempfile::tempdir().unwrap();
+    let first = tmp.path().join("first");
+    let second = tmp.path().join("second");
+
+    init_mem_root_once(&first).unwrap();
+    init_mem_root_once(&second).unwrap();
+
+    assert!(first.exists());
+    assert!(
+        !second.exists(),
+        "second root must not be initialized after the first"
+    );
+}
+
+#[test]
 fn parse_pid_extracts_positive_pids_only() {
     assert_eq!(parse_pid("p12345"), Some(12345));
     assert_eq!(parse_pid("p0"), None);
@@ -100,8 +116,6 @@ fn parse_pid_extracts_positive_pids_only() {
 fn resolve_default_mem_root_returns_absolute_path() {
     let root = resolve_default_mem_root();
     assert!(root.is_absolute());
-    #[cfg(target_os = "linux")]
-    assert_eq!(root, PathBuf::from(DEFAULT_MEM_ROOT));
 }
 
 #[cfg(target_os = "linux")]

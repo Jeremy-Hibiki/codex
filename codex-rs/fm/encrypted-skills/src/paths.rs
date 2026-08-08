@@ -136,6 +136,13 @@ pub fn script_execution_avoids_guarded_io(command: &str, guarded: &[String]) -> 
                 index += 2;
                 continue;
             }
+            // Output process substitution `>( ... )` runs a reader on the
+            // pipe's write side; a guarded path inside it is a forbidden read.
+            '>' if chars.get(index + 1) == Some(&'(') => {
+                substitution_depth += 1;
+                index += 2;
+                continue;
+            }
             '<' | '>' => {
                 let mut end = index + 1;
                 while end < chars.len() && (chars[end] == '<' || chars[end] == '>') {

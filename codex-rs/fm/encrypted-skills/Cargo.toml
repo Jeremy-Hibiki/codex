@@ -33,7 +33,5 @@ fmsh-ukey-core = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib
 
 [dev-dependencies]
 anyhow = { workspace = true }
-codex-shell-command = { workspace = true }
 codex-utils-path-uri = { workspace = true }
 pretty_assertions = { workspace = true }
-tree-sitter = { workspace = true }

@@ -22,6 +22,9 @@ async fn build_server() -> Result<(TestAppServer, TempDir)> {
     MockResponsesConfig::new(&server.uri()).write(codex_home.path())?;
     let mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
+        // Product policy must be tested without the debug-only sandbox
+        // bypass, which may be inherited from the developer environment.
+        .with_env_overrides(&[(codex_core::agent_security::SANDBOX_BYPASS_ENV_VAR, None)])
         .build_initialized_with_timeout(DEFAULT_TIMEOUT)
         .await?;
     Ok((mcp, codex_home))
@@ -42,8 +45,15 @@ async fn read_invalid_request_error(mcp: &mut TestAppServer, request_id: Request
 }
 
 #[tokio::test]
-async fn thread_start_rejects_danger_full_access_sandbox() -> Result<()> {
+async fn danger_full_access_is_rejected_across_rpc_surfaces() -> Result<()> {
     let (mut mcp, _codex_home) = build_server().await?;
+
+    let thread = mcp
+        .start_thread(ThreadStartParams {
+            ..Default::default()
+        })
+        .await?
+        .thread;
 
     let request_id = mcp
         .send_thread_start_request_with_auto_env(ThreadStartParams {
@@ -53,22 +63,9 @@ async fn thread_start_rejects_danger_full_access_sandbox() -> Result<()> {
         .await?;
     read_invalid_request_error(&mut mcp, RequestId::Integer(request_id)).await?;
 
-    Ok(())
-}
-
-#[tokio::test]
-async fn turn_start_rejects_danger_full_access_sandbox() -> Result<()> {
-    let (mut mcp, _codex_home) = build_server().await?;
-
-    let thread = mcp
-        .start_thread(ThreadStartParams {
-            ..Default::default()
-        })
-        .await?
-        .thread;
     let request_id = mcp
         .send_turn_start_request(TurnStartParams {
-            thread_id: thread.id,
+            thread_id: thread.id.clone(),
             input: vec![V2UserInput::Text {
                 text: "hello".to_string(),
                 text_elements: Vec::new(),
@@ -79,19 +76,6 @@ async fn turn_start_rejects_danger_full_access_sandbox() -> Result<()> {
         .await?;
     read_invalid_request_error(&mut mcp, RequestId::Integer(request_id)).await?;
 
-    Ok(())
-}
-
-#[tokio::test]
-async fn thread_settings_update_rejects_danger_full_access_sandbox() -> Result<()> {
-    let (mut mcp, _codex_home) = build_server().await?;
-
-    let thread = mcp
-        .start_thread(ThreadStartParams {
-            ..Default::default()
-        })
-        .await?
-        .thread;
     let request_id = mcp
         .send_thread_settings_update_request(ThreadSettingsUpdateParams {
             thread_id: thread.id,

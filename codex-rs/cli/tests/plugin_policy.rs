@@ -32,41 +32,21 @@ plugins = true
 }
 
 #[tokio::test]
-async fn plugin_add_is_rejected_by_product_policy() -> Result<()> {
-    let codex_home = TempDir::new()?;
-
-    codex_command(codex_home.path())?
-        .args(["plugin", "add", "sample@debug"])
-        .assert()
-        .failure()
-        .stderr(contains(POLICY_ERROR));
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn plugin_remove_is_rejected_by_product_policy() -> Result<()> {
-    let codex_home = TempDir::new()?;
-
-    codex_command(codex_home.path())?
-        .args(["plugin", "remove", "sample@debug"])
-        .assert()
-        .failure()
-        .stderr(contains(POLICY_ERROR));
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn marketplace_list_is_rejected_by_product_policy() -> Result<()> {
-    let codex_home = TempDir::new()?;
-
-    codex_command(codex_home.path())?
-        .args(["plugin", "marketplace", "list"])
-        .assert()
-        .failure()
-        .stderr(contains(POLICY_ERROR));
-
+async fn plugin_and_marketplace_management_is_rejected_by_product_policy() -> Result<()> {
+    for args in [
+        vec!["plugin", "add", "sample@debug"],
+        vec!["plugin", "remove", "sample@debug"],
+        vec!["plugin", "marketplace", "list"],
+        vec!["plugin", "marketplace", "remove", "debug"],
+        vec!["plugin", "marketplace", "upgrade"],
+    ] {
+        let codex_home = TempDir::new()?;
+        codex_command(codex_home.path())?
+            .args(&args)
+            .assert()
+            .failure()
+            .stderr(contains(POLICY_ERROR));
+    }
     Ok(())
 }
 
@@ -80,32 +60,6 @@ async fn marketplace_add_is_rejected_by_product_policy() -> Result<()> {
     codex_command(codex_home.path())?
         .current_dir(source_parent)
         .args(["plugin", "marketplace", "add", source_arg.as_str()])
-        .assert()
-        .failure()
-        .stderr(contains(POLICY_ERROR));
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn marketplace_remove_is_rejected_by_product_policy() -> Result<()> {
-    let codex_home = TempDir::new()?;
-
-    codex_command(codex_home.path())?
-        .args(["plugin", "marketplace", "remove", "debug"])
-        .assert()
-        .failure()
-        .stderr(contains(POLICY_ERROR));
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn marketplace_upgrade_is_rejected_by_product_policy() -> Result<()> {
-    let codex_home = TempDir::new()?;
-
-    codex_command(codex_home.path())?
-        .args(["plugin", "marketplace", "upgrade"])
         .assert()
         .failure()
         .stderr(contains(POLICY_ERROR));

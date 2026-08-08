@@ -7,39 +7,33 @@ fn dir(path: &str) -> PathBuf {
 }
 
 #[test]
-fn rewrite_replaces_original_dir_with_decrypted_dir() {
-    let text = "Run: bash ~/.codex/skills/foo/scripts/build.sh and read ~/.codex/skills/foo/resources/config.json";
-    let out = rewrite_skill_paths(
-        text,
-        &[(
-            dir("~/.codex/skills/foo"),
-            dir("/dev/shm/fm-agent-security/fm_skill_security_abc"),
-        )],
-    );
-    assert_eq!(
-        out,
-        "Run: bash /dev/shm/fm-agent-security/fm_skill_security_abc/scripts/build.sh and read /dev/shm/fm-agent-security/fm_skill_security_abc/resources/config.json"
-    );
-}
-
-#[test]
-fn rewrite_applies_longest_original_first() {
-    let text = "run foo/scripts/run.py and foo/scripts/run.py.bak";
-    let out = rewrite_skill_paths(
-        text,
-        &[
-            (dir("foo"), dir("/mnt/dec")),
-            (dir("foo/scripts/run.py"), dir("/mnt/dec/real.py")),
-        ],
-    );
-    assert_eq!(out, "run /mnt/dec/real.py and /mnt/dec/real.py.bak");
-}
-
-#[test]
-fn rewrite_leaves_unrelated_text_unchanged() {
-    let text = "echo hello && pwd";
-    let out = rewrite_skill_paths(text, &[(dir("/a"), dir("/b"))]);
-    assert_eq!(out, text);
+fn rewrite_skill_paths_replaces_mappings() {
+    let cases = vec![
+        (
+            "Run: bash ~/.codex/skills/foo/scripts/build.sh and read ~/.codex/skills/foo/resources/config.json",
+            vec![(
+                dir("~/.codex/skills/foo"),
+                dir("/dev/shm/fm-agent-security/fm_skill_security_abc"),
+            )],
+            "Run: bash /dev/shm/fm-agent-security/fm_skill_security_abc/scripts/build.sh and read /dev/shm/fm-agent-security/fm_skill_security_abc/resources/config.json",
+        ),
+        (
+            "run foo/scripts/run.py and foo/scripts/run.py.bak",
+            vec![
+                (dir("foo"), dir("/mnt/dec")),
+                (dir("foo/scripts/run.py"), dir("/mnt/dec/real.py")),
+            ],
+            "run /mnt/dec/real.py and /mnt/dec/real.py.bak",
+        ),
+        (
+            "echo hello && pwd",
+            vec![(dir("/a"), dir("/b"))],
+            "echo hello && pwd",
+        ),
+    ];
+    for (text, mappings, expected) in cases {
+        assert_eq!(rewrite_skill_paths(text, &mappings), expected);
+    }
 }
 
 #[test]
@@ -70,12 +64,30 @@ fn redact_path_prefix_hides_custom_prefix() {
 }
 
 #[test]
+fn redact_path_prefix_hides_multiple_occurrences_and_edges() {
+    assert_eq!(
+        redact_path_prefix("/tmp/mem-root/a /tmp/mem-root/b", "/tmp/mem-root"),
+        "[REDACTED] [REDACTED]"
+    );
+    assert_eq!(
+        redact_path_prefix("/tmp/mem-root", "/tmp/mem-root"),
+        "[REDACTED]"
+    );
+    assert_eq!(
+        redact_path_prefix("x/tmp/mem-root", "/tmp/mem-root"),
+        "x[REDACTED]"
+    );
+}
+
+#[test]
 fn script_execution_detected() {
     assert!(is_script_execution("python /x/scripts/run.py"));
     assert!(is_script_execution("bash /x/scripts/build.sh"));
+    assert!(is_script_execution("bash -e /x/scripts/build.sh"));
     assert!(!is_script_execution("cat /x/scripts/run.py"));
     assert!(!is_script_execution("python -m pytest"));
     assert!(!is_script_execution("bash -c 'cat /x/scripts/build.sh'"));
+    assert!(!is_script_execution("sudo bash /x/scripts/build.sh"));
     assert!(is_script_execution("bash \"/x/scripts/build.sh\""));
 }
 
@@ -127,121 +139,47 @@ fn command_references_parent_directory() {
     }
     // 边界：/dev/shmx 不是 /dev/shm 下的路径，不应误报。
     assert!(!command_references_dir("cat /dev/shmx/foo", &dirs));
+    assert!(!command_references_dir("cat /dev/shm-backup/foo", &dirs));
     assert!(!command_references_dir("bash /tmp/run.sh", &dirs));
 }
 
 #[test]
-fn split_at_semicolon() {
-    assert_eq!(
-        split_command_segments("cat /a; cat /b"),
-        vec!["cat /a", "cat /b"]
-    );
+fn split_at_chain_operators() {
+    for (command, expected) in [
+        ("cat /a; cat /b", vec!["cat /a", "cat /b"]),
+        ("cat /a | grep x", vec!["cat /a", "grep x"]),
+        ("bash run.sh && cat /b", vec!["bash run.sh", "cat /b"]),
+        ("bash run.sh || cat /b", vec!["bash run.sh", "cat /b"]),
+        ("sleep 1 & cat /b", vec!["sleep 1", "cat /b"]),
+        ("cat /a\ncat /b", vec!["cat /a", "cat /b"]),
+        ("bash run.sh |& cat /b", vec!["bash run.sh", "cat /b"]),
+        ("cat /a;& cat /b", vec!["cat /a", "cat /b"]),
+        ("a ;| b", vec!["a", "b"]),
+        ("a ;; b", vec!["a", "b"]),
+        ("echo \"a; b\" && cat /c", vec!["echo \"a; b\"", "cat /c"]),
+    ] {
+        assert_eq!(
+            split_command_segments(command),
+            expected,
+            "command: {command}"
+        );
+    }
 }
 
 #[test]
-fn split_at_pipe() {
-    assert_eq!(
-        split_command_segments("cat /a | grep x"),
-        vec!["cat /a", "grep x"]
-    );
-}
-
-#[test]
-fn split_at_logical_and() {
-    assert_eq!(
-        split_command_segments("bash run.sh && cat /b"),
-        vec!["bash run.sh", "cat /b"]
-    );
-}
-
-#[test]
-fn split_at_logical_or() {
-    assert_eq!(
-        split_command_segments("bash run.sh || cat /b"),
-        vec!["bash run.sh", "cat /b"]
-    );
-}
-
-#[test]
-fn split_at_background_ampersand() {
-    assert_eq!(
-        split_command_segments("sleep 1 & cat /b"),
-        vec!["sleep 1", "cat /b"]
-    );
-}
-
-#[test]
-fn split_respects_single_quotes() {
-    // Operator inside single quotes is not a separator.
-    assert_eq!(
-        split_command_segments("bash -c 'cat /a; cat /b'"),
-        vec!["bash -c 'cat /a; cat /b'"]
-    );
-}
-
-#[test]
-fn split_respects_double_quotes() {
-    assert_eq!(
-        split_command_segments("echo \"a; b\" && cat /c"),
-        vec!["echo \"a; b\"", "cat /c"]
-    );
-}
-
-#[test]
-fn split_ignores_ampersand_in_redirection() {
-    // `2>&1` must NOT be treated as a separator.
-    assert_eq!(split_command_segments("cat /a 2>&1"), vec!["cat /a 2>&1"]);
-}
-
-#[test]
-fn split_drops_empty_segments() {
-    assert_eq!(split_command_segments("a ;; b"), vec!["a", "b"]);
-}
-
-#[test]
-fn split_respects_backslash_escaped_pipe() {
-    // `\|` is a literal pipe character, not a separator.
-    assert_eq!(split_command_segments("cat a\\|b"), vec!["cat a\\|b"]);
-}
-
-#[test]
-fn split_respects_backslash_escaped_semicolon() {
-    // `\;` is literal, not a separator.
-    assert_eq!(split_command_segments("echo a\\;b"), vec!["echo a\\;b"]);
-}
-
-#[test]
-fn split_at_newline_separator() {
-    // A bare newline is a command separator like `;`.
-    assert_eq!(
-        split_command_segments("cat /a\ncat /b"),
-        vec!["cat /a", "cat /b"]
-    );
-}
-
-#[test]
-fn split_at_stderr_pipe() {
-    // `|&` (bash stderr pipe) is a distinct two-char separator.
-    assert_eq!(
-        split_command_segments("bash run.sh |& cat /b"),
-        vec!["bash run.sh", "cat /b"]
-    );
-}
-
-#[test]
-fn split_adjacent_pipe_and_ampersand() {
-    // `;&` — `;` splits, `&` is background operator on the empty right
-    // segment (dropped). No panic, no mis-split.
-    assert_eq!(
-        split_command_segments("cat /a;& cat /b"),
-        vec!["cat /a", "cat /b"]
-    );
-}
-
-#[test]
-fn split_adjacent_semicolon_and_pipe() {
-    // `;|` — `;` then `|` both adjacent. Each splits independently.
-    assert_eq!(split_command_segments("a ;| b"), vec!["a", "b"]);
+fn split_ignores_quoted_escaped_and_redirection_operators() {
+    for command in [
+        "bash -c 'cat /a; cat /b'",
+        "cat /a 2>&1",
+        "cat a\\|b",
+        "echo a\\;b",
+    ] {
+        assert_eq!(
+            split_command_segments(command),
+            vec![command],
+            "command: {command}"
+        );
+    }
 }
 
 #[test]
@@ -276,6 +214,7 @@ fn script_execution_blocks_guarded_io_channels() {
         format!("bash {dir}/scripts/build.sh \"$(cat {dir}/SKILL.md)\""),
         format!("bash {dir}/scripts/build.sh `cat {dir}/SKILL.md`"),
         format!("bash {dir}/scripts/build.sh <(cat {dir}/SKILL.md)"),
+        format!("bash {dir}/scripts/build.sh >(cat {dir}/SKILL.md)"),
         format!("bash {dir}/scripts/build.sh <<< \"$(cat {dir}/SKILL.md)\""),
     ];
     for command in cases {

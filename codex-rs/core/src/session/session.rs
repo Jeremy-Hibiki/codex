@@ -489,6 +489,28 @@ impl Session {
         }
     }
 
+    /// Session-scoped encrypted-skill guard for this thread.
+    pub(crate) fn encrypted_skills_guard(
+        &self,
+    ) -> fm_encrypted_skills::session_guard::SessionGuard<'_> {
+        self.services
+            .encrypted_skills_runtime
+            .guard(self.thread_id.to_string())
+    }
+
+    /// Rewrites decrypted skill paths back to original skill paths in a
+    /// guardian approval request before a reviewer model sees it.
+    pub(crate) fn redact_guardian_request(
+        &self,
+        request: crate::guardian::GuardianApprovalRequest,
+    ) -> crate::guardian::GuardianApprovalRequest {
+        crate::encrypted_skills_guard::redact_guardian_request(
+            &self.services.encrypted_skills_runtime,
+            &self.thread_id.to_string(),
+            request,
+        )
+    }
+
     /// Returns the identity shared by the root thread and all descendant threads.
     pub(crate) fn session_id(&self) -> SessionId {
         self.services.agent_control.session_id()

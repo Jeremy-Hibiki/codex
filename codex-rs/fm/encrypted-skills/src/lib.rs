@@ -32,6 +32,7 @@ pub mod rehydrate;
 pub mod rpc;
 pub mod runtime;
 pub mod sdk;
+pub mod session_guard;
 pub mod token;
 
 #[cfg(test)]

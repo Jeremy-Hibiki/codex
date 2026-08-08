@@ -521,10 +521,8 @@ impl ToolRegistry {
                 invocation.turn.config.features.use_legacy_landlock(),
                 invocation.turn.network.is_some(),
             );
-            match crate::encrypted_skills_guard::before_tool_with_runtime_and_binds(
-                &invocation.session.services.encrypted_skills_runtime,
-                &invocation.session.thread_id.to_string(),
-                &pre_tool_use_payload.tool_name,
+            match invocation.session.encrypted_skills_guard().before_tool(
+                pre_tool_use_payload.tool_name.name(),
                 &pre_tool_use_payload.tool_input,
                 binds_active,
             ) {

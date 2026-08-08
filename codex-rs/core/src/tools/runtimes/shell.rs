@@ -156,11 +156,10 @@ impl Approvable<ShellRequest> for ShellRuntime {
             // D9: engaged execute-only skill script executions are
             // auto-permitted so the user never sees the turn-internal
             // execution process (no prompt, no guardian review).
-            if crate::encrypted_skills_guard::is_skill_script_execution(
-                &session.services.encrypted_skills_runtime,
-                &session.thread_id.to_string(),
-                &req.hook_command,
-            ) {
+            if session
+                .encrypted_skills_guard()
+                .is_skill_script_execution(&req.hook_command)
+            {
                 return ReviewDecision::ApprovedForSession;
             }
             with_cached_approval(&session.services, "shell", keys, move || async move {

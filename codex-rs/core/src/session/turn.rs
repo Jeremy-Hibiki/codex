@@ -168,9 +168,7 @@ pub(crate) async fn run_turn(
     // Turn-end unload: encrypted-skill plaintext never outlives the turn that
     // loaded it. The skill-level TTL sweep remains as a backstop for paths
     // that bypass `run_turn` or terminate abnormally.
-    sess.services
-        .encrypted_skills_runtime
-        .unload_turn(&sess.thread_id.to_string());
+    sess.encrypted_skills_guard().unload_turn();
     result
 }
 
@@ -600,7 +598,7 @@ async fn build_skills_and_plugins(
 ) -> Option<(Vec<ResponseItem>, HashSet<String>)> {
     // Turn-boundary TTL sweep: evict skills idle beyond the skill TTL and
     // threads idle beyond the thread TTL (decrypted state only).
-    sess.services.encrypted_skills_runtime.sweep();
+    sess.encrypted_skills_guard().sweep();
     let turn_context = step_context.turn.as_ref();
     // Guardian input embeds the parent transcript as untrusted evidence. Do not interpret skill or
     // plugin mentions from that generated prompt as requests to inject additional instructions.

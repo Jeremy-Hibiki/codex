@@ -232,3 +232,266 @@ fn script_execution_blocks_heredoc_expansion() {
     let command = format!("bash {dir}/scripts/build.sh <<EOF\n$(cat {dir}/SKILL.md)\nEOF");
     assert!(!script_execution_avoids_guarded_io(&command, &guarded));
 }
+
+// ---- differential: tree-sitter implementation vs legacy fallback ----
+
+fn guarded_dir() -> String {
+    format!("{MEM_ROOT}/p1/fm_skill_security_abc")
+}
+
+fn corpus() -> Vec<(String, Vec<String>)> {
+    let d = guarded_dir();
+    vec![
+        ("ls /dev/shm/fm-agent-security".to_string(), vec![d.clone()]),
+        (format!("bash {d}/scripts/run.sh"), vec![d.clone()]),
+        (
+            "cat /dev/shm/fm-agent-security/p*/f*/SKILL.md".to_string(),
+            vec![d.clone()],
+        ),
+        ("bash /tmp/run.sh".to_string(), vec![d.clone()]),
+        ("cat /a; cat /b".to_string(), vec![d.clone()]),
+        ("cat /a | grep x".to_string(), vec![d.clone()]),
+        ("bash run.sh && cat /b".to_string(), vec![d.clone()]),
+        ("bash run.sh || cat /b".to_string(), vec![d.clone()]),
+        ("sleep 1 & cat /b".to_string(), vec![d.clone()]),
+        ("bash -c 'cat /a; cat /b'".to_string(), vec![d.clone()]),
+        ("echo \"a; b\" && cat /c".to_string(), vec![d.clone()]),
+        ("cat /a 2>&1".to_string(), vec![d.clone()]),
+        ("a ;; b".to_string(), vec![d.clone()]),
+        ("cat a\\|b".to_string(), vec![d.clone()]),
+        ("echo a\\;b".to_string(), vec![d.clone()]),
+        ("cat /a\ncat /b".to_string(), vec![d.clone()]),
+        ("bash run.sh |& cat /b".to_string(), vec![d.clone()]),
+        ("cat /a;& cat /b".to_string(), vec![d.clone()]),
+        ("a ;| b".to_string(), vec![d.clone()]),
+        (format!("bash {d}/scripts/build.sh"), vec![d.clone()]),
+        (
+            format!("bash {d}/scripts/build.sh --input {d}/resources/config.json"),
+            vec![d.clone()],
+        ),
+        (
+            format!("bash {d}/scripts/build.sh > /tmp/out.log 2>&1"),
+            vec![d.clone()],
+        ),
+        (
+            format!("bash {d}/scripts/build.sh '$(cat /tmp/not-guarded.txt)'"),
+            vec![d.clone()],
+        ),
+        (
+            format!("bash {d}/scripts/build.sh < {d}/SKILL.md"),
+            vec![d.clone()],
+        ),
+        (
+            format!("bash {d}/scripts/build.sh <{d}/SKILL.md"),
+            vec![d.clone()],
+        ),
+        (
+            format!("bash {d}/scripts/build.sh \"$(cat {d}/SKILL.md)\""),
+            vec![d.clone()],
+        ),
+        (
+            format!("bash {d}/scripts/build.sh `cat {d}/SKILL.md`"),
+            vec![d.clone()],
+        ),
+        (
+            format!("bash {d}/scripts/build.sh <(cat {d}/SKILL.md)"),
+            vec![d.clone()],
+        ),
+        (
+            format!("bash {d}/scripts/build.sh <<< \"$(cat {d}/SKILL.md)\""),
+            vec![d.clone()],
+        ),
+        (
+            format!("bash {d}/scripts/build.sh <<EOF\n$(cat {d}/SKILL.md)\nEOF"),
+            vec![d.clone()],
+        ),
+        // ---- 绕过形状样例 ----
+        (format!("bash -lc \"cat {d}/SKILL.md\""), vec![d.clone()]),
+        (format!("bash -lc 'cat {d}/SKILL.md'"), vec![d.clone()]),
+        (format!("cat '{d}/SKILL.md'"), vec![d.clone()]),
+        (format!("cat \"{d}/SKILL.md\""), vec![d.clone()]),
+        (format!("cat {d}/SKILL.md 2>&1"), vec![d.clone()]),
+        (format!("echo x > {d}/out"), vec![d.clone()]),
+        (format!("cat $(echo {d}/SKILL.md)"), vec![d.clone()]),
+        (format!("cat `echo {d}/SKILL.md`"), vec![d.clone()]),
+        (format!("eval cat {d}/SKILL.md"), vec![d.clone()]),
+        (format!("v={d}; cat \"$v/SKILL.md\""), vec![d.clone()]),
+        (format!("printf '%s\\n' {d}/SKILL.md"), vec![d.clone()]),
+        (format!("cat {d}/SKI\"LL.md\""), vec![d.clone()]),
+        (format!("# {d}/SKILL.md"), vec![d.clone()]),
+        (
+            format!("cat {d}/SKILL.md # trailing comment"),
+            vec![d.clone()],
+        ),
+        (
+            "cat /dev/shm/fm-agent-securit*/p*/fm_skill_security_abc/SKILL.md".to_string(),
+            vec![d.clone()],
+        ),
+        (format!("cd {d} && cat SKILL.md"), vec![d.clone()]),
+        (format!("sh -c 'cat {d}/SKILL.md'"), vec![d.clone()]),
+        (
+            format!("python3 -c 'open(\"{d}/SKILL.md\")'"),
+            vec![d.clone()],
+        ),
+        (format!("cat <<'EOF'\n{d}/SKILL.md\nEOF"), vec![d.clone()]),
+        ("find /dev/shm".to_string(), vec![d.clone()]),
+        ("ls /dev/shm".to_string(), vec![d.clone()]),
+        ("cat /dev/shmx/foo".to_string(), vec![d.clone()]),
+        ("echo hi # ; cat /b".to_string(), vec![d]),
+    ]
+}
+
+fn parse_failures() -> Vec<String> {
+    corpus()
+        .into_iter()
+        .filter(|(cmd, _)| parse_shell(cmd).is_none_or(|tree| tree.root_node().has_error()))
+        .map(|(cmd, _)| cmd)
+        .collect()
+}
+
+/// Documented, intentional divergences between the legacy fallback scanner
+/// and the tree-sitter implementation (each is a semantic improvement in the
+/// tree-sitter implementation).
+fn expected_mismatch(kind: &str, cmd: &str) -> Option<&'static str> {
+    let d = guarded_dir();
+    match (kind, cmd) {
+        ("references", cmd) if cmd == format!("# {d}/SKILL.md") => {
+            Some("comment-only mention is not an executing read; legacy flags it")
+        }
+        ("split", "echo hi # ; cat /b") => {
+            Some("`;` inside a comment is not a separator; legacy mis-splits")
+        }
+        ("split", cmd)
+            if cmd.starts_with(
+                "bash /dev/shm/fm-agent-security/p1/fm_skill_security_abc/scripts/build.sh <<EOF",
+            ) || cmd.starts_with("cat <<'EOF'") =>
+        {
+            Some("heredoc body is not a separate command; ts keeps one segment")
+        }
+        ("split", cmd) if cmd == format!("# {d}/SKILL.md") => {
+            Some("comment-only input has no statements; legacy returns the comment as a segment")
+        }
+        ("split", cmd) if cmd == format!("cat {d}/SKILL.md # trailing comment") => {
+            Some("trailing comment is not part of the command; ts drops it")
+        }
+        ("avoids", cmd) if cmd == format!("cat <<'EOF'\n{d}/SKILL.md\nEOF") => {
+            Some("ts treats a guarded heredoc body as an IO channel directly")
+        }
+        ("decision", cmd) if cmd == format!("# {d}/SKILL.md") => {
+            Some("comment-only command blocked by legacy, allowed by ts")
+        }
+        _ => None,
+    }
+}
+
+#[test]
+fn tree_sitter_parses_corpus_without_errors() {
+    let expected = ["cat /a;& cat /b", "a ;| b"];
+    let failures: Vec<String> = parse_failures()
+        .into_iter()
+        .filter(|cmd| !expected.contains(&cmd.as_str()))
+        .collect();
+    assert!(
+        failures.is_empty(),
+        "tree-sitter failed to parse:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn differential_command_references_dir() {
+    let mut mismatches = Vec::new();
+    for (cmd, guarded) in corpus() {
+        let legacy = legacy_command_references_dir(&cmd, &guarded);
+        let ts = command_references_dir(&cmd, &guarded);
+        if legacy != ts {
+            match expected_mismatch("references", &cmd) {
+                Some(reason) => {
+                    eprintln!("[expected divergence] {cmd:?}: {reason}");
+                }
+                None => mismatches.push(format!("{cmd:?}: legacy={legacy}, ts={ts}")),
+            }
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "command_references_dir mismatches:\n{}",
+        mismatches.join("\n")
+    );
+}
+
+#[test]
+fn differential_split_command_segments() {
+    let mut mismatches = Vec::new();
+    for (cmd, _) in corpus() {
+        let legacy = legacy_split_command_segments(&cmd);
+        let ts = split_command_segments(&cmd);
+        if legacy != ts {
+            match expected_mismatch("split", &cmd) {
+                Some(reason) => {
+                    eprintln!("[expected divergence] {cmd:?}: {reason}");
+                }
+                None => mismatches.push(format!("{cmd:?}: legacy={legacy:?}, ts={ts:?}")),
+            }
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "split_command_segments mismatches:\n{}",
+        mismatches.join("\n")
+    );
+}
+
+#[test]
+fn differential_script_execution_avoids_guarded_io() {
+    let mut mismatches = Vec::new();
+    for (cmd, guarded) in corpus() {
+        let legacy = legacy_script_execution_avoids_guarded_io(&cmd, &guarded);
+        let ts = script_execution_avoids_guarded_io(&cmd, &guarded);
+        if legacy != ts {
+            match expected_mismatch("avoids", &cmd) {
+                Some(reason) => {
+                    eprintln!("[expected divergence] {cmd:?}: {reason}");
+                }
+                None => mismatches.push(format!("{cmd:?}: legacy={legacy}, ts={ts}")),
+            }
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "script_execution_avoids_guarded_io mismatches:\n{}",
+        mismatches.join("\n")
+    );
+}
+
+#[test]
+fn differential_guard_block_decision() {
+    let mut mismatches = Vec::new();
+    for (cmd, guarded) in corpus() {
+        let legacy_blocked = legacy_split_command_segments(&cmd).iter().any(|segment| {
+            legacy_command_references_dir(segment, &guarded)
+                && (!is_script_execution(segment)
+                    || !legacy_script_execution_avoids_guarded_io(segment, &guarded))
+        });
+        let ts_blocked = split_command_segments(&cmd).iter().any(|segment| {
+            command_references_dir(segment, &guarded)
+                && (!is_script_execution(segment)
+                    || !script_execution_avoids_guarded_io(segment, &guarded))
+        });
+        if legacy_blocked != ts_blocked {
+            match expected_mismatch("decision", &cmd) {
+                Some(reason) => {
+                    eprintln!("[expected divergence] {cmd:?}: {reason}");
+                }
+                None => mismatches.push(format!(
+                    "{cmd:?}: legacy_blocked={legacy_blocked}, ts_blocked={ts_blocked}"
+                )),
+            }
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "guard block decision mismatches:\n{}",
+        mismatches.join("\n")
+    );
+}

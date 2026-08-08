@@ -13,7 +13,7 @@
   1. `core/src/agent/control/spawn_tests.rs` **没有覆盖新增逻辑**（`strip_encrypted_skill_tokens` 零测试），却放了 3 个断言同一旧行为的重复用例 —— 最典型的“为了测试而测试”。
   2. `guard_tests.rs` 75 个测试大量平铺单用例，约 40 个可合并为 ~10 组表格化测试；部分断言是恒真/空内容弱断言。
   3. 多个“允许/未 engaged”测试使用错误夹具或弱断言，几乎不可能失败（app-server `rpc_guard_allows_mem_root_paths_when_unengaged`、`read_only_plugin_listing_rpcs_are_not_blocked_by_product_policy`、`agent_security_tests::ensure_encrypted_skill_sandbox_gates_engaged_execution` 自我参照）。
-  4. `ts_paths` 是 `#[cfg(test)]` 原型，306 行测试 + 228 行实现仅为“是否迁移”决策服务，且 `legacy_corpus_assertions_still_hold_for_ts` 与 differential 测试完全重复（**已删除，见 T25**）。
+  4. `ts_paths` 原本是 `#[cfg(test)]` 原型，306 行测试 + 228 行实现仅为“是否迁移”决策服务，且 `legacy_corpus_assertions_still_hold_for_ts` 与 differential 测试完全重复（**已按用户计划转正接入并合并进 `paths.rs`，见 T25**）。
   5. 判定表不完整：`binds_active=true` 的 view_image/export 分支、缺失/非字符串输入、未 engaged 的 redact 早退、fork 边界、stdin 守卫、RPC 全表（thread/goal/settings）等关键面没有测试。
 
 > 更新（2026-08-08）：P0/P1 与部分 P3 已落地，见“四、优化批次建议”与“五、优化落地跟踪”；优化过程中额外发现并修复两个实现/测试环境问题，见“六、优化过程中新发现”。
@@ -80,7 +80,7 @@
 | 编号 | 类型 | 位置 | 说明 |
 |---|---|---|---|
 | T24 | **重复** | L268 | `legacy_corpus_assertions_still_hold_for_ts` 的 8 个断言全部包含在 `differential_command_references_dir` / `differential_script_execution_avoids_guarded_io` 的语料内且无 expected_mismatch，属于完全重复，应删除。 |
-| T25 | 无实际意义 | 全文件 | `ts_paths` 是 `#[cfg(test)]` 原型，未接入产品代码；306 行测试 + 228 行实现仅为“是否迁移”决策服务。仓库内无任何设计/OpenSpec 文档提及 tree-sitter 迁移计划，故按“既不多”原则整套删除（`ts_paths.rs`、`ts_paths_tests.rs`、`lib.rs` 模块声明及专用 dev-deps `tree-sitter`/`codex-shell-command`），净删约 530 行 + 2 个依赖；git 历史可完整恢复。 |
+| T25 | 已转正并合并 | 全文件 | `ts_paths` 原型曾因“无迁移计划文档”被删除，后确认用户计划用 tree-sitter 辅助 shell 解析与拦截，故恢复并转正：tree-sitter 实现并入 `paths.rs` 作为命令分类主实现（references/split/avoids），手写扫描器保留为 parse 失败时的 fallback（并修复 fallback 丢失 `MEM_ROOT_PARENT` 边界检查的问题）；`guard.rs`/`rpc.rs` 经 `paths::` 调用新实现；差分测试并入 `paths_tests.rs`（ts 主实现 vs legacy fallback）；`tree-sitter`/`codex-shell-command` 移至正式 dependencies。语义改进生效：注释内路径不再误拦、heredoc body 作为 IO 通道拦截、尾随注释不参与命令段。 |
 
 #### `src/sdk.rs`（inline tests）
 
@@ -243,7 +243,7 @@ guard 的核心决策面可以抽象为：`工具名 × 输入形态 × engaged 
 |---|---|---|
 | P0 删除/修正无意义断言 | **已完成** | T11 改为有内容断言；T12 重命名；T17/T21/T24/T26 删除；T38 夹具路径修正；T41 保留为弱冒烟（见下）；spawn_tests 重写（删 3 个重复用例，补 M08 全表面覆盖）。T34 保留（CI 下 `bypassed()` 恒 false，断言等价于固定期望）；T31 保留（`is_active()` 初始状态的唯一覆盖）。 |
 | P1 表格化合并 | **已完成** | guard_tests 75 → 46 个用例；paths split 13 → 2；export_guard 幂等 4 → 1；token strip 3 → 1；runtime clear/unload 2 → 1；license 7 → 5；app-server product_policy 3 → 1；cli plugin_policy 8 → 4、product_policy 5 → 2；sdk software 2 → 1；core 集成 direct-read 2 → 1、TTL 冗余用例删除（T36）。 |
-| P2 决策删除/收敛 | **已完成** | T23 Linux 静态断言已删；T24 已删；T25 已按建议整套删除 ts_paths 原型（含专用 dev-deps）。 |
+| P2 决策删除/收敛 | **已完成（含转正）** | T23 Linux 静态断言已删；T24 已删；T25 按用户计划将 ts_paths 转正并合并进 `paths.rs`（tree-sitter 主实现 + legacy fallback）。 |
 | P3 补缺失面 | **已完成** | 已补：M01、M02、M03、M04（CollabAgentToolCall prompt）、M05、M06/M07、M08、M10（engaged 时 thread/name/set、thread/goal/set）、M11、M12、M13、M14、M15、M16、M17、M18、M19、M20（init_mem_root_once once 语义）、M21（未知 sdk 拒绝）、M22（license lost 时 config/read 仍可用）、M24（无关 turn 无 token/framing 集成对照）。**决定不补**：M09（曾尝试在原有测试文件 `unified_exec_tests.rs` 补 write_stdin 接线用例，为避免把审计驱动用例注入项目原有代码已撤销；`guard_stdin_input` 已有完整单测，集成层覆盖留待独立需求）；M23（TTL 语义已由 runtime 单测 `request_rehydration_enforces_ttl_for_idle_skills`/`periodic_sweep_*` 覆盖，集成层因 turn-end unload 无可区分断言，决定不补；若未来调整 turn-end unload 语义再评估）。 |
 
 > 边界约定：本次审计的优化改动只落在**本次变更新增的文件**（新 crate 测试、新增测试文件、新增实现文件）与新增功能自身的配套测试（如 `config_toml.rs` 的 `encrypted_skills_toml_*`）；**不向项目原有文件注入审计驱动用例**。`paths.rs` 的 `>( ... )` 修复是测试暴露的真实安全缺口修复，属于实现修复而非审计痕迹。

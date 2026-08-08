@@ -1438,10 +1438,10 @@ fn redact_payload_response_item_and_json_redact_paths() {
 
 #[test]
 fn blocks_bypass_shaped_commands() {
-    // Corpus inherited from the removed tree-sitter prototype
-    // (`ts_paths_tests.rs`): shell shapes that attempt to hide a guarded
-    // path behind quoting, substitution, variables, comments, or redirects.
-    // The legacy scanner blocks them all via substring/prefix matching.
+    // Corpus from the tree-sitter differential suite (`paths_tests.rs`):
+    // shell shapes that attempt to hide a guarded path behind quoting,
+    // substitution, variables, comments, or redirects. The tree-sitter
+    // implementation blocks them via semantic literal-token matching.
     let (runtime, _tmp) = loaded_runtime();
     let dir = runtime.decrypted_dirs("t1")[0]
         .to_string_lossy()
@@ -1459,7 +1459,6 @@ fn blocks_bypass_shaped_commands() {
         format!("v={dir}; cat \"$v/SKILL.md\""),
         format!("printf '%s\\n' {dir}/SKILL.md"),
         format!("cat {dir}/SKI\"LL.md\""),
-        format!("# {dir}/SKILL.md"),
         format!("cat {dir}/SKILL.md # trailing comment"),
         "cat /dev/shm/fm-agent-securit*/p*/fm_skill_security_abc/SKILL.md".to_string(),
         format!("cd {dir} && cat SKILL.md"),
@@ -1480,4 +1479,25 @@ fn blocks_bypass_shaped_commands() {
             "bypass-shaped command must be blocked: {command}"
         );
     }
+}
+
+#[test]
+fn allows_comment_only_path_references() {
+    // tree-sitter classification: a path mentioned only inside a comment is
+    // not an executing read, so the command passes through (legacy substring
+    // matching would have blocked it).
+    let (runtime, _tmp) = loaded_runtime();
+    let dir = runtime.decrypted_dirs("t1")[0]
+        .to_string_lossy()
+        .into_owned();
+    let decision = before_tool_with_runtime(
+        &runtime,
+        "t1",
+        BASH_TOOL_NAME,
+        &json!({ "command": format!("# {dir}/SKILL.md") }),
+    );
+    assert!(
+        matches!(decision, GuardDecision::Allow),
+        "comment-only path mention must pass through: {decision:?}"
+    );
 }

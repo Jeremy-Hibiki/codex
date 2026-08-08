@@ -6194,6 +6194,7 @@ version = "0.146.0-fm.1"
 dependencies = [
  "anyhow",
  "codex-protocol",
+ "codex-shell-command",
  "codex-utils-path-uri",
  "fmsh-ukey-core",
  "libc",
@@ -6203,6 +6204,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
+ "tree-sitter",
  "unicode-normalization",
  "zip",
 ]

@@ -216,12 +216,12 @@ mod fmsh {
     use std::sync::Arc;
     use std::sync::RwLock;
 
-    use fmsh_ukey_cipher::Cipher;
-    use fmsh_ukey_cipher::SoftwareAlgorithm;
-    use fmsh_ukey_cipher::SoftwareCipher;
-    use fmsh_ukey_cipher::UkeyCipher;
-    use fmsh_ukey_cipher::UkeyKeyWrap;
-    use fmsh_ukey_cipher::UkeyTwoPhaseCipher;
+    use fmsh_ukey_core::Cipher;
+    use fmsh_ukey_core::SoftwareAlgorithm;
+    use fmsh_ukey_core::SoftwareCipher;
+    use fmsh_ukey_core::UkeyCipher;
+    use fmsh_ukey_core::UkeyKeyWrap;
+    use fmsh_ukey_core::UkeyTwoPhaseCipher;
 
     use super::EnvelopeError;
     use super::EnvelopeSdk;
@@ -312,7 +312,7 @@ mod fmsh {
     /// The cache is content-addressed: skills that share the same `key.enc`
     /// bytes unwrap the envelope exactly once and reuse the same in-memory key.
     pub(crate) struct UkeyTwoPhaseSdk {
-        key_wrap: Arc<dyn fmsh_ukey_cipher::KeyWrap>,
+        key_wrap: Arc<dyn fmsh_ukey_core::KeyWrap>,
         key_envelope: String,
         ciphers: RwLock<HashMap<Vec<u8>, Arc<UkeyTwoPhaseCipher>>>,
     }
@@ -328,7 +328,7 @@ mod fmsh {
 
         pub(crate) fn with_key_wrap(
             key_envelope: String,
-            key_wrap: Arc<dyn fmsh_ukey_cipher::KeyWrap>,
+            key_wrap: Arc<dyn fmsh_ukey_core::KeyWrap>,
         ) -> Self {
             Self {
                 key_wrap,
@@ -500,9 +500,9 @@ mod tests {
     #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
     #[test]
     fn software_sdk_decrypts_hpke_package() {
-        use fmsh_ukey_cipher::Cipher;
-        use fmsh_ukey_cipher::SoftwareAlgorithm;
-        use fmsh_ukey_cipher::SoftwareCipher;
+        use fmsh_ukey_core::Cipher;
+        use fmsh_ukey_core::SoftwareAlgorithm;
+        use fmsh_ukey_core::SoftwareCipher;
 
         let tmp = tempfile::tempdir().unwrap();
         let pub_path = tmp.path().join("enc.pub.pem");
@@ -542,9 +542,9 @@ mod tests {
     #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
     #[test]
     fn software_sdk_decrypts_sm2_cms_package() {
-        use fmsh_ukey_cipher::Cipher;
-        use fmsh_ukey_cipher::SoftwareAlgorithm;
-        use fmsh_ukey_cipher::SoftwareCipher;
+        use fmsh_ukey_core::Cipher;
+        use fmsh_ukey_core::SoftwareAlgorithm;
+        use fmsh_ukey_core::SoftwareCipher;
 
         let tmp = tempfile::tempdir().unwrap();
         let pub_path = tmp.path().join("enc.pub.pem");
@@ -580,11 +580,11 @@ mod tests {
     fn two_phase_sdk_decrypts_package_with_in_memory_key() {
         use std::sync::Arc;
 
-        use fmsh_ukey_cipher::Cipher;
-        use fmsh_ukey_cipher::KeyWrap;
-        use fmsh_ukey_cipher::SoftwareAlgorithm;
-        use fmsh_ukey_cipher::SoftwareCipher;
-        use fmsh_ukey_cipher::UkeyTwoPhaseCipher;
+        use fmsh_ukey_core::Cipher;
+        use fmsh_ukey_core::KeyWrap;
+        use fmsh_ukey_core::SoftwareAlgorithm;
+        use fmsh_ukey_core::SoftwareCipher;
+        use fmsh_ukey_core::UkeyTwoPhaseCipher;
 
         struct SoftwareKeyWrap(SoftwareCipher);
 
@@ -640,11 +640,11 @@ mod tests {
         use std::sync::atomic::AtomicUsize;
         use std::sync::atomic::Ordering;
 
-        use fmsh_ukey_cipher::Cipher;
-        use fmsh_ukey_cipher::KeyWrap;
-        use fmsh_ukey_cipher::SoftwareAlgorithm;
-        use fmsh_ukey_cipher::SoftwareCipher;
-        use fmsh_ukey_cipher::UkeyTwoPhaseCipher;
+        use fmsh_ukey_core::Cipher;
+        use fmsh_ukey_core::KeyWrap;
+        use fmsh_ukey_core::SoftwareAlgorithm;
+        use fmsh_ukey_core::SoftwareCipher;
+        use fmsh_ukey_core::UkeyTwoPhaseCipher;
 
         struct SoftwareKeyWrap(Arc<SoftwareCipher>);
 

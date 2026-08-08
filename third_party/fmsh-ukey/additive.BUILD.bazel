@@ -17,11 +17,21 @@ cc_import(
     shared_library = "//vendor/fmsh-ukey-sdk/linux/lib:libfmsh_ukey_sdk.so",
 )
 
+# libcrypto.so.1.1 is a NEEDED dependency of libfmsh_ukey_sdk.so. DT_RUNPATH
+# is not transitive, so the executable's RUNPATH alone cannot resolve it for
+# the SDK. Link it directly so it lands in the same _solib_k8 directory the
+# SDK lands in, making both resolvable through the executable's RUNPATH.
+cc_import(
+    name = "fmsh_ukey_crypto_shared",
+    shared_library = "//vendor/fmsh-ukey-sdk/linux/lib:libcrypto.so.1.1",
+)
+
 cc_library(
     name = "fmsh_ukey_native",
-    # libcrypto.so.1.1 is a runtime NEEDED of libfmsh_ukey_sdk.so, not a
-    # link-time input; keep it in runfiles so packaged binaries can find it.
-    data = ["//vendor/fmsh-ukey-sdk/linux/lib:libcrypto.so.1.1"],
+    data = ["//vendor/fmsh-ukey-sdk/linux/lib:libfmsh_ukey_sdk.so.0"],
     visibility = ["//visibility:public"],
-    deps = [":fmsh_ukey_sdk_shared"],
+    deps = [
+        ":fmsh_ukey_crypto_shared",
+        ":fmsh_ukey_sdk_shared",
+    ],
 )

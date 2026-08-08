@@ -6196,7 +6196,7 @@ dependencies = [
  "codex-protocol",
  "codex-shell-command",
  "codex-utils-path-uri",
- "fmsh-ukey-cipher",
+ "fmsh-ukey-core",
  "libc",
  "pretty_assertions",
  "rand 0.9.3",
@@ -6228,25 +6228,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "fmsh-ukey-cipher"
-version = "0.3.0"
-source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=e7986f1b9dd05e8a1bf963b3ecf07933800564d5#e7986f1b9dd05e8a1bf963b3ecf07933800564d5"
+name = "fmsh-ukey-core"
+version = "0.3.2+sdk.0.3.0"
+source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=9c479813182d7f37c3fcae2c4a80342e1e3188ee#9c479813182d7f37c3fcae2c4a80342e1e3188ee"
 dependencies = [
  "anyhow",
- "clap",
- "clap_complete",
- "fmsh-ukey-wrapper",
+ "fmsh-ukey-sdk-wrapper",
  "hpke",
  "openssl",
  "parking_lot",
  "rand 0.9.3",
+ "thiserror 2.0.18",
  "zeroize",
 ]
 
 [[package]]
-name = "fmsh-ukey-wrapper"
-version = "0.3.0"
-source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=e7986f1b9dd05e8a1bf963b3ecf07933800564d5#e7986f1b9dd05e8a1bf963b3ecf07933800564d5"
+name = "fmsh-ukey-sdk-wrapper"
+version = "0.3.2+sdk.0.3.0"
+source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=9c479813182d7f37c3fcae2c4a80342e1e3188ee#9c479813182d7f37c3fcae2c4a80342e1e3188ee"
 dependencies = [
  "parking_lot",
  "thiserror 2.0.18",

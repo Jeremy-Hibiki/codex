@@ -269,12 +269,12 @@ crate.annotation(
 )
 crate.annotation(
     additive_build_file = "//third_party/fmsh-ukey:additive.BUILD.bazel",
-    # fmsh-ukey-wrapper's build.rs expects the vendored SDK under its own
+    # fmsh-ukey-sdk-wrapper's build.rs expects the vendored SDK under its own
     # repo root (`vendor/fmsh-ukey-sdk`), which is not part of the
     # build-script sandbox. Disable the build script and link the shared
     # library via cc_import instead (mirrors lmclient-rust-sdk); the patch
     # marks the vendored SDK directory as a Bazel package.
-    crate = "fmsh-ukey-wrapper",
+    crate = "fmsh-ukey-sdk-wrapper",
     extra_aliased_targets = {"fmsh_ukey_native": "fmsh_ukey_native"},
     gen_build_script = "off",
     patch_args = ["-p1"],

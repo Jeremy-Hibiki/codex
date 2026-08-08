@@ -24,12 +24,12 @@ unicode-normalization = { workspace = true }
 zip = { workspace = true, features = ["deflate"] }
 
 # Real envelope backends (software / ukey / ukey-two-phase) backed by
-# `fmsh-ukey-cipher`, hard-bound on the platform where the vendor SDK ships.
+# `fmsh-ukey-core`, hard-bound on the platform where the vendor SDK ships.
 # The upstream repo vendors `libfmsh_ukey_sdk.so` under vendor/, so no
 # FMSH_UKEY_SDK_DIR is needed at build time; the ukey modes still need
 # FMSH_UKEY_PROVIDER / FMSH_UKEY_CONTAINER (and the hardware) at runtime.
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
-fmsh-ukey-cipher = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "e7986f1b9dd05e8a1bf963b3ecf07933800564d5" }
+fmsh-ukey-core = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "9c479813182d7f37c3fcae2c4a80342e1e3188ee" }
 
 [dev-dependencies]
 anyhow = { workspace = true }

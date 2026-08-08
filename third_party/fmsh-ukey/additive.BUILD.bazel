@@ -38,6 +38,15 @@ cc_import(
 cc_library(
     name = "fmsh_ukey_native",
     data = ["//vendor/fmsh-ukey-sdk/linux/lib:libfmsh_ukey_sdk.so.0"],
+    # libcrypto.so.1.1 is NEEDED by the SDK but nothing in the main binary
+    # references it directly, so --as-needed drops it from the final link and
+    # DT_RUNPATH (not transitive) can never resolve it for the SDK. Force a
+    # direct NEEDED on the main binary, mirroring the cargo build.rs approach.
+    linkopts = [
+        "-Wl,--no-as-needed",
+        "-l:libcrypto.so.1.1",
+        "-Wl,--as-needed",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":fmsh_ukey_crypto_shared",

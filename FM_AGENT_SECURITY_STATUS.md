@@ -42,7 +42,7 @@
 | D5 | runtime 形态 | 进程级共享服务 + 按 thread_id 隔离 |
 | D6 | 未 engaged 红act | 关闭（透传） |
 | D7 | 强制沙箱最低级别 | workspace-write（bwrap 生效）；engaged 且无沙箱拒绝 |
-| D8 | 插件与 MCP | 插件/marketplace 全禁；MCP server 允许（官方提供，暂不纳入实施范围） |
+| D8 | 插件与 MCP | 插件/marketplace 管理默认放开（对齐上游行为），可通过 `[product_policy]` 配置 `plugin_management_disabled` / `marketplace_management_disabled` 禁用；MCP server 允许（官方提供，暂不纳入实施范围） |
 | D9 | 技能脚本审批 | engaged execute-only 自动 Permit，不征询用户、不进 guardian |
 | D10 | 配置面 | 客户端不提供改配置/改模型配置入口；Skill 仅可配置启用/禁用；`thread/realtime/*` 产品不提供；配置由未来受信管理工具负责 |
 
@@ -81,7 +81,7 @@
 
 ### 2.2 明确保留为未来/产品侧承接
 
-- **I30 / TODO-7/9 残留**：`features.plugins=true` 配置下插件启动加载/同步未在产品层强制关闭；TUI 插件管理入口未单独收敛。处置：产品默认配置禁用 plugins feature，或由受信管理工具下发配置；安全路线不得挂在用户可关闭的 flag 下。
+- **I30 / TODO-7/9 残留**：`features.plugins=true` 配置下插件启动加载/同步未在产品层强制关闭；TUI 插件管理入口未单独收敛。处置：产品默认配置禁用 plugins feature，或由受信管理工具下发配置；安全路线不得挂在用户可关闭的 flag 下。注：CLI/app-server 的插件/市场管理命令禁用已改为 `[product_policy]` 配置项（默认放开），不再写死。
 - **受信管理工具（D10）**：配置/模型配置由未来受信管理工具负责；客户端不暴露入口；工具本身待单独设计（高权限面）。
 - **MCP 范围（TODO-7 范围说明）**：当前产品 MCP 由官方提供、用户不能自装；MCP 输入输出与执行暂不纳入实施范围。若未来放开用户自装 MCP，需重新评估 guard/红act 覆盖。
 - **`thread/realtime/*`（D10）**：产品不提供该能力，明确排除在范围外。

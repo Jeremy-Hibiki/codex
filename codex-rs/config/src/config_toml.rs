@@ -212,6 +212,20 @@ pub struct EncryptedSkillsToml {
     pub key_envelope: Option<String>,
 }
 
+/// Product policy toggles. Defaults are open (features enabled), matching the
+/// upstream Codex behavior; deployments can disable plugin or marketplace
+/// management explicitly.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct ProductPolicyToml {
+    /// Disable plugin management (plugin add/list/remove).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_management_disabled: Option<bool>,
+    /// Disable marketplace management (plugin marketplace add/list/remove/upgrade).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marketplace_management_disabled: Option<bool>,
+}
+
 /// Base config deserialized from ~/.codex/config.toml.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema)]
 #[schemars(deny_unknown_fields)]
@@ -219,6 +233,10 @@ pub struct ConfigToml {
     /// Encrypted-skill settings (SDK selection and skill TTL).
     #[serde(default)]
     pub encrypted_skills: EncryptedSkillsToml,
+
+    /// Product policy toggles (defaults open).
+    #[serde(default)]
+    pub product_policy: ProductPolicyToml,
 
     /// Optional override of model selection.
     pub model: Option<String>,
@@ -1165,5 +1183,25 @@ command = "   "
     #[test]
     fn encrypted_skills_toml_rejects_unknown_sdk_mode() {
         assert!(toml::from_str::<EncryptedSkillsToml>("sdk = \"quantum\"").is_err());
+    }
+
+    #[test]
+    fn product_policy_defaults_are_open() {
+        let parsed: ConfigToml = toml::from_str("").unwrap();
+        assert_eq!(parsed.product_policy.plugin_management_disabled, None);
+        assert_eq!(parsed.product_policy.marketplace_management_disabled, None);
+    }
+
+    #[test]
+    fn product_policy_parses_disable_toggles() {
+        let parsed: ConfigToml = toml::from_str(
+            "[product_policy]\nplugin_management_disabled = true\nmarketplace_management_disabled = true\n",
+        )
+        .unwrap();
+        assert_eq!(parsed.product_policy.plugin_management_disabled, Some(true));
+        assert_eq!(
+            parsed.product_policy.marketplace_management_disabled,
+            Some(true)
+        );
     }
 }

@@ -970,21 +970,21 @@
           "type": "string"
         },
         {
-          "description": "Software digital envelope (HPKE-X25519-AES256-GCM default or standard CMS SM2-SM4-CBC). Requires the `fmsh-ukey` feature.",
+          "description": "Software digital envelope (HPKE-X25519-AES256-GCM default or standard CMS SM2-SM4-CBC). Compiled on Linux x86_64 gnu.",
           "enum": [
             "software"
           ],
           "type": "string"
         },
         {
-          "description": "Real FMSH UKey backend (CMS SM2/SM4 envelope). Requires the `fmsh-ukey` feature and `FMSH_UKEY_SDK_DIR` at build time plus `FMSH_UKEY_PROVIDER`/`FMSH_UKEY_CONTAINER` at runtime.",
+          "description": "Real FMSH UKey backend (CMS SM2/SM4 envelope). Compiled on Linux x86_64 gnu; needs `FMSH_UKEY_PROVIDER`/`FMSH_UKEY_CONTAINER` (and the hardware) at runtime.",
           "enum": [
             "ukey"
           ],
           "type": "string"
         },
         {
-          "description": "UKey two-phase: one UKey call unwraps a per-skill `key.enc`, then every package is decrypted in software AES-256-GCM with the in-memory key. Requires the `fmsh-ukey` feature.",
+          "description": "UKey two-phase: one UKey call unwraps a per-skill `key.enc`, then every package is decrypted in software AES-256-GCM with the in-memory key. Compiled on Linux x86_64 gnu.",
           "enum": [
             "ukey-two-phase"
           ],
@@ -2633,6 +2633,21 @@
           },
           "description": "Per-tool approval settings keyed by tool name.",
           "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "ProductPolicyToml": {
+      "additionalProperties": false,
+      "description": "Product policy toggles. Defaults are open (features enabled), matching the upstream Codex behavior; deployments can disable plugin or marketplace management explicitly.",
+      "properties": {
+        "marketplace_management_disabled": {
+          "description": "Disable marketplace management (plugin marketplace add/list/remove/upgrade).",
+          "type": "boolean"
+        },
+        "plugin_management_disabled": {
+          "description": "Disable plugin management (plugin add/list/remove).",
+          "type": "boolean"
         }
       },
       "type": "object"
@@ -5709,6 +5724,15 @@
       "default": {},
       "description": "User-level plugin config entries keyed by plugin name.",
       "type": "object"
+    },
+    "product_policy": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/ProductPolicyToml"
+        }
+      ],
+      "default": {},
+      "description": "Product policy toggles (defaults open)."
     },
     "profile": {
       "description": "Profile to use from the `profiles` map.",

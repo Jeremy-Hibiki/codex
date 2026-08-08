@@ -690,11 +690,23 @@ impl EncryptedSkillsRuntimeConfig {
     }
 }
 
+/// Product policy toggles resolved from `[product_policy]` in `config.toml`.
+/// Defaults are open (plugin and marketplace management allowed).
+#[derive(Debug, Clone, PartialEq)]
+#[derive(Default)]
+pub struct ProductPolicyRuntimeConfig {
+    pub plugin_management_disabled: bool,
+    pub marketplace_management_disabled: bool,
+}
+
+
 /// Application configuration loaded from disk and merged with overrides.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     /// Encrypted-skill runtime settings resolved from `[encrypted_skills]`.
     pub encrypted_skills: EncryptedSkillsRuntimeConfig,
+    /// Product policy toggles resolved from `[product_policy]`.
+    pub product_policy: ProductPolicyRuntimeConfig,
 
     /// Provenance for how this [`Config`] was derived (merged layers + enforced
     /// requirements).
@@ -4088,6 +4100,16 @@ impl Config {
                     .encrypted_skills
                     .key_envelope
                     .unwrap_or_else(|| "key.enc".to_string()),
+            },
+            product_policy: ProductPolicyRuntimeConfig {
+                plugin_management_disabled: cfg
+                    .product_policy
+                    .plugin_management_disabled
+                    .unwrap_or(false),
+                marketplace_management_disabled: cfg
+                    .product_policy
+                    .marketplace_management_disabled
+                    .unwrap_or(false),
             },
             model,
             service_tier,

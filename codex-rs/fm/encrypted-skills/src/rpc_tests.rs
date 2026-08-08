@@ -48,6 +48,12 @@ fn rpc_guard_blocks_guarded_paths_when_engaged() {
     assert!(rpc::args_reference_guarded_path(&json!({
         "path": "/dev/shm"
     })));
+    assert!(rpc::args_reference_guarded_path(&json!({
+        "nested": [{"path": decrypted.join("SKILL.md").to_string_lossy()}]
+    })));
+    assert!(!rpc::args_reference_guarded_path(&json!({
+        "path": "/dev/shmx/foo"
+    })));
 
     drop(runtime);
     assert!(!rpc::is_guarded_path(&decrypted.join("SKILL.md")));

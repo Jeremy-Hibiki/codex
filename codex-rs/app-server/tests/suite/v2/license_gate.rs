@@ -7,6 +7,7 @@
 
 use anyhow::Result;
 use app_test_support::TestAppServer;
+use codex_app_server_protocol::ConfigReadParams;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ThreadStartParams;
@@ -42,5 +43,31 @@ async fn license_lost_blocks_thread_start() -> Result<()> {
     assert_eq!(error.id, RequestId::Integer(request_id));
     assert_eq!(error.error.code, LICENSE_UNAVAILABLE_ERROR_CODE);
     assert_eq!(error.error.message, fm_license::LICENSE_UNAVAILABLE_MESSAGE);
+    Ok(())
+}
+
+#[tokio::test]
+async fn license_lost_allows_non_work_requests() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    let mut server = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .with_env_overrides(&[
+            (fm_license::TEST_BYPASS_ENV_VAR, Some("1")),
+            (fm_license::TEST_FORCE_LOST_ENV_VAR, Some("1")),
+        ])
+        .build_initialized_with_timeout(Duration::from_secs(30))
+        .await?;
+
+    let request_id = server
+        .send_config_read_request(ConfigReadParams {
+            include_layers: false,
+            cwd: None,
+        })
+        .await?;
+    // A successful `ConfigReadResponse` (rather than the license error) proves
+    // non-work requests keep working while the license is lost.
+    let _response: codex_app_server_protocol::ConfigReadResponse =
+        timeout(Duration::from_secs(30), server.read_response(request_id)).await??;
     Ok(())
 }

@@ -215,6 +215,7 @@ mod tests {
     use super::*;
     use crate::guardian::GuardianApprovalRequest;
     use crate::tools::context::FunctionToolOutput;
+    use crate::tools::context::ToolPayload;
 
     struct TestSdk;
 
@@ -353,6 +354,58 @@ mod tests {
         assert!(
             preview.contains("/skills/run.sh"),
             "decrypted dir should unrewrite to the original skill path in preview: {preview}"
+        );
+    }
+
+    #[test]
+    fn redacting_tool_output_response_item_is_redacted_when_engaged() {
+        let (runtime, _tmp) = loaded_runtime();
+        let runtime = Arc::new(runtime);
+        let decrypted = runtime.decrypted_dirs("t1").pop().unwrap();
+        let raw = format!(
+            "script at {}/run.sh",
+            decrypted.join("run.sh").to_string_lossy()
+        );
+        let output = RedactingToolOutput {
+            inner: Box::new(FunctionToolOutput::from_text(raw, Some(true))),
+            runtime: Arc::clone(&runtime),
+            session_id: "t1".to_string(),
+            engaged: true,
+        };
+
+        let item = output.to_response_item(
+            "call-1",
+            &ToolPayload::Function {
+                arguments: "{}".to_string(),
+            },
+        );
+        let ResponseInputItem::FunctionCallOutput { output, .. } = item else {
+            panic!("expected function call output item");
+        };
+        let text = output.body.to_text().unwrap();
+        assert!(
+            !text.contains(&runtime.mem_root().to_string_lossy().to_string()),
+            "response item must not contain the memory root: {text}"
+        );
+        assert!(
+            text.contains("[REDACTED]"),
+            "decrypted path should be redacted in the response item: {text}"
+        );
+    }
+
+    #[test]
+    fn before_tool_maps_hook_names_and_binds() {
+        let (runtime, _tmp) = loaded_runtime();
+        let decision = before_tool_with_runtime_and_binds(
+            &runtime,
+            "t1",
+            &HookToolName::bash(),
+            &serde_json::json!({ "command": "cat /skills/secret/SKILL.md" }),
+            /*binds_active*/ true,
+        );
+        assert!(
+            matches!(decision, GuardDecision::Blocked { .. }),
+            "hook-name-mapped shell read must be blocked with binds active: {decision:?}"
         );
     }
 }

@@ -8,6 +8,7 @@ use codex_app_server_protocol::FsReadFileParams;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::ProcessSpawnParams;
 use codex_app_server_protocol::RequestId;
+use codex_app_server_protocol::ThreadSetNameParams;
 use codex_app_server_protocol::ThreadShellCommandParams;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::TurnStartParams;
@@ -272,6 +273,31 @@ async fn rpc_guard_blocks_guarded_paths_when_engaged() -> Result<()> {
         BLOCK_MESSAGE
     );
 
+    let request_id = mcp
+        .send_thread_set_name_request(ThreadSetNameParams {
+            thread_id: thread_id.clone(),
+            name: guarded_file.display().to_string(),
+        })
+        .await?;
+    assert_eq!(
+        read_error_message(&mut mcp, request_id).await?,
+        BLOCK_MESSAGE
+    );
+
+    let request_id = mcp
+        .send_raw_request(
+            "thread/goal/set",
+            Some(serde_json::json!({
+                "threadId": thread_id,
+                "objective": guarded_file.display().to_string(),
+            })),
+        )
+        .await?;
+    assert_eq!(
+        read_error_message(&mut mcp, request_id).await?,
+        BLOCK_MESSAGE
+    );
+
     wait_for_turn_completed(&mut mcp).await?;
     Ok(())
 }
@@ -356,7 +382,7 @@ async fn rpc_guard_allows_mem_root_paths_when_unengaged() -> Result<()> {
     let request_id = mcp
         .send_fs_read_file_request(FsReadFileParams {
             path: AbsolutePathBuf::try_from(PathBuf::from(
-                "/dev/shm/fm_skill_security_nonexistent/secret",
+                "/dev/shm/fm-agent-security/fm_skill_security_nonexistent/secret",
             ))?,
         })
         .await?;

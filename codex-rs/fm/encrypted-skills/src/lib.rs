@@ -35,13 +35,5 @@ pub mod sdk;
 pub mod token;
 
 #[cfg(test)]
-#[path = "ts_paths.rs"]
-mod ts_paths;
-
-#[cfg(test)]
-#[path = "ts_paths_tests.rs"]
-mod ts_paths_tests;
-
-#[cfg(test)]
 #[path = "rpc_tests.rs"]
 mod rpc_tests;

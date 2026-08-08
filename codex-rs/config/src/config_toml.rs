@@ -1161,4 +1161,9 @@ command = "   "
         assert_eq!(two_phase.sdk, Some(EncryptedSkillsSdkToml::UKeyTwoPhase));
         assert_eq!(two_phase.key_envelope.as_deref(), Some("key.enc"));
     }
+
+    #[test]
+    fn encrypted_skills_toml_rejects_unknown_sdk_mode() {
+        assert!(toml::from_str::<EncryptedSkillsToml>("sdk = \"quantum\"").is_err());
+    }
 }

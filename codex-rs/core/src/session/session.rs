@@ -479,6 +479,16 @@ impl Session {
         self.thread_id
     }
 
+    /// Rehydrator for encrypted skill tokens scoped to this thread.
+    pub(crate) fn encrypted_skill_rehydrator(
+        &self,
+    ) -> crate::client_common::EncryptedSkillRehydrator {
+        crate::client_common::EncryptedSkillRehydrator {
+            runtime: Arc::clone(&self.services.encrypted_skills_runtime),
+            session_id: self.thread_id.to_string(),
+        }
+    }
+
     /// Returns the identity shared by the root thread and all descendant threads.
     pub(crate) fn session_id(&self) -> SessionId {
         self.services.agent_control.session_id()

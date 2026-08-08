@@ -79,7 +79,7 @@ codex-config 的 EncryptedSkillsToml/EncryptedSkillsSdkToml/SoftwareAlgorithmTom
 | 批次 | 状态 | 验证 |
 |---|---|---|
 | P1（R1 + R3） | **已完成** | fm-product-policy 新增 `full_access_requested`；app-server 4 处 danger-full-access 判定改调用，3 处 to_value+guard 收拢为 `ensure_serializable_args_not_guarded`；cli `requests_full_access` 复用 fm 判定。app-server product_policy/rpc_guard 10/10、cli product_policy 2/2 通过；fmt/clippy 干净。 |
-| P2（R4） | 未开始 | |
+| P2（R4） | **已完成** | fm token.rs 新增 `for_each_response_item_text` / `strip_tokens_from_response_item` / `strip_tokens_from_rollout_item`；spawn.rs 的 ~90 行本地遍历删除，收拢为逐项调用。fm 187/187、core spawn 7/7 通过；fmt/clippy 干净。 |
 | P3（C1） | 未开始 | |
 | P4（R2/R5） | 未开始 | |
 | P5（R7/R8） | 未开始 | |

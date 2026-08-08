@@ -2,6 +2,14 @@
 
 use std::fmt::Write as _;
 
+use codex_protocol::models::AgentMessageInputContent;
+use codex_protocol::models::ContentItem;
+use codex_protocol::models::FunctionCallOutputBody;
+use codex_protocol::models::FunctionCallOutputContentItem;
+use codex_protocol::models::ReasoningItemContent;
+use codex_protocol::models::ReasoningItemReasoningSummary;
+use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::RolloutItem;
 use rand::RngCore;
 
 pub const TOKEN_PREFIX: &str = "[SENSITIVE_SKILL_TOKEN:";
@@ -74,6 +82,95 @@ pub fn strip_tokens(text: &str, replacement: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+/// Applies `f` to every text-bearing field of a response item. Shared by the
+/// host adapters (fork token stripping, redaction) so the text-surface list
+/// stays in one place.
+pub fn for_each_response_item_text(item: &mut ResponseItem, f: &mut impl FnMut(&mut String)) {
+    match item {
+        ResponseItem::Message { content, .. } => {
+            for content_item in content {
+                match content_item {
+                    ContentItem::InputText { text } | ContentItem::OutputText { text } => f(text),
+                    ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => {}
+                }
+            }
+        }
+        ResponseItem::AgentMessage { content, .. } => {
+            for content_item in content {
+                if let AgentMessageInputContent::InputText { text } = content_item {
+                    f(text);
+                }
+            }
+        }
+        ResponseItem::FunctionCall { arguments, .. } => f(arguments),
+        ResponseItem::CustomToolCall { input, .. } => f(input),
+        ResponseItem::FunctionCallOutput { output, .. }
+        | ResponseItem::CustomToolCallOutput { output, .. } => match &mut output.body {
+            FunctionCallOutputBody::Text(text) => f(text),
+            FunctionCallOutputBody::ContentItems(items) => {
+                for content_item in items {
+                    if let FunctionCallOutputContentItem::InputText { text } = content_item {
+                        f(text);
+                    }
+                }
+            }
+        },
+        ResponseItem::Reasoning {
+            summary, content, ..
+        } => {
+            for entry in summary {
+                let ReasoningItemReasoningSummary::SummaryText { text } = entry;
+                f(text);
+            }
+            if let Some(content) = content {
+                for entry in content {
+                    match entry {
+                        ReasoningItemContent::ReasoningText { text }
+                        | ReasoningItemContent::Text { text } => f(text),
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn strip_token_text(text: &mut String, replacement: &str) {
+    if text.contains(TOKEN_PREFIX) {
+        *text = strip_tokens(text, replacement);
+    }
+}
+
+/// Strips sentinel tokens from every text-bearing field of a response item.
+pub fn strip_tokens_from_response_item(item: &mut ResponseItem, replacement: &str) {
+    for_each_response_item_text(item, &mut |text| strip_token_text(text, replacement));
+}
+
+/// Strips sentinel tokens from every text-bearing surface of a rollout item
+/// (response items, inter-agent communication, compacted history).
+pub fn strip_tokens_from_rollout_item(item: &mut RolloutItem, replacement: &str) {
+    match item {
+        RolloutItem::ResponseItem(response_item) => {
+            strip_tokens_from_response_item(response_item, replacement);
+        }
+        RolloutItem::InterAgentCommunication(communication) => {
+            strip_token_text(&mut communication.content, replacement);
+            if let Some(encrypted) = &mut communication.encrypted_content {
+                strip_token_text(encrypted, replacement);
+            }
+        }
+        RolloutItem::Compacted(compacted) => {
+            strip_token_text(&mut compacted.message, replacement);
+            if let Some(history) = &mut compacted.replacement_history {
+                for response_item in history {
+                    strip_tokens_from_response_item(response_item, replacement);
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 pub fn is_hex(value: &str) -> bool {

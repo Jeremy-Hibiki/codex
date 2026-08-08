@@ -640,6 +640,56 @@ impl Default for EncryptedSkillsRuntimeConfig {
     }
 }
 
+impl EncryptedSkillsRuntimeConfig {
+    /// Resolves the configured envelope SDK kind, keeping the test_zip
+    /// warning next to the mapping that produces it.
+    pub fn into_sdk(&self) -> fm_encrypted_skills::sdk::SdkKind {
+        match self.sdk {
+            codex_config::config_toml::EncryptedSkillsSdkToml::Unavailable => {
+                fm_encrypted_skills::sdk::SdkKind::Unavailable
+            }
+            codex_config::config_toml::EncryptedSkillsSdkToml::TestZip => {
+                tracing::warn!(
+                    "encrypted-skill envelope SDK is test_zip: packages are plain ZIPs and are NOT encrypted"
+                );
+                fm_encrypted_skills::sdk::SdkKind::TestZip
+            }
+            codex_config::config_toml::EncryptedSkillsSdkToml::Noop => {
+                fm_encrypted_skills::sdk::SdkKind::Noop
+            }
+            codex_config::config_toml::EncryptedSkillsSdkToml::Software => {
+                let algorithm = match self.software_algorithm {
+                    codex_config::config_toml::SoftwareAlgorithmToml::Sm2Sm4Cbc => {
+                        fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::Sm2Sm4Cbc
+                    }
+                    codex_config::config_toml::SoftwareAlgorithmToml::HpkeX25519Aes256Gcm => {
+                        fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::HpkeX25519Aes256Gcm
+                    }
+                };
+                fm_encrypted_skills::sdk::SdkKind::Software {
+                    algorithm,
+                    privkey: self.software_privkey.clone(),
+                }
+            }
+            codex_config::config_toml::EncryptedSkillsSdkToml::UKey => {
+                fm_encrypted_skills::sdk::SdkKind::UKey
+            }
+            codex_config::config_toml::EncryptedSkillsSdkToml::UKeyTwoPhase => {
+                fm_encrypted_skills::sdk::SdkKind::UKeyTwoPhase {
+                    key_envelope: self.key_envelope.clone(),
+                }
+            }
+        }
+    }
+
+    /// Resolves the audit log path, defaulting to the process temp directory.
+    pub fn audit_path(&self) -> std::path::PathBuf {
+        self.audit_path
+            .clone()
+            .unwrap_or_else(|| std::env::temp_dir().join("fm_skill_security_audit.log"))
+    }
+}
+
 /// Application configuration loaded from disk and merged with overrides.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {

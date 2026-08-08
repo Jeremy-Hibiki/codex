@@ -1076,48 +1076,9 @@ impl Session {
             ));
             let session_extension_data =
                 codex_extension_api::ExtensionData::new(session_id.to_string());
-            let encrypted_skills_sdk = fm_encrypted_skills::sdk::sdk_for(match config
-                .encrypted_skills.sdk
-            {
-                codex_config::config_toml::EncryptedSkillsSdkToml::Unavailable => {
-                    fm_encrypted_skills::sdk::SdkKind::Unavailable
-                }
-                codex_config::config_toml::EncryptedSkillsSdkToml::TestZip => {
-                    tracing::warn!(
-                        "encrypted-skill envelope SDK is test_zip: packages are plain ZIPs and are NOT encrypted"
-                    );
-                    fm_encrypted_skills::sdk::SdkKind::TestZip
-                }
-                codex_config::config_toml::EncryptedSkillsSdkToml::Noop => {
-                    fm_encrypted_skills::sdk::SdkKind::Noop
-                }
-                codex_config::config_toml::EncryptedSkillsSdkToml::Software => {
-                    let algorithm = match config.encrypted_skills.software_algorithm {
-                        codex_config::config_toml::SoftwareAlgorithmToml::Sm2Sm4Cbc => {
-                            fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::Sm2Sm4Cbc
-                        }
-                        codex_config::config_toml::SoftwareAlgorithmToml::HpkeX25519Aes256Gcm => {
-                            fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::HpkeX25519Aes256Gcm
-                        }
-                    };
-                    fm_encrypted_skills::sdk::SdkKind::Software {
-                        algorithm,
-                        privkey: config.encrypted_skills.software_privkey.clone(),
-                    }
-                }
-                codex_config::config_toml::EncryptedSkillsSdkToml::UKey => {
-                    fm_encrypted_skills::sdk::SdkKind::UKey
-                }
-                codex_config::config_toml::EncryptedSkillsSdkToml::UKeyTwoPhase => {
-                    fm_encrypted_skills::sdk::SdkKind::UKeyTwoPhase {
-                        key_envelope: config.encrypted_skills.key_envelope.clone(),
-                    }
-                }
-            });
-            let encrypted_skills_audit_path = config
-                .encrypted_skills.audit_path
-                .clone()
-                .unwrap_or_else(|| std::env::temp_dir().join("fm_skill_security_audit.log"));
+            let encrypted_skills_sdk =
+                fm_encrypted_skills::sdk::sdk_for(config.encrypted_skills.into_sdk());
+            let encrypted_skills_audit_path = config.encrypted_skills.audit_path();
             let encrypted_skills_audit: Option<
                 Arc<dyn fm_encrypted_skills::audit::AuditSink>,
             > = match fm_encrypted_skills::audit::shared_file_sink(

@@ -62,6 +62,8 @@ codex-config 的 EncryptedSkillsToml/EncryptedSkillsSdkToml/SoftwareAlgorithmTom
 - 附带工作：fm 增加 serde/schemars 依赖；just write-config-schema 刷新 schema；bazel-lock-update。
 - 净效果：原项目新增量减少约 170 行，fm 增加约 150 行；重复转换单一化。
 
+**评估结论（更新）**：依赖无环，但让通用配置层 `codex-config` 依赖 fm-encrypted-skills 会把 tree-sitter/shell-command 拉进 config 依赖树，分层收益为负；且需改原项目 Cargo.toml。**建议不实施**，保持类型定义在 codex-config；仅把 core 内部转换收拢为 `EncryptedSkillsRuntimeConfig::into_sdk()` 方法（消除 session.rs 的长 match，不改跨 crate 依赖）。
+
 ## 三、实施批次建议
 
 | 批次 | 内容 | 影响面 |
@@ -80,6 +82,6 @@ codex-config 的 EncryptedSkillsToml/EncryptedSkillsSdkToml/SoftwareAlgorithmTom
 |---|---|---|
 | P1（R1 + R3） | **已完成** | fm-product-policy 新增 `full_access_requested`；app-server 4 处 danger-full-access 判定改调用，3 处 to_value+guard 收拢为 `ensure_serializable_args_not_guarded`；cli `requests_full_access` 复用 fm 判定。app-server product_policy/rpc_guard 10/10、cli product_policy 2/2 通过；fmt/clippy 干净。 |
 | P2（R4） | **已完成** | fm token.rs 新增 `for_each_response_item_text` / `strip_tokens_from_response_item` / `strip_tokens_from_rollout_item`；spawn.rs 的 ~90 行本地遍历删除，收拢为逐项调用。fm 187/187、core spawn 7/7 通过；fmt/clippy 干净。 |
-| P3（C1） | 未开始 | |
-| P4（R2/R5） | 未开始 | |
-| P5（R7/R8） | 未开始 | |
+| P3（C1） | **部分完成** | 类型收拢到 fm 会让 codex-config 依赖 tree-sitter，评估为不建议；已按修订方案落地：`EncryptedSkillsRuntimeConfig::into_sdk()` / `audit_path()` 收拢转换逻辑，session.rs 的 60 行 match 删除。core encrypted_skills 集成 19/19 通过。 |
+| P4（R2/R5） | 建议暂缓 | EncryptedSkillGuard 句柄需改写 core 约 25 处调用点；收益大但改动原项目文件多，建议作为独立重构批次评估。 |
+| P5（R7/R8） | 建议暂缓 | 测试基建 helper 与 agent_security 策略收拢需多 crate 联动，后续按需实施。 |

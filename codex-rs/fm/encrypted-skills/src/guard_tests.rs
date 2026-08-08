@@ -1435,3 +1435,49 @@ fn redact_payload_response_item_and_json_redact_paths() {
     redact_json(&runtime, "t1", &mut value);
     assert!(!serde_json::to_string(&value).unwrap().contains(&path));
 }
+
+#[test]
+fn blocks_bypass_shaped_commands() {
+    // Corpus inherited from the removed tree-sitter prototype
+    // (`ts_paths_tests.rs`): shell shapes that attempt to hide a guarded
+    // path behind quoting, substitution, variables, comments, or redirects.
+    // The legacy scanner blocks them all via substring/prefix matching.
+    let (runtime, _tmp) = loaded_runtime();
+    let dir = runtime.decrypted_dirs("t1")[0]
+        .to_string_lossy()
+        .into_owned();
+    let cases = [
+        format!("bash -lc \"cat {dir}/SKILL.md\""),
+        format!("bash -lc 'cat {dir}/SKILL.md'"),
+        format!("cat '{dir}/SKILL.md'"),
+        format!("cat \"{dir}/SKILL.md\""),
+        format!("cat {dir}/SKILL.md 2>&1"),
+        format!("echo x > {dir}/out"),
+        format!("cat $(echo {dir}/SKILL.md)"),
+        format!("cat `echo {dir}/SKILL.md`"),
+        format!("eval cat {dir}/SKILL.md"),
+        format!("v={dir}; cat \"$v/SKILL.md\""),
+        format!("printf '%s\\n' {dir}/SKILL.md"),
+        format!("cat {dir}/SKI\"LL.md\""),
+        format!("# {dir}/SKILL.md"),
+        format!("cat {dir}/SKILL.md # trailing comment"),
+        "cat /dev/shm/fm-agent-securit*/p*/fm_skill_security_abc/SKILL.md".to_string(),
+        format!("cd {dir} && cat SKILL.md"),
+        format!("sh -c 'cat {dir}/SKILL.md'"),
+        format!("python3 -c 'open(\"{dir}/SKILL.md\")'"),
+        format!("cat <<'EOF'\n{dir}/SKILL.md\nEOF"),
+    ];
+
+    for command in cases {
+        let decision = before_tool_with_runtime(
+            &runtime,
+            "t1",
+            BASH_TOOL_NAME,
+            &json!({ "command": command }),
+        );
+        assert!(
+            matches!(decision, GuardDecision::Blocked { .. }),
+            "bypass-shaped command must be blocked: {command}"
+        );
+    }
+}

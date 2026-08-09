@@ -21,6 +21,7 @@ use core_test_support::responses::ev_apply_patch_custom_tool_call;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
+use core_test_support::responses::ev_reasoning_item;
 use core_test_support::responses::ev_response_created;
 use core_test_support::responses::mount_sse_once;
 use core_test_support::responses::mount_sse_sequence;
@@ -426,6 +427,80 @@ async fn unrelated_turn_has_no_skill_token_or_framing() -> Result<()> {
     assert!(
         !rollout.contains("REAL_SKILL_CONTENT_MARKER"),
         "unrelated turn must not persist skill plaintext, got: {rollout}"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn engaged_session_keeps_reasoning_in_context_and_rollout() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let test = build_test_with_encrypted_skill(&server).await?;
+    let _mock = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_reasoning_item(
+                "rsn-1",
+                &["REASONING_SUMMARY_MARKER"],
+                &["REASONING_RAW_MARKER"],
+            ),
+            ev_assistant_message("msg-1", "done"),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+
+    submit_single_turn(&test, "please use $secret-skill").await?;
+
+    let rollout_path = test
+        .session_configured
+        .rollout_path
+        .as_ref()
+        .expect("rollout path");
+    let rollout = std::fs::read_to_string(rollout_path)?;
+    assert!(
+        rollout.contains("REASONING_SUMMARY_MARKER"),
+        "reasoning must stay in rollout for context/follow-up requests, got: {rollout}"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unrelated_turn_keeps_reasoning_output() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let test = build_test_with_encrypted_skill(&server).await?;
+    let _mock = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_reasoning_item(
+                "rsn-1",
+                &["REASONING_SUMMARY_MARKER"],
+                &["REASONING_RAW_MARKER"],
+            ),
+            ev_assistant_message("msg-1", "done"),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+
+    submit_single_turn(&test, "hello, no skills here").await?;
+
+    let rollout_path = test
+        .session_configured
+        .rollout_path
+        .as_ref()
+        .expect("rollout path");
+    let rollout = std::fs::read_to_string(rollout_path)?;
+    assert!(
+        rollout.contains("REASONING_SUMMARY_MARKER"),
+        "unengaged sessions must keep assistant reasoning, got: {rollout}"
     );
     Ok(())
 }

@@ -668,11 +668,102 @@ pub(crate) use self::thread_summary::thread_settings_from_config_snapshot;
 pub(crate) use self::thread_summary::thread_settings_from_core_snapshot;
 
 pub(crate) fn build_legacy_api_turns_from_rollout_items(items: &[RolloutItem]) -> Vec<Turn> {
+    // Threads that engaged an encrypted skill keep reasoning in rollout for
+    // model context/follow-up calls, but client-facing history must not show
+    // it. The sentinel token in the rollout is the durable "was sensitive"
+    // marker.
+    let hide_reasoning = fm_encrypted_skills::token::rollout_items_contain_token(items);
     let mut builder = ThreadHistoryBuilder::new();
     for item in items {
+        if hide_reasoning {
+            use codex_protocol::items::TurnItem;
+            use codex_protocol::models::ResponseItem;
+            use codex_protocol::protocol::EventMsg;
+            let reasoning_surface = match item {
+                RolloutItem::ResponseItem(ResponseItem::Reasoning { .. }) => true,
+                RolloutItem::EventMsg(EventMsg::AgentReasoning(_))
+                | RolloutItem::EventMsg(EventMsg::AgentReasoningRawContent(_)) => true,
+                RolloutItem::EventMsg(EventMsg::ItemCompleted(event))
+                    if matches!(event.item, TurnItem::Reasoning { .. }) =>
+                {
+                    true
+                }
+                _ => false,
+            };
+            if reasoning_surface {
+                continue;
+            }
+        }
         if is_persisted_rollout_item(item, codex_protocol::protocol::ThreadHistoryMode::Legacy) {
             builder.handle_rollout_item(item);
         }
     }
     builder.finish()
+}
+
+#[cfg(test)]
+mod build_legacy_turns_tests {
+    use super::*;
+    use codex_protocol::models::ContentItem;
+    use codex_protocol::models::ReasoningItemReasoningSummary;
+    use codex_protocol::models::ResponseItem;
+    use codex_protocol::protocol::AgentReasoningEvent;
+    use codex_protocol::protocol::EventMsg;
+    use codex_protocol::protocol::RolloutItem;
+
+    fn token_item() -> RolloutItem {
+        RolloutItem::ResponseItem(ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "use [SENSITIVE_SKILL_TOKEN:abc:ff00]".to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        })
+    }
+
+    fn reasoning_item() -> RolloutItem {
+        RolloutItem::ResponseItem(ResponseItem::Reasoning {
+            id: None,
+            summary: vec![ReasoningItemReasoningSummary::SummaryText {
+                text: "HIDDEN_REASONING_MARKER".to_string(),
+            }],
+            content: None,
+            encrypted_content: None,
+            internal_chat_message_metadata_passthrough: None,
+        })
+    }
+
+    fn reasoning_event_item() -> RolloutItem {
+        RolloutItem::EventMsg(EventMsg::AgentReasoning(AgentReasoningEvent {
+            text: "HIDDEN_REASONING_MARKER".to_string(),
+        }))
+    }
+
+    #[test]
+    fn sensitive_thread_history_hides_reasoning() {
+        for items in [
+            vec![token_item(), reasoning_item()],
+            vec![token_item(), reasoning_event_item()],
+        ] {
+            let turns = build_legacy_api_turns_from_rollout_items(&items);
+            let serialized = serde_json::to_string(&turns).unwrap();
+            assert!(
+                !serialized.contains("HIDDEN_REASONING_MARKER"),
+                "sensitive thread history must hide reasoning: {serialized}"
+            );
+        }
+    }
+
+    #[test]
+    fn plain_thread_history_keeps_reasoning() {
+        let items = vec![reasoning_event_item()];
+        let turns = build_legacy_api_turns_from_rollout_items(&items);
+        let serialized = serde_json::to_string(&turns).unwrap();
+        assert!(
+            serialized.contains("HIDDEN_REASONING_MARKER"),
+            "plain thread history must keep reasoning: {serialized}"
+        );
+    }
 }

@@ -2719,7 +2719,7 @@ impl ThreadRequestProcessor {
                 items.push(deserialize_stored_thread_item(item)?);
             }
             let Some(next_cursor) = page.next_cursor else {
-                return Ok(items);
+                break;
             };
             if cursor.as_ref() == Some(&next_cursor) {
                 return Err(internal_error(format!(
@@ -2728,6 +2728,8 @@ impl ThreadRequestProcessor {
             }
             cursor = Some(next_cursor);
         }
+        hide_reasoning_from_sensitive_items(&mut items);
+        Ok(items)
     }
 
     // Older clients omit `excludeTurns` and expect full `thread.turns` on resume.
@@ -2877,7 +2879,7 @@ impl ThreadRequestProcessor {
                 }
                 err => internal_error(format!("failed to list thread items: {err}")),
             })?;
-        let data = page
+        let mut data = page
             .items
             .into_iter()
             .map(|stored_item| {
@@ -2887,6 +2889,7 @@ impl ThreadRequestProcessor {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
+        hide_reasoning_from_sensitive_entries(&mut data);
         Ok(ThreadItemsListResponse {
             data,
             next_cursor: page.next_cursor,
@@ -4878,6 +4881,29 @@ fn deserialize_stored_thread_item(
             item.item_id
         ))
     })
+}
+
+fn hide_reasoning_from_sensitive_items(items: &mut Vec<ThreadItem>) {
+    if items.iter().any(thread_item_contains_token) {
+        items.retain(|item| !matches!(item, ThreadItem::Reasoning { .. }));
+    }
+}
+
+fn hide_reasoning_from_sensitive_entries(entries: &mut Vec<ThreadItemEntry>) {
+    if entries
+        .iter()
+        .any(|entry| thread_item_contains_token(&entry.item))
+    {
+        entries.retain(|entry| !matches!(entry.item, ThreadItem::Reasoning { .. }));
+    }
+}
+
+fn thread_item_contains_token(item: &ThreadItem) -> bool {
+    // The sentinel token is the durable "this thread engaged an encrypted
+    // skill" marker; serializing the item is the cheapest robust way to scan
+    // every text-bearing surface without mirroring the protocol shape.
+    serde_json::to_string(item)
+        .is_ok_and(|text| text.contains(fm_encrypted_skills::token::TOKEN_PREFIX))
 }
 
 fn stored_turn_to_api_turn(

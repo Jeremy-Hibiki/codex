@@ -692,13 +692,11 @@ impl EncryptedSkillsRuntimeConfig {
 
 /// Product policy toggles resolved from `[product_policy]` in `config.toml`.
 /// Defaults are open (plugin and marketplace management allowed).
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ProductPolicyRuntimeConfig {
     pub plugin_management_disabled: bool,
     pub marketplace_management_disabled: bool,
 }
-
 
 /// Application configuration loaded from disk and merged with overrides.
 #[derive(Debug, Clone, PartialEq)]

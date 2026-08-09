@@ -355,14 +355,23 @@ mod fmsh {
             {
                 return Ok(cipher);
             }
+            // Slow path: take the write lock and re-check so two concurrent
+            // first-loads of the same key envelope unwrap exactly once. The
+            // write lock is held across the (expensive) UKey call, but the
+            // fast path above stays lock-free for cache hits, and the runtime
+            // layer already serializes loads for the same (session, skill).
+            let mut cache = self
+                .ciphers
+                .write()
+                .map_err(|_| EnvelopeError::Internal("two-phase cache poisoned".into()))?;
+            if let Some(cipher) = cache.get(&wrapped).cloned() {
+                return Ok(cipher);
+            }
             let cipher = Arc::new(UkeyTwoPhaseCipher::new(Arc::clone(&self.key_wrap)));
             cipher.unwrap_key(&wrapped).map_err(|err| {
                 EnvelopeError::Decrypt(format!("unwrapping key envelope: {err:#}"))
             })?;
-            self.ciphers
-                .write()
-                .map_err(|_| EnvelopeError::Internal("two-phase cache poisoned".into()))?
-                .insert(wrapped, Arc::clone(&cipher));
+            cache.insert(wrapped, Arc::clone(&cipher));
             Ok(cipher)
         }
     }

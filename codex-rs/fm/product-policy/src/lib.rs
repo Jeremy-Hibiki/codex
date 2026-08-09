@@ -59,3 +59,16 @@ pub fn sandbox_policy_bypassed() -> bool {
 pub fn sandbox_policy_bypassed_for(value: Option<&str>) -> bool {
     matches!(value, Some("1"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::sandbox_policy_bypassed_for;
+
+    #[test]
+    fn bypass_env_only_accepts_exact_one() {
+        assert!(!sandbox_policy_bypassed_for(None));
+        assert!(sandbox_policy_bypassed_for(Some("1")));
+        assert!(!sandbox_policy_bypassed_for(Some("0")));
+        assert!(!sandbox_policy_bypassed_for(Some("true")));
+    }
+}

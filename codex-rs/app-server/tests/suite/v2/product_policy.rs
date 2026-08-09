@@ -24,7 +24,7 @@ async fn build_server() -> Result<(TestAppServer, TempDir)> {
         .with_codex_home(codex_home.path())
         // Product policy must be tested without the debug-only sandbox
         // bypass, which may be inherited from the developer environment.
-        .with_env_overrides(&[(codex_core::agent_security::SANDBOX_BYPASS_ENV_VAR, None)])
+        .with_env_overrides(&[(fm_product_policy::SANDBOX_BYPASS_ENV_VAR, None)])
         .build_initialized_with_timeout(DEFAULT_TIMEOUT)
         .await?;
     Ok((mcp, codex_home))

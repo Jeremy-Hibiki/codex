@@ -4,11 +4,12 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 
 use crate::token::random_hex;
+use zeroize::Zeroizing;
 
 /// Cached plaintext plus the metadata needed to frame it during rehydration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CachedContent {
-    pub plaintext: String,
+    pub plaintext: Zeroizing<String>,
     pub skill_name: String,
     pub base_dir: Option<String>,
 }

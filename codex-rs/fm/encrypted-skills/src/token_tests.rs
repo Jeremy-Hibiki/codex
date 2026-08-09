@@ -1,4 +1,7 @@
 use super::*;
+use codex_protocol::models::ContentItem;
+use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::RolloutItem;
 
 #[test]
 fn serializes_and_parses_round_trip() {
@@ -101,4 +104,29 @@ fn strip_tokens_replaces_sentinels_and_keeps_surrounding_text() {
     ] {
         assert_eq!(strip_tokens(input, replacement), expected);
     }
+}
+
+#[test]
+fn rollout_items_contain_token_detects_sensitive_threads() {
+    let message_with_token = RolloutItem::ResponseItem(ResponseItem::Message {
+        id: None,
+        role: "user".to_string(),
+        content: vec![ContentItem::InputText {
+            text: "use [SENSITIVE_SKILL_TOKEN:abc:ff00]".to_string(),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    });
+    let plain = RolloutItem::ResponseItem(ResponseItem::Message {
+        id: None,
+        role: "assistant".to_string(),
+        content: vec![ContentItem::InputText {
+            text: "plain".to_string(),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    });
+
+    assert!(rollout_items_contain_token(&[message_with_token]));
+    assert!(!rollout_items_contain_token(&[plain]));
 }

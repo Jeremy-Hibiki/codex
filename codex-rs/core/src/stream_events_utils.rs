@@ -291,7 +291,9 @@ pub(crate) async fn handle_output_item_done(
 ) -> Result<OutputItemResult> {
     // Redact known skill plaintext at the model stream intake so the response
     // item, derived turn item, and `last_agent_message` are all clean before
-    // any of them can be persisted.
+    // any of them can be persisted. Reasoning stays in context/rollout (some
+    // models require it to be sent back on later calls); only client-facing
+    // display events are suppressed while engaged.
     let item = ctx
         .sess
         .encrypted_skills_guard()

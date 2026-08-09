@@ -2,7 +2,7 @@ use super::*;
 
 fn content(plaintext: &str) -> CachedContent {
     CachedContent {
-        plaintext: plaintext.to_string(),
+        plaintext: Zeroizing::new(plaintext.to_string()),
         skill_name: "skill".to_string(),
         base_dir: None,
     }

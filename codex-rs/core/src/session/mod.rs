@@ -2071,6 +2071,13 @@ impl Session {
     }
 
     pub(crate) async fn emit_turn_item_started(&self, turn_context: &TurnContext, item: &TurnItem) {
+        // Engaged sessions hide assistant reasoning from client display events
+        // (the item still stays in history/rollout for context and follow-up
+        // requests).
+        if self.encrypted_skills_guard().is_engaged() && matches!(item, TurnItem::Reasoning { .. })
+        {
+            return;
+        }
         let started_at_ms = turn_context
             .turn_timing_state
             .record_item_started(item.id(), now_unix_timestamp_ms())
@@ -2093,6 +2100,10 @@ impl Session {
         turn_context: &TurnContext,
         item: TurnItem,
     ) {
+        if self.encrypted_skills_guard().is_engaged() && matches!(item, TurnItem::Reasoning { .. })
+        {
+            return;
+        }
         record_turn_ttfm_metric(turn_context, &item).await;
         let completed_at_ms = now_unix_timestamp_ms();
         let item_id = item.id();
@@ -3271,10 +3282,12 @@ impl Session {
 
     #[tracing::instrument(level = "trace", skip_all, fields(item_count = items.len()))]
     async fn send_raw_response_items(&self, turn_context: &TurnContext, items: &[ResponseItem]) {
+        let guard = self.encrypted_skills_guard();
         for item in items {
-            let item = self
-                .encrypted_skills_guard()
-                .redact_tool_output_plaintext_for_persistence(item.clone());
+            if guard.is_engaged() && matches!(item, ResponseItem::Reasoning { .. }) {
+                continue;
+            }
+            let item = guard.redact_tool_output_plaintext_for_persistence(item.clone());
             self.send_event(
                 turn_context,
                 EventMsg::RawResponseItem(RawResponseItemEvent { item }),

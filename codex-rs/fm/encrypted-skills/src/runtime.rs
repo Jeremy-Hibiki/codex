@@ -31,6 +31,7 @@ use crate::sdk::EnvelopeSdk;
 use crate::sdk::PackageEntry;
 use crate::token::Token;
 use crate::token::random_hex;
+use zeroize::Zeroizing;
 
 /// Per-process encrypted-skill state: session registry, content cache, the
 /// envelope SDK, and the memory root. Threads are isolated by session id.
@@ -216,7 +217,7 @@ impl EncryptedSkillRuntime {
             return Err(error);
         }
         let content = CachedContent {
-            plaintext,
+            plaintext: Zeroizing::new(plaintext),
             skill_name: skill_name.to_string(),
             base_dir: package_path
                 .parent()
@@ -321,10 +322,10 @@ impl EncryptedSkillRuntime {
     }
 
     /// Known plaintext fragments for a session (outbound export detection).
-    pub fn known_plaintexts(&self, session_id: &str) -> Vec<String> {
+    pub fn known_plaintexts(&self, session_id: &str) -> Vec<Zeroizing<String>> {
         recover_lock(self.cache.lock())
             .plaintexts(session_id)
-            .map(ToOwned::to_owned)
+            .map(|s| Zeroizing::new(s.to_owned()))
             .collect()
     }
 

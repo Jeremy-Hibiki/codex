@@ -6208,6 +6208,7 @@ dependencies = [
  "tracing",
  "tree-sitter",
  "unicode-normalization",
+ "zeroize",
  "zip",
 ]
 

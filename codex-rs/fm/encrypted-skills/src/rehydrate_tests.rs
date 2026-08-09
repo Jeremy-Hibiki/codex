@@ -1,11 +1,12 @@
 use super::*;
 use crate::cache::CachedContent;
+use zeroize::Zeroizing;
 
 fn cached(cache: &mut ContentCache, session: &str, plaintext: &str) -> String {
     let hex = cache.store(
         session,
         CachedContent {
-            plaintext: plaintext.to_string(),
+            plaintext: Zeroizing::new(plaintext.to_string()),
             skill_name: "skill".to_string(),
             base_dir: None,
         },

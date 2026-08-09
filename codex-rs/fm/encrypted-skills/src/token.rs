@@ -173,6 +173,51 @@ pub fn strip_tokens_from_rollout_item(item: &mut RolloutItem, replacement: &str)
     }
 }
 
+/// True when any text-bearing surface of the rollout contains the sentinel
+/// token prefix, i.e. this thread engaged an encrypted skill at some point.
+///
+/// Used by host history builders to hide reasoning from client-facing
+/// history while keeping it in the model context.
+pub fn rollout_items_contain_token(items: &[RolloutItem]) -> bool {
+    items.iter().any(rollout_item_contains_token)
+}
+
+fn rollout_item_contains_token(item: &RolloutItem) -> bool {
+    let mut found = false;
+    match item {
+        RolloutItem::ResponseItem(response_item) => {
+            let mut item = response_item.clone();
+            for_each_response_item_text(&mut item, &mut |text| {
+                if text.contains(TOKEN_PREFIX) {
+                    found = true;
+                }
+            });
+        }
+        RolloutItem::InterAgentCommunication(communication) => {
+            found = communication.content.contains(TOKEN_PREFIX)
+                || communication
+                    .encrypted_content
+                    .as_deref()
+                    .is_some_and(|text| text.contains(TOKEN_PREFIX));
+        }
+        RolloutItem::Compacted(compacted) => {
+            found = compacted.message.contains(TOKEN_PREFIX);
+            if let Some(history) = &compacted.replacement_history {
+                for response_item in history {
+                    let mut item = response_item.clone();
+                    for_each_response_item_text(&mut item, &mut |text| {
+                        if text.contains(TOKEN_PREFIX) {
+                            found = true;
+                        }
+                    });
+                }
+            }
+        }
+        _ => {}
+    }
+    found
+}
+
 pub fn is_hex(value: &str) -> bool {
     !value.is_empty() && value.chars().all(|c| c.is_ascii_hexdigit())
 }

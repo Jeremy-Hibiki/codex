@@ -1,3 +1,4 @@
+use anyhow::Context;
 use anyhow::Result;
 use app_test_support::MockResponsesConfig;
 use app_test_support::TestAppServer;
@@ -389,5 +390,70 @@ async fn rpc_guard_allows_mem_root_paths_when_unengaged() -> Result<()> {
     let message = read_error_message(&mut mcp, request_id).await?;
     assert_ne!(message, BLOCK_MESSAGE);
 
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn engaged_session_keeps_reasoning_in_rollout() -> Result<()> {
+    let body = responses::sse(vec![
+        responses::ev_response_created("resp-1"),
+        responses::ev_reasoning_item("rsn-1", &["APP_REASONING_MARKER"], &[]),
+        responses::ev_assistant_message("msg-1", "done"),
+        responses::ev_completed("resp-1"),
+    ]);
+    let server = responses::start_mock_server().await;
+    Mock::given(method("POST"))
+        .and(path_regex(".*/responses$"))
+        .respond_with(responses::sse_response(body).set_delay(Duration::from_millis(1000)))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let codex_home = TempDir::new()?;
+    MockResponsesConfig::new(&server.uri())
+        .with_extra_config("[encrypted_skills]\nsdk = \"test_zip\"")
+        .write(codex_home.path())?;
+    let workspace = TempDir::new()?;
+    write_encrypted_skill(codex_home.path())?;
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .build_initialized_with_timeout(DEFAULT_TIMEOUT)
+        .await?;
+    let thread = mcp
+        .start_thread(ThreadStartParams {
+            cwd: Some(workspace.path().display().to_string()),
+            ..Default::default()
+        })
+        .await?
+        .thread;
+    let rollout_path = thread.path.context("thread rollout path")?;
+    let skill_path = codex_home
+        .path()
+        .join("skills")
+        .join(SKILL_NAME)
+        .join("SKILL.md");
+    let _turn_id = mcp
+        .send_turn_start_request(TurnStartParams {
+            thread_id: thread.id,
+            input: vec![
+                V2UserInput::Text {
+                    text: format!("please use ${SKILL_NAME}"),
+                    text_elements: Vec::new(),
+                },
+                V2UserInput::Skill {
+                    name: SKILL_NAME.to_string(),
+                    path: skill_path,
+                },
+            ],
+            approval_policy: Some(AskForApproval::Never),
+            ..Default::default()
+        })
+        .await?;
+    wait_for_turn_completed(&mut mcp).await?;
+
+    let rollout = std::fs::read_to_string(&rollout_path)?;
+    assert!(
+        rollout.contains("APP_REASONING_MARKER"),
+        "engaged app-server session must keep reasoning in rollout, got: {rollout}"
+    );
     Ok(())
 }

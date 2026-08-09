@@ -36,10 +36,20 @@ plugins = true
 "#,
     )?;
 
-    codex_command(codex_home.path())?
-        .args(["plugin", "list"])
-        .assert()
-        .stderr(contains(POLICY_ERROR).not());
+    // With no [product_policy] toggles, neither read nor mutation surfaces
+    // are blocked by product policy (they may fail for other reasons, e.g.
+    // missing marketplace, but never with the policy error).
+    for args in [
+        vec!["plugin", "list"],
+        vec!["plugin", "add", "sample@debug"],
+        vec!["plugin", "remove", "sample@debug"],
+        vec!["plugin", "marketplace", "list"],
+    ] {
+        codex_command(codex_home.path())?
+            .args(&args)
+            .assert()
+            .stderr(contains(POLICY_ERROR).not());
+    }
 
     Ok(())
 }

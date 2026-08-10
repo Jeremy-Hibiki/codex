@@ -24,6 +24,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 tree-sitter = { workspace = true }
 unicode-normalization = { workspace = true }
+zeroize = { workspace = true }
 zip = { workspace = true, features = ["deflate"] }
 
 # Real envelope backends (software / ukey / ukey-two-phase) backed by

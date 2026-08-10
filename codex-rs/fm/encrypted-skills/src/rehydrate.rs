@@ -49,7 +49,7 @@ pub(crate) fn rehydrate_text(
     rehydrate_text_mapped(text, owner_session, &mut |token| {
         cache
             .lookup(&token.session_id, &token.hex)
-            .map(|content| content.plaintext.clone())
+            .map(|content| content.plaintext.to_string())
     })
 }
 

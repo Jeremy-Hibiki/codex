@@ -110,7 +110,7 @@ fn guard_shell(
     // run, so partial fragments cannot be smuggled through command arguments.
     let known = runtime.known_plaintexts(session_id);
     if !known.is_empty() {
-        let known: Vec<&str> = known.iter().map(String::as_str).collect();
+        let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
         if export_guard::args_contain_plaintext(&[&rewritten], &known) {
             return GuardDecision::Blocked {
                 message:
@@ -218,7 +218,7 @@ fn guard_export(
     let mut values = Vec::new();
     collect_string_values(tool_input, &mut values);
     if !known.is_empty() {
-        let known: Vec<&str> = known.iter().map(String::as_str).collect();
+        let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
         if export_guard::args_contain_plaintext(&values, &known) {
             return GuardDecision::Blocked {
                 message:
@@ -280,7 +280,7 @@ pub fn guard_stdin_input(
     // (echo/printf/heredoc writing to disk, pipes to other processes, ...).
     let known = runtime.known_plaintexts(session_id);
     if !known.is_empty() {
-        let known: Vec<&str> = known.iter().map(String::as_str).collect();
+        let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
         if export_guard::args_contain_plaintext(&[chars], &known) {
             return GuardDecision::Blocked {
                 message:
@@ -397,7 +397,7 @@ pub fn redact_assistant_reply_items<'a>(
     if known.is_empty() {
         return items;
     }
-    let known: Vec<&str> = known.iter().map(String::as_str).collect();
+    let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
     let mut items = items;
     for item in items.to_mut() {
         redact_response_item_text(item, &known);
@@ -420,7 +420,7 @@ pub fn redact_assistant_reply_item(
     if known.is_empty() {
         return item;
     }
-    let known: Vec<&str> = known.iter().map(String::as_str).collect();
+    let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
     redact_response_item_text(&mut item, &known);
     item
 }
@@ -472,7 +472,7 @@ pub fn redact_text(runtime: &EncryptedSkillRuntime, session_id: &str, text: &str
     let mut out = text.to_string();
     let known = runtime.known_plaintexts(session_id);
     if !known.is_empty() {
-        let known: Vec<&str> = known.iter().map(String::as_str).collect();
+        let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
         out = export_guard::redact_known_plaintext(&out, &known);
     }
     runtime.redact(&out)
@@ -507,7 +507,7 @@ pub fn redact_all_response_item_text(
     items: &[ResponseItem],
 ) -> Vec<ResponseItem> {
     let known = runtime.known_plaintexts(session_id);
-    let known: Vec<&str> = known.iter().map(String::as_str).collect();
+    let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
     items
         .iter()
         .cloned()
@@ -609,7 +609,7 @@ pub fn redact_tool_output_plaintext_for_persistence(
     if known.is_empty() {
         return item;
     }
-    let known: Vec<&str> = known.iter().map(String::as_str).collect();
+    let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
     match &mut item {
         ResponseItem::Message { role, content, .. } if role == "developer" => {
             for content_item in content {
@@ -682,7 +682,7 @@ pub fn redact_turn_item(
     mut item: TurnItem,
 ) -> TurnItem {
     let known = runtime.known_plaintexts(session_id);
-    let known: Vec<&str> = known.iter().map(String::as_str).collect();
+    let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
     match &mut item {
         TurnItem::AgentMessage(agent_message) => {
             for content in &mut agent_message.content {

@@ -1,4 +1,64 @@
+fn git(args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new("git").args(args).output().ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+/// Build suffix `(revision, hash)` derived from `git describe`.
+///
+/// `git describe --tags --match 'rust-v[0-9]*'` picks the nearest reachable
+/// upstream tag, so the revision count follows the currently tracked upstream
+/// baseline automatically (for example `rust-v0.147.0-12-ga2b43d0099`). When
+/// HEAD is exactly on the tag there is no `-N-g...` segment: revision is `0`
+/// and the hash falls back to HEAD.
+fn describe_suffix() -> Option<(String, String)> {
+    let describe = git(&["describe", "--tags", "--match", "rust-v[0-9]*"])?;
+    let describe = describe.strip_prefix("rust-v")?;
+    if let Some((_, tail)) = describe.rsplit_once('-')
+        && let Some(hash) = tail.strip_prefix('g')
+    {
+        let (head, _) = describe.rsplit_once('-')?;
+        let (_, count) = head.rsplit_once('-')?;
+        let hash: String = hash.chars().take(8).collect();
+        Some((count.to_string(), hash))
+    } else {
+        // Exactly on the tag: no commit count segment, hash is HEAD itself.
+        Some((
+            "0".to_string(),
+            git(&["rev-parse", "--short=8", "HEAD"]).unwrap_or_else(|| "unknown".to_string()),
+        ))
+    }
+}
+
 fn main() {
+    // Build-version suffix `fm.rNNN-HHHHHHHH`: NNN is the commit count since
+    // the nearest reachable `rust-v<version>` tag (git describe semantics),
+    // HHHHHHHH is the short commit hash. Falls back to the full history count
+    // (or `r0-unknown`) outside a git worktree / without a matching tag.
+    let (revision, hash) = describe_suffix().unwrap_or_else(|| {
+        (
+            git(&["rev-list", "--count", "HEAD"]).unwrap_or_else(|| "0".to_string()),
+            git(&["rev-parse", "--short=8", "HEAD"]).unwrap_or_else(|| "unknown".to_string()),
+        )
+    });
+    println!("cargo:rustc-env=FM_BUILD_SUFFIX=fm.r{revision}-{hash}");
+    if let Some(head_path) = git(&["rev-parse", "--git-path", "HEAD"]) {
+        println!("cargo:rerun-if-changed={head_path}");
+        if let Some(tags_path) = git(&["rev-parse", "--git-path", "refs/tags"]) {
+            println!("cargo:rerun-if-changed={tags_path}");
+        }
+    } else {
+        // Outside git, always rerun so a later build inside a worktree picks
+        // up the version suffix.
+        println!("cargo:rerun-if-changed=build.rs");
+    }
+    // Changing the Cargo.toml version (for example when bumping the upstream
+    // baseline) must also rerun this build script.
+    println!("cargo:rerun-if-changed=Cargo.toml");
+
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         println!("cargo:rustc-link-arg=-ObjC");
     }

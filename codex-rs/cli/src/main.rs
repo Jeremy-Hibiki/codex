@@ -94,7 +94,7 @@ use codex_terminal_detection::TerminalName;
 #[derive(Debug, Parser)]
 #[clap(
     author,
-    version,
+    version = concat!(env!("CARGO_PKG_VERSION"), "-", env!("FM_BUILD_SUFFIX")),
     // If a sub‑command is given, ignore requirements of the default args.
     subcommand_negates_reqs = true,
     // The executable is sometimes invoked via a platform‑specific name like
@@ -954,6 +954,16 @@ fn stage_str(stage: Stage) -> &'static str {
         Stage::Deprecated => "deprecated",
         Stage::Removed => "removed",
     }
+}
+
+/// Full CLI version: `Cargo.toml` version plus the build suffix injected by
+/// `build.rs` (`fm.rNNN-HHHHHHHH`, where NNN is the git commit count).
+pub(crate) fn build_version() -> String {
+    format!(
+        "{}-{}",
+        env!("CARGO_PKG_VERSION"),
+        option_env!("FM_BUILD_SUFFIX").unwrap_or("fm.r0-unknown")
+    )
 }
 
 fn requests_full_access(shared: &SharedCliOptions) -> bool {

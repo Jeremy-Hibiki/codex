@@ -56,16 +56,19 @@ fn main() {
             });
             format!("fm.r{revision}-{hash}")
         });
+    // Always set cargo:rustc-env so env!("FM_BUILD_SUFFIX") in main.rs can
+    // expand at compile time.
     println!("cargo:rustc-env=FM_BUILD_SUFFIX={suffix}");
+    // FM_BUILD_SUFFIX is an env-var input to this script. Without this,
+    // cargo skips build.rs on incremental builds (no source files changed),
+    // baking in the old suffix.
+    println!("cargo:rerun-if-env-changed=FM_BUILD_SUFFIX");
+    println!("cargo:rerun-if-changed=build.rs");
     if let Some(head_path) = git(&["rev-parse", "--git-path", "HEAD"]) {
         println!("cargo:rerun-if-changed={head_path}");
         if let Some(tags_path) = git(&["rev-parse", "--git-path", "refs/tags"]) {
             println!("cargo:rerun-if-changed={tags_path}");
         }
-    } else {
-        // Outside git, always rerun so a later build inside a worktree picks
-        // up the version suffix.
-        println!("cargo:rerun-if-changed=build.rs");
     }
     // Changing the Cargo.toml version (for example when bumping the upstream
     // baseline) must also rerun this build script.

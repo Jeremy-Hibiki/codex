@@ -115,6 +115,11 @@ WORKDIR /workspace/codex-rs
 # CARGO_NET_GIT_FETCH_WITH_CLI makes cargo use git CLI (respects insteadOf).
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true \
     RUSTY_V8_MIRROR=https://ghfast.top/github.com/denoland/rusty_v8/releases/download
+# Force a cache miss when FM_BUILD_SUFFIX changes. build.rs reads this at
+# compile time (cargo:rustc-env), but Docker layer caching only keys on file
+# hashes, so without this touch the old suffix is baked into a reused layer.
+ARG FM_BUILD_SUFFIX
+RUN echo "$FM_BUILD_SUFFIX" > /tmp/build-suffix-marker
 
 # Build. CARGO_PROFILE=release (default) uses --release + strip; =debug
 # builds without optimization and keeps symbols for profiling/debugging.

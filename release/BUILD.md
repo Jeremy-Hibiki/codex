@@ -14,30 +14,28 @@
 ### 方式一：本地 Bazel 构建
 
 ```bash
-# 1. 启动 BCR registry proxy（重写 BCR JSON 中的 github.com → ghfast.top）
-nohup python3 release/bazel-registry-proxy.py 8765 > /tmp/proxy.log 2>&1 &
+# 推荐：统一构建脚本（自动计算 fm.rNNN-HHHHHHHH 并注入 Bazel）
+release/build-fm.sh --local
 
-# 2. 预下载无法 patch 的 BCR 内部归档到 distdir
-bash release/predownload-deps.sh
-
-# 3. 构建
-bazel build //codex-rs/cli:codex
-
-# 4. 验证
-bazel-bin/codex-rs/cli/codex --version
-# 输出: codex 0.146.0-fm.1
+# 等价手动流程：
+# 1. 启动 BCR registry proxy + 预下载依赖
+# nohup python3 release/bazel-registry-proxy.py 8765 > /tmp/proxy.log 2>&1 &
+# bash release/predownload-deps.sh
+# 2. 计算后缀并构建（Bazel 沙箱没有 git 元数据，必须通过 action env 传入）
+# suffix=fm.r37-456e4457
+# bazel build --action_env=FM_BUILD_SUFFIX="$suffix" //codex-rs/cli:codex
+# 3. 验证
+# bazel-bin/codex-rs/cli/codex --version
+# 输出: codex 0.146.0-fm.r37-456e4457
 ```
 
 ### 方式二：Docker 构建（推荐，用于分发）
 
 ```bash
-DOCKER_BUILDKIT=1 docker build \
-  --build-arg HTTP_PROXY="$HTTP_PROXY" \
-  --build-arg HTTPS_PROXY="$HTTPS_PROXY" \
-  --build-arg NO_PROXY="$NO_PROXY" \
-  --build-arg UBUNTU_VERSION=20.04 \
-  -t codex:ubuntu-20.04 \
-  -f release/Dockerfile .
+release/build-fm.sh                        # 默认 Docker 构建，tag: codex:v<base>-fm.rNNN-HHHHHHHH-ubuntu-20.04
+release/build-fm.sh --ubuntu-version 22.04
+release/build-fm.sh --tag codex:custom
+release/build-fm.sh --appimage            # 额外产出纯 CLI 单文件 AppImage（codex-<version>-x86_64.AppImage，无 desktop/icon；AppDir/打包全在容器 appimage stage 内完成）
 
 # 提取二进制
 id=$(docker create codex:ubuntu-20.04)
@@ -84,14 +82,6 @@ BuildKit cache mount 会自动持久化 Bazel 编译缓存，增量构建跳过�
 | `FMSH_CODEX_LIC_VERSION` | fm-license crate | ✅ | — | 特性版本 |
 | `FMSH_CODEX_LIC_DISPLAY_NAME` | fm-license crate | ❌ | `"Codex"` | 显示名 |
 
-### 拦截行为
-
-- **所有构建模式（debug + release）无条件强制验证**
-- 无任何环境变量逃逸口
-- 拦截范围：TUI interactive (`None`)、`exec`、`review` 三个产品子命令
-- 不拦截：`--version`、`--help`、`app-server`、`mcp`、`auth` 等元命令/辅助子命令
-- lmclient SDK 仅在 `target_env = "gnu"` 下编译（Linux x86_64 glibc）
-
 ### lmclient 静态库链接
 
 lmclient-rust-sdk 在源码树内打包了 `liblmclient.a`（CentOS 7 glibc 编译）。由于 rules_rust 的 sandbox 机制，build.rs 的 `cargo:rustc-link-search` 输出对 rustc 编译 action 不可见，因此用 `cc_import` + `cc_library` 替代：
@@ -113,14 +103,25 @@ lmclient-rust-sdk 在源码树内打包了 `liblmclient.a`（CentOS 7 glibc 编�
   patches = [...], deps = ["@crates//:fmsh_ukey_native"])` — 禁用 build.rs 并注入 native 依赖。
 
 运行期说明：`libfmsh_ukey_sdk.so` 的 SONAME 是 `libfmsh_ukey_sdk.so.0`，其 NEEDED
-`libcrypto.so.1.1` 由 Ubuntu 20.04 系统 OpenSSL 1.1 提供；发布镜像只需把
-`libfmsh_ukey_sdk.so.0` 放到二进制可找到的位置（`LD_LIBRARY_PATH` 或镜像内 lib 目录），
-开发环境按前文设置 `LD_LIBRARY_PATH=$PWD/vendor/fmsh-ukey-sdk/linux/lib` 即可。
+`libcrypto.so.1.1` 由 Ubuntu 20.04 系统 OpenSSL 1.1 提供。Dockerfile 已把
+`libfmsh_ukey_sdk.so.0` / `libcrypto.so.1.1` / GM3000 provider
+`libgm3000.1.0.so` 打包到 `/usr/local/bin/lib`，且二进制 RUNPATH 包含
+`$ORIGIN/lib`，镜像内外（二进制同级 `lib/` 目录）都能直接解析；GM3000
+provider 是运行时 `dlopen` 加载，需通过 `FMSH_UKEY_PROVIDER` 指定其路径
+（如 `/usr/local/bin/lib/libgm3000.1.0.so`）。开发环境按前文设置
+`LD_LIBRARY_PATH=$PWD/vendor/fmsh-ukey-sdk/linux/lib` 即可。
 
 ## 版本号注入
 
-Bazel 的 rules_rust 默认将 `CARGO_PKG_VERSION` 设为 `0.0.0`（不像 Cargo 那样读 Cargo.toml）。
-`defs.bzl` 中的 `WORKSPACE_VERSION` 常量通过 `rust_library` 和 `rust_binary` 的 `version` 属性注入正确版本号，使 `env!("CARGO_PKG_VERSION")` 在编译期正确解析。
+版本号格式为 `0.146.0-fm.rNNN-HHHHHHHH`：
+
+- `defs.bzl` 的 `WORKSPACE_VERSION`（=`0.146.0`）通过 `rust_library` / `rust_binary`
+  的 `version` 属性注入 `CARGO_PKG_VERSION`，与 Cargo 构建保持一致；
+- `codex-rs/cli/build.rs` 用 `git describe --tags --match 'rust-v[0-9]*'` 计算
+  `fm.rNNN-HHHHHHHH`（NNN = 距最近 `rust-v*` tag 的 commit 数，HHHHHHHH = 短 hash）；
+- Cargo 构建直接由 build.rs 计算；Bazel/Docker 沙箱内没有 git 元数据，由
+  `release/build-fm.sh` 在构建前算好后通过 `FM_BUILD_SUFFIX` 环境变量 /
+  `--build-arg` + `--action_env` 注入（build.rs 优先使用该覆盖值）。
 
 ## distdir 预缓存
 
@@ -128,11 +129,34 @@ Bazel 的 rules_rust 默认将 `CARGO_PKG_VERSION` 设为 `0.0.0`（不像 Cargo
 
 `release/predownload-deps.sh` 负责下载那些 **BCR 模块内部** 引用的、无法通过 MODULE.bazel patch 修改的 github.com 归档（如 `bsdtar-prebuilt`、`bats-core`）。如果新版本出现新的未覆盖 URL，在此脚本中添加即可。
 
+## Hermetic LLVM 工具链
+
+Hermetic LLVM 指「自包含、可复现」的 LLVM 工具链：编译 C/C++ 时使用 Bazel 按固定版本
+下载的 LLVM（Clang + lld + libc++/compiler-rt），不依赖构建机/宿主机上装了哪个版本的
+gcc/clang，保证本机、CI、Docker 里构建行为完全一致。
+
+仓库中的落地方式：
+
+- `MODULE.bazel`：`bazel_dep(name = "llvm", version = "0.8.11")` +
+  `register_toolchains("@llvm//toolchain:all")`，并用 `patches/llvm_*.patch`
+  适配自定义 libc++ 与 Windows gnullvm/arm64 需求；
+- `.bazelrc`：`BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1` /
+  `BAZEL_NO_APPLE_CPP_TOOLCHAIN=1`，禁用宿主机 C/C++ 工具链探测；
+- `BUILD.bazel`：目标平台标记为 glibc 2.28 兼容，产出 max GLIBC 2.28 的二进制。
+
+效果：
+
+- V8、ICU、AWS-LC/OpenSSL 等 C/C++ 依赖统一由这套 clang/lld 编译，并静态链接进
+  `codex` 二进制；
+- 运行镜像不再需要构建机上的任何编译器，只需 glibc 和少数系统动态库
+  （`libcurl4`、`libstdc++6`、`libzstd1`）以及 fmsh-ukey SDK；
+- 同一份代码在不同环境构建结果一致，排查问题时不依赖「构建机装了哪个版本的工具链」。
+
 ## 产出规格
 
 ```
 $ codex --version
-codex 0.146.0-fm.1
+codex 0.146.0-fm.r37-456e4457
 
 $ file codex
 ELF 64-bit LSB pie executable, x86-64, dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2
@@ -156,6 +180,7 @@ patches/v8_module_deps.patch                V8 模块依赖重构 + ghfast URLs
 patches/rules_rs_rust_archive_url.patch     rules_rs 内部 URL → ghfast.top
 third_party/lmclient/additive.BUILD.bazel   lmclient cc_import + 系统库链接
 release/Dockerfile                          多阶段 Docker 构建（Ubuntu 20.04, BuildKit cache）
+release/build-fm.sh                         统一构建脚本（计算版本后缀 + Docker/本地 Bazel）
 release/bazel-registry-proxy.py             BCR GitHub URL 重写代理
 release/predownload-deps.sh                 BCR 内部归档预下载脚本
 release/bazel-distdir/                      预下载的依赖归档（按 sha256 匹配）

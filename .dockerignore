@@ -8,4 +8,6 @@ bazel-code*
 .codegraph/
 .git/
 output/
+*.AppImage
+squashfs-root/
 **/node_modules/

@@ -33,9 +33,11 @@ FROM ubuntu:${UBUNTU_VERSION} AS builder
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY
+ARG FM_BUILD_SUFFIX=fm.r0-unknown
 ENV http_proxy=${HTTP_PROXY} \
     https_proxy=${HTTPS_PROXY} \
     no_proxy=${NO_PROXY} \
+    FM_BUILD_SUFFIX=${FM_BUILD_SUFFIX} \
     DEBIAN_FRONTEND=noninteractive
 
 # Aliyun apt mirror for China network (classic sources.list format)
@@ -82,11 +84,84 @@ RUN --mount=type=cache,target=/root/.cache/bazel-disk-cache,sharing=locked \
     --mount=type=cache,target=/root/.cache/bazelisk,sharing=locked \
     python3 release/bazel-registry-proxy.py 8765 > /tmp/proxy.log 2>&1 & \
     sleep 1 && \
-    bazel build //codex-rs/cli:codex --nobuild \
-    && bazel build //codex-rs/cli:codex \
-    && bazel shutdown \
-    && cp bazel-bin/codex-rs/cli/codex /codex \
-    && strip /codex
+    bazel build --action_env=FM_BUILD_SUFFIX //codex-rs/cli:codex --nobuild \
+    && bazel build --action_env=FM_BUILD_SUFFIX //codex-rs/cli:codex \
+    && mkdir -p /codex/lib \
+    && cp bazel-bin/codex-rs/cli/codex /codex/codex \
+    && strip /codex/codex \
+    # Bundle the fmsh-ukey SDK shared libraries next to the binary. The
+    # executable's RUNPATH includes $ORIGIN/lib, so the runtime image only
+    # needs these files copied to /usr/local/bin/lib. The GM3000 provider
+    # (libgm3000.1.0.so) is dlopen'd at runtime via FMSH_UKEY_PROVIDER, so it
+    # never appears in NEEDED/_solib_k8 and must be copied from the vendored
+    # SDK directory explicitly.
+    && cp -L bazel-bin/_solib_k8/*/*.so* /codex/lib/ \
+    && gm3000_provider="$(find -L "$(bazel info output_base)/execroot/_main/external" \
+        -name 'libgm3000.1.0.so' | head -n1)" \
+    && cp -L "$gm3000_provider" /codex/lib/ \
+    && bazel shutdown
+
+# ── appimage stage ──────────────────────────────────────────────────────
+# Builds the single-file CLI AppImage entirely inside the container:
+# assembles AppDir (codex + SDK/closure libs + AppRun), packs squashfs and
+# concatenates the type2 runtime. No desktop file / icon (pure CLI).
+FROM ubuntu:${UBUNTU_VERSION} AS appimage
+
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ARG FM_BUILD_SUFFIX=fm.r0-unknown
+ARG FM_BASE_VERSION=0.146.0
+ENV http_proxy=${HTTP_PROXY} \
+    https_proxy=${HTTPS_PROXY} \
+    no_proxy=${NO_PROXY} \
+    DEBIAN_FRONTEND=noninteractive
+
+RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
+        /etc/apt/sources.list \
+    && sed -i 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
+        /etc/apt/sources.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates libcurl4 libstdc++6 libzstd1
+
+COPY --from=builder /codex/codex /app/usr/bin/codex
+COPY --from=builder /codex/lib /app/usr/bin/lib/
+
+RUN mkdir -p /app/usr/lib /work \
+    && ldd /app/usr/bin/codex \
+        | awk -F'=> ' '/=> \// {print $2}' \
+        | awk '{print $1}' | sort -u \
+        | while read -r lib; do \
+            case "$lib" in \
+                */ld-linux*|*/libc.so.6|*/libm.so.6|*/libpthread.so.0 \
+                |*/libdl.so.2|*/librt.so.1|*/libutil.so.1|*/libresolv.so.2 \
+                |*/libfmsh_ukey_sdk.so*|*/libcrypto.so.1.1) continue ;; \
+            esac; \
+            cp -L "$lib" /app/usr/lib/; \
+          done \
+    && true
+
+RUN cat > /app/AppRun <<'EOF'
+#!/bin/sh
+SELF="$(readlink -f "$0")"
+APPDIR="${SELF%/*}"
+export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/bin/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$APPDIR/usr/bin/codex" "$@"
+EOF
+
+RUN chmod +x /app/AppRun /app/usr/bin/codex \
+    && curl -fsSL "https://ghfast.top/github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" \
+        -o /work/appimagetool \
+    && chmod +x /work/appimagetool \
+    && curl -fsSL "https://ghfast.top/github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64" \
+        -o /work/runtime \
+    && cd /work \
+    && APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool --appimage-extract >/dev/null \
+    && ./squashfs-root/usr/bin/mksquashfs /app /work/codex.squashfs \
+        -comp zstd -b 131072 -noappend >/dev/null \
+    && cp /work/runtime "/codex-${FM_BASE_VERSION}-${FM_BUILD_SUFFIX}-x86_64.AppImage" \
+    && cat /work/codex.squashfs >> "/codex-${FM_BASE_VERSION}-${FM_BUILD_SUFFIX}-x86_64.AppImage" \
+    && chmod +x "/codex-${FM_BASE_VERSION}-${FM_BUILD_SUFFIX}-x86_64.AppImage"
 
 # ── runtime stage ─────────────────────────────────────────────────────────
 FROM ubuntu:${UBUNTU_VERSION}
@@ -102,7 +177,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get update && apt-get install -y --no-install-recommends \
         libcurl4 libstdc++6 libzstd1
 
-COPY --from=builder /codex /usr/local/bin/codex
+COPY --from=builder /codex/codex /usr/local/bin/codex
+COPY --from=builder /codex/lib /usr/local/bin/lib
 RUN chmod +x /usr/local/bin/codex
 
 ENTRYPOINT ["codex"]

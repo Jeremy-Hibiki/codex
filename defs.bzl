@@ -7,7 +7,7 @@ load("//bazel/rules/testing/wine:wine_runtime.bzl", "WINE_TEST_TARGET_COMPATIBLE
 
 # Workspace version — injected via rules_rust version attr so env!("CARGO_PKG_VERSION")
 # resolves correctly under Bazel (rules_rust defaults to "0.0.0").
-WORKSPACE_VERSION = "0.146.0-fm.1"
+WORKSPACE_VERSION = "0.146.0"
 
 # Match Cargo's Windows linker behavior so Bazel-built binaries and tests use
 # the same stack reserve on both Windows ABIs and resolve UCRT imports on MSVC.

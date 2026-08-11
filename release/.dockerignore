@@ -9,4 +9,6 @@ bazel-code*
 .git/
 output/
 release/bazel-distdir/
+*.AppImage
+squashfs-root/
 **/node_modules/

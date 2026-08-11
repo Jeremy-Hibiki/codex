@@ -34,17 +34,29 @@ fn describe_suffix() -> Option<(String, String)> {
 }
 
 fn main() {
-    // Build-version suffix `fm.rNNN-HHHHHHHH`: NNN is the commit count since
-    // the nearest reachable `rust-v<version>` tag (git describe semantics),
-    // HHHHHHHH is the short commit hash. Falls back to the full history count
-    // (or `r0-unknown`) outside a git worktree / without a matching tag.
-    let (revision, hash) = describe_suffix().unwrap_or_else(|| {
-        (
-            git(&["rev-list", "--count", "HEAD"]).unwrap_or_else(|| "0".to_string()),
-            git(&["rev-parse", "--short=8", "HEAD"]).unwrap_or_else(|| "unknown".to_string()),
-        )
-    });
-    println!("cargo:rustc-env=FM_BUILD_SUFFIX=fm.r{revision}-{hash}");
+    // Bazel/Docker builds run outside a git checkout (or without the git
+    // metadata in the action sandbox), so callers can inject the exact suffix
+    // through the FM_BUILD_SUFFIX environment variable (for example
+    // `fm.r37-456e4457`). Cargo builds keep deriving it from `git describe`.
+    let suffix = std::env::var("FM_BUILD_SUFFIX")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            // Build-version suffix `fm.rNNN-HHHHHHHH`: NNN is the commit count
+            // since the nearest reachable `rust-v<version>` tag (git describe
+            // semantics), HHHHHHHH is the short commit hash. Falls back to the
+            // full history count (or `r0-unknown`) outside a git worktree /
+            // without a matching tag.
+            let (revision, hash) = describe_suffix().unwrap_or_else(|| {
+                (
+                    git(&["rev-list", "--count", "HEAD"]).unwrap_or_else(|| "0".to_string()),
+                    git(&["rev-parse", "--short=8", "HEAD"])
+                        .unwrap_or_else(|| "unknown".to_string()),
+                )
+            });
+            format!("fm.r{revision}-{hash}")
+        });
+    println!("cargo:rustc-env=FM_BUILD_SUFFIX={suffix}");
     if let Some(head_path) = git(&["rev-parse", "--git-path", "HEAD"]) {
         println!("cargo:rerun-if-changed={head_path}");
         if let Some(tags_path) = git(&["rev-parse", "--git-path", "refs/tags"]) {

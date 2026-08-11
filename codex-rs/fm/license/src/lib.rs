@@ -13,6 +13,9 @@
 //!
 //! Verification is enforced in every build mode unless the product-level skip
 //! switch `FMSH_CODEX_LIC_TEST_BYPASS` is set (release builds honor it too).
+//! A Codex process spawned from inside another Codex session (detected on
+//! Linux via the inherited `CODEX_THREAD_ID` shell-tool marker) skips the
+//! checkout so nested sessions do not consume extra license seats.
 //! The LMCLIENT SDK reads `FMSH_LIC_SERVER` internally (`<port>@<host>`).
 //! `FMSH_CODEX_LIC_FEATURE` and `FMSH_CODEX_LIC_VERSION` must be set
 //! explicitly. `FMSH_CODEX_LIC_DISPLAY_NAME` is optional and defaults to

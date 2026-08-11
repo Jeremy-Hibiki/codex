@@ -2,6 +2,7 @@
 
 use anyhow::Context;
 use anyhow::Result;
+use codex_core::exec_env::CODEX_THREAD_ID_ENV_VAR;
 use lmclient_rust_sdk::InitConfig;
 use lmclient_rust_sdk::LM_NOWAIT;
 use lmclient_rust_sdk::LicenseClient;
@@ -236,10 +237,19 @@ pub fn init_entry() -> Result<LicenseGuard> {
 /// The bypass is a product-level skip switch, not a debug-only test hook, so
 /// release builds honor the same environment variable.
 ///
+/// Processes spawned from inside a Codex session inherit `CODEX_THREAD_ID`
+/// and skip the checkout, so a Codex session that starts another Codex does
+/// not consume a second license seat.
+///
 /// The LMCLIENT SDK reads `FMSH_LIC_SERVER` internally (`<port>@<host>`).
 /// This function reads `FMSH_CODEX_LIC_FEATURE` and `FMSH_CODEX_LIC_VERSION`
 /// (both required) and optionally `FMSH_CODEX_LIC_DISPLAY_NAME` (defaults to `"Codex"`).
 pub fn verify_at_startup() -> Result<LicenseGuard> {
+    if std::env::var_os(CODEX_THREAD_ID_ENV_VAR).is_some() {
+        tracing::info!("nested codex process detected; skipping FMSH license checkout");
+        return Ok(LicenseGuard { client: None });
+    }
+
     if test_bypass_enabled() {
         if test_force_lost_enabled() {
             mark_license_lost();

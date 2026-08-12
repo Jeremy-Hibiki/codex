@@ -55,6 +55,69 @@ fn script_run_detection_excludes_python_c() {
 }
 
 #[test]
+fn script_run_detection_matches_tclsh_script() {
+    let tokens = vec!["tclsh".to_string(), "scripts/run.tcl".to_string()];
+
+    assert_eq!(script_run_token(&tokens), Some("scripts/run.tcl"));
+}
+
+#[test]
+fn script_run_detection_matches_versioned_tclsh() {
+    let tokens = vec!["tclsh8.6".to_string(), "scripts/run.tcl".to_string()];
+
+    assert_eq!(script_run_token(&tokens), Some("scripts/run.tcl"));
+}
+
+#[test]
+fn script_run_detection_matches_tclsh_script_after_flag_value() {
+    let tokens = vec![
+        "tclsh".to_string(),
+        "-encoding".to_string(),
+        "utf-8".to_string(),
+        "scripts/run.tcl".to_string(),
+    ];
+
+    assert_eq!(script_run_token(&tokens), Some("scripts/run.tcl"));
+}
+
+#[test]
+fn script_run_detection_matches_vivado_source_flag() {
+    let tokens = vec![
+        "vivado".to_string(),
+        "-mode".to_string(),
+        "batch".to_string(),
+        "-source".to_string(),
+        "scripts/run.tcl".to_string(),
+    ];
+
+    assert_eq!(script_run_token(&tokens), Some("scripts/run.tcl"));
+}
+
+#[test]
+fn script_run_detection_matches_synopsys_shell_f_flag() {
+    let tokens = vec![
+        "dc_shell".to_string(),
+        "-64bit".to_string(),
+        "-f".to_string(),
+        "scripts/run.tcl".to_string(),
+    ];
+
+    assert_eq!(script_run_token(&tokens), Some("scripts/run.tcl"));
+}
+
+#[test]
+fn script_run_detection_requires_script_for_eda_tool() {
+    let tokens = vec![
+        "vivado".to_string(),
+        "-mode".to_string(),
+        "batch".to_string(),
+        "-version".to_string(),
+    ];
+
+    assert_eq!(script_run_token(&tokens), None);
+}
+
+#[test]
 fn skill_doc_read_detection_matches_absolute_path() {
     let skill_doc_path = test_path_buf("/tmp/skill-test/SKILL.md").abs();
     let normalized_skill_doc_path = canonicalize_if_exists(&skill_doc_path);
@@ -72,6 +135,32 @@ fn skill_doc_read_detection_matches_absolute_path() {
         "head".to_string(),
     ];
     let found = detect_skill_doc_read(&outcome, &tokens, &test_path_buf("/tmp").abs());
+
+    assert_eq!(
+        found.map(|value| value.name),
+        Some("test-skill".to_string())
+    );
+}
+
+#[test]
+fn skill_script_run_detection_matches_vivado_source_flag() {
+    let skill_doc_path = test_path_buf("/tmp/skill-test/SKILL.md").abs();
+    let scripts_dir = canonicalize_if_exists(&test_path_buf("/tmp/skill-test/scripts").abs());
+    let skill = test_skill_metadata(skill_doc_path);
+    let outcome = SkillLoadOutcome {
+        implicit_skills_by_scripts_dir: Arc::new(HashMap::from([(scripts_dir, skill)])),
+        implicit_skills_by_doc_path: Arc::new(HashMap::new()),
+        ..Default::default()
+    };
+    let tokens = vec![
+        "vivado".to_string(),
+        "-mode".to_string(),
+        "batch".to_string(),
+        "-source".to_string(),
+        "scripts/run.tcl".to_string(),
+    ];
+
+    let found = detect_skill_script_run(&outcome, &tokens, &test_path_buf("/tmp/skill-test").abs());
 
     assert_eq!(
         found.map(|value| value.name),

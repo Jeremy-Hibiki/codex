@@ -48,17 +48,46 @@ fn tokenize_command(command: &str) -> Vec<String> {
         .unwrap_or_else(|| command.split_whitespace().map(str::to_string).collect())
 }
 
+/// Recognized script interpreters and TCL-driven EDA tools that run a script
+/// file from a skill's `scripts/` directory.
+///
+/// EDA tools pass the script behind a tool-specific flag, e.g.
+/// `vivado -mode batch -source scripts/run.tcl` or `dc_shell -f run.tcl`,
+/// while `tclsh`/`wish` take it positionally.
 fn script_run_token(tokens: &[String]) -> Option<&str> {
-    const RUNNERS: [&str; 10] = [
+    const GENERAL_RUNNERS: [&str; 10] = [
         "python", "python3", "bash", "zsh", "sh", "node", "deno", "ruby", "perl", "pwsh",
+    ];
+    const TCL_RUNNERS: [&str; 16] = [
+        "tclsh",
+        "wish",
+        "vivado",
+        "vivado_hls",
+        "vitis",
+        "quartus_sh",
+        "dc_shell",
+        "dc_shell-xg",
+        "dc_shell-xg-t",
+        "pt_shell",
+        "icc2_shell",
+        "fm_shell",
+        "genus",
+        "innovus",
+        "vsim",
+        "questa",
     ];
     const SCRIPT_EXTENSIONS: [&str; 7] = [".py", ".sh", ".js", ".ts", ".rb", ".pl", ".ps1"];
 
     let runner_token = tokens.first()?;
     let runner = command_basename(runner_token).to_ascii_lowercase();
     let runner = runner.strip_suffix(".exe").unwrap_or(&runner);
-    if !RUNNERS.contains(&runner) {
+    let runner = strip_runner_version(runner);
+    if !GENERAL_RUNNERS.contains(&runner) && !TCL_RUNNERS.contains(&runner) {
         return None;
+    }
+
+    if TCL_RUNNERS.contains(&runner) {
+        return tcl_script_token(&tokens[1..]);
     }
 
     let mut script_token = None;
@@ -78,6 +107,40 @@ fn script_run_token(tokens: &[String]) -> Option<&str> {
     }
 
     None
+}
+
+/// TCL-driven EDA tools pass the script behind a flag: `-source` (Vivado/Vitis),
+/// `-f` (Synopsys shells), `-t` (Quartus), `-do` (ModelSim/Questa). `tclsh`/`wish`
+/// take it positionally, possibly after flag values such as `-encoding utf-8`.
+fn tcl_script_token(args: &[String]) -> Option<&str> {
+    for pair in args.windows(2) {
+        if matches!(pair[0].as_str(), "-source" | "-f" | "-t" | "-do")
+            && is_tcl_script(pair[1].as_str())
+        {
+            return Some(pair[1].as_str());
+        }
+    }
+    args.iter()
+        .find(|token| !token.starts_with('-') && is_tcl_script(token))
+        .map(String::as_str)
+}
+
+fn is_tcl_script(token: &str) -> bool {
+    token.to_ascii_lowercase().ends_with(".tcl")
+}
+
+/// Maps versioned TCL interpreter binaries such as `tclsh8.6` back to the base
+/// name that identifies them as TCL runners.
+fn strip_runner_version(runner: &str) -> &str {
+    for base in ["tclsh", "wish"] {
+        if let Some(rest) = runner.strip_prefix(base)
+            && !rest.is_empty()
+            && rest.chars().all(|c| c.is_ascii_digit() || c == '.')
+        {
+            return base;
+        }
+    }
+    runner
 }
 
 fn detect_skill_script_run(

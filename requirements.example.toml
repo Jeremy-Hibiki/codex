@@ -70,8 +70,9 @@ allowed_approval_policies = ["on-request"]
 
 # ── Encrypted skills ──────────────────────────────────────────────────────
 [encrypted_skills]
-# Envelope SDK used to decrypt encrypted skill packages (hardware UKey).
-sdk = "ukey"
+# The envelope backend is auto-detected per package from its frontmatter
+# `metadata.encryption.mode` (software / ukey / ukey-two-phase / mock), so no
+# `sdk` selection is required. Only credentials are configured below.
 # Per-skill idle TTL before decrypted content is unloaded.
 skill_idle_ttl_secs = 600
 # Audit log for decryption/rehydration/redaction events.

@@ -36,6 +36,7 @@ zip = { workspace = true, features = ["deflate"] }
 # FMSH_UKEY_PROVIDER / FMSH_UKEY_CONTAINER (and the hardware) at runtime.
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
 fmsh-ukey-core = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "9c479813182d7f37c3fcae2c4a80342e1e3188ee" }
+fmsh-ukey-skill = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "9c479813182d7f37c3fcae2c4a80342e1e3188ee" }
 
 [dev-dependencies]
 anyhow = { workspace = true }

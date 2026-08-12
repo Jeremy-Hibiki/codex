@@ -84,6 +84,7 @@ fn encrypted_skill(name: &str, path: &str) -> SkillMetadata {
             version: Some(2),
             key_id: Some("required_hardware_key".into()),
             algorithm: Some("ZIP-AES-256-CBC".into()),
+            mode: Some("mock".into()),
             package: Some(format!("{name}.zip.enc")),
         }),
         ..make_skill(name, path)

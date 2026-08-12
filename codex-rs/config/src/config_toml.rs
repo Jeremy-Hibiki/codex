@@ -149,7 +149,14 @@ pub struct OrchestratorFeatureToml {
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EncryptedSkillsSdkToml {
+    /// Auto-detect the envelope backend per package from the skill
+    /// `metadata.encryption.mode` (upstream `detect_mode`). The default, so
+    /// deployments do not need to configure a global SDK.
     #[default]
+    #[serde(rename = "auto")]
+    Auto,
+    /// Explicitly disable encrypted-skill decryption (fail closed).
+    #[serde(rename = "unavailable")]
     Unavailable,
     /// Test-only SDK that decrypts plain ZIP `.zip.enc` packages.
     TestZip,
@@ -1167,10 +1174,25 @@ command = "   "
     }
 
     #[test]
-    fn encrypted_skills_toml_defaults_are_fail_closed() {
+    fn encrypted_skills_toml_defaults_are_unset() {
         let parsed: EncryptedSkillsToml = toml::from_str("").unwrap();
         assert_eq!(parsed.sdk, None);
         assert_eq!(parsed.skill_idle_ttl_secs, None);
+    }
+
+    #[test]
+    fn encrypted_skills_sdk_defaults_to_auto_detection() {
+        assert_eq!(
+            EncryptedSkillsSdkToml::default(),
+            EncryptedSkillsSdkToml::Auto,
+            "no sdk configured must auto-detect the backend per package"
+        );
+    }
+
+    #[test]
+    fn encrypted_skills_toml_parses_auto_sdk() {
+        let parsed: EncryptedSkillsToml = toml::from_str("sdk = \"auto\"").unwrap();
+        assert_eq!(parsed.sdk, Some(EncryptedSkillsSdkToml::Auto));
     }
 
     #[test]

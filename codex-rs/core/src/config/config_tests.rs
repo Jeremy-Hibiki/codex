@@ -12191,3 +12191,17 @@ skill_idle_ttl_secs = 120
     );
     Ok(())
 }
+
+#[test]
+fn encrypted_skills_runtime_sdk_defaults_to_auto_detection() {
+    let config = EncryptedSkillsRuntimeConfig::default();
+    assert_eq!(
+        config.into_sdk(),
+        fm_encrypted_skills::sdk::SdkKind::Auto {
+            software_algorithm: fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::HpkeX25519Aes256Gcm,
+            software_privkey: None,
+            key_envelope: "key.enc".to_string(),
+        },
+        "no sdk configured must auto-detect the backend per package"
+    );
+}

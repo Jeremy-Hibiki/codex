@@ -91,6 +91,8 @@ struct SkillEncryptionFrontmatter {
     #[serde(default)]
     algorithm: Option<String>,
     #[serde(default)]
+    mode: Option<String>,
+    #[serde(default)]
     package: Option<String>,
 }
 
@@ -813,6 +815,11 @@ fn parse_skill_frontmatter_metadata_inner(
                 .filter(|v| !v.is_empty()),
             algorithm: encryption
                 .algorithm
+                .as_deref()
+                .map(sanitize_single_line)
+                .filter(|v| !v.is_empty()),
+            mode: encryption
+                .mode
                 .as_deref()
                 .map(sanitize_single_line)
                 .filter(|v| !v.is_empty()),

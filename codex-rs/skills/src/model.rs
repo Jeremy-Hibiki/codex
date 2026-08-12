@@ -85,6 +85,9 @@ pub struct SkillEncryption {
     pub version: Option<u64>,
     pub key_id: Option<String>,
     pub algorithm: Option<String>,
+    /// Decryption backend mode written by the encryptor (e.g. `software`,
+    /// `ukey`, `ukey-two-phase`). Used to auto-select the envelope backend.
+    pub mode: Option<String>,
     pub package: Option<String>,
 }
 

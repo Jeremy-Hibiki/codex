@@ -457,6 +457,8 @@ pub struct SkillEncryption {
     #[ts(optional)]
     pub algorithm: Option<String>,
     #[ts(optional)]
+    pub mode: Option<String>,
+    #[ts(optional)]
     pub package: Option<String>,
 }
 

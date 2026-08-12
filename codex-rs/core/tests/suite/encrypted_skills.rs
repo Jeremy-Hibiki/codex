@@ -46,6 +46,7 @@ metadata:
     version: 2
     key_id: required_hardware_key
     algorithm: ZIP-AES-256-CBC
+    mode: mock
     package: secret-skill.zip.enc
 ---
 
@@ -282,6 +283,40 @@ async fn build_test_with_encrypted_skill(
         })
         .with_workspace_setup(move |cwd, fs| async move { write_encrypted_skill(cwd, fs).await });
     builder.build_with_auto_env(server).await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn encrypted_skills_auto_detect_mode_without_sdk_config() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    // No `encrypted_skills.sdk` configuration: the envelope backend must be
+    // auto-detected from the package frontmatter (`mode: mock`).
+    let mut builder = test_codex()
+        .with_workspace_setup(move |cwd, fs| async move { write_encrypted_skill(cwd, fs).await });
+    let test = builder.build_with_auto_env(&server).await?;
+    let mock = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_assistant_message("msg-1", "done"),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+
+    submit_single_turn(&test, "please use $secret-skill").await?;
+
+    let request = mock.single_request();
+    let user_texts = request.message_input_texts("user");
+    assert!(
+        user_texts
+            .iter()
+            .any(|text| text.contains("REAL_SKILL_CONTENT_MARKER")),
+        "auto-detected mode must decrypt and rehydrate the skill, got {user_texts:?}"
+    );
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

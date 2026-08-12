@@ -950,6 +950,14 @@
       "description": "Envelope SDK selection for encrypted skills. Defaults to fail-closed (no decryption possible).",
       "oneOf": [
         {
+          "description": "Auto-detect the envelope backend per package from the skill `metadata.encryption.mode` (upstream `detect_mode`). The default, so deployments do not need to configure a global SDK.",
+          "enum": [
+            "auto"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Explicitly disable encrypted-skill decryption (fail closed).",
           "enum": [
             "unavailable"
           ],

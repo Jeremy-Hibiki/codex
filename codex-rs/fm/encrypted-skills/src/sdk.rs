@@ -64,6 +64,15 @@ impl EnvelopeSdk for UnavailableSdk {
 pub enum SdkKind {
     #[default]
     Unavailable,
+    /// Auto-detect the backend per package from the skill directory (upstream
+    /// `fmsh-ukey-skill::detect_mode`). The default when no SDK is configured:
+    /// SKILL.md `metadata.encryption.mode`, else presence of `key.enc`, else
+    /// UKey.
+    Auto {
+        software_algorithm: SdkSoftwareAlgorithm,
+        software_privkey: Option<PathBuf>,
+        key_envelope: String,
+    },
     /// Test-only SDK that decrypts plain ZIP packages (`.zip.enc` is a zip).
     TestZip,
     /// Identity transform: the `.enc` package is the plain ZIP renamed.
@@ -93,9 +102,100 @@ pub enum SdkSoftwareAlgorithm {
     Sm2Sm4Cbc,
 }
 
+/// Envelope backend that auto-detects the decryption mode from the skill
+/// package directory using upstream [`fmsh_ukey_skill::detect_mode`], so
+/// deployments do not need to configure a global SDK. Missing backends fail
+/// closed with a clear error; unknown/missing modes fall back to UKey per the
+/// upstream semantics.
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+pub struct AutoSdk {
+    software: Option<Arc<dyn EnvelopeSdk>>,
+    ukey: Option<Arc<dyn EnvelopeSdk>>,
+    ukey_two_phase: Option<Arc<dyn EnvelopeSdk>>,
+    mock: Arc<dyn EnvelopeSdk>,
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+impl AutoSdk {
+    pub(crate) fn new(
+        software_algorithm: SdkSoftwareAlgorithm,
+        software_privkey: Option<&Path>,
+        key_envelope: &str,
+    ) -> Self {
+        let software = software_privkey.and_then(|privkey| {
+            match fmsh::SoftwareSdk::new(software_algorithm, Some(privkey)) {
+                Ok(sdk) => Some(Arc::new(sdk) as Arc<dyn EnvelopeSdk>),
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        "software envelope backend unavailable; software-mode skills will fail"
+                    );
+                    None
+                }
+            }
+        });
+        let ukey = match fmsh::UKeySdk::new() {
+            Ok(sdk) => Some(Arc::new(sdk) as Arc<dyn EnvelopeSdk>),
+            Err(error) => {
+                tracing::debug!(error = %error, "ukey envelope backend unavailable");
+                None
+            }
+        };
+        let ukey_two_phase = match fmsh::UkeyTwoPhaseSdk::new(key_envelope.to_string()) {
+            Ok(sdk) => Some(Arc::new(sdk) as Arc<dyn EnvelopeSdk>),
+            Err(error) => {
+                tracing::debug!(error = %error, "ukey-two-phase envelope backend unavailable");
+                None
+            }
+        };
+        Self {
+            software,
+            ukey,
+            ukey_two_phase,
+            mock: Arc::new(NoopEnvelopeSdk),
+        }
+    }
+}
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+impl EnvelopeSdk for AutoSdk {
+    fn decrypt_package(&self, package_path: &Path) -> Result<Vec<PackageEntry>, EnvelopeError> {
+        let skill_dir = package_path.parent().ok_or_else(|| {
+            EnvelopeError::Decrypt(format!(
+                "package {} has no parent directory",
+                package_path.display()
+            ))
+        })?;
+        let mode = fmsh_ukey_skill::detect_mode(skill_dir);
+        let backend = match mode {
+            fmsh_ukey_skill::Mode::Mock => Some(&self.mock),
+            fmsh_ukey_skill::Mode::Software => self.software.as_ref(),
+            fmsh_ukey_skill::Mode::Ukey => self.ukey.as_ref(),
+            fmsh_ukey_skill::Mode::UkeyTwoPhase => self.ukey_two_phase.as_ref(),
+        };
+        match backend {
+            Some(sdk) => sdk.decrypt_package(package_path),
+            None => Err(EnvelopeError::Decrypt(format!(
+                "skill package mode `{}` has no configured envelope backend",
+                mode.as_str()
+            ))),
+        }
+    }
+}
+
 pub fn sdk_for(kind: SdkKind) -> Arc<dyn EnvelopeSdk> {
     match kind {
         SdkKind::Unavailable => Arc::new(UnavailableSdk),
+        #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+        SdkKind::Auto {
+            software_algorithm,
+            software_privkey,
+            key_envelope,
+        } => Arc::new(AutoSdk::new(
+            software_algorithm,
+            software_privkey.as_deref(),
+            &key_envelope,
+        )),
         SdkKind::TestZip => Arc::new(TestZipSdk),
         SdkKind::Noop => Arc::new(NoopEnvelopeSdk),
         #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
@@ -125,7 +225,10 @@ pub fn sdk_for(kind: SdkKind) -> Arc<dyn EnvelopeSdk> {
             }
         },
         #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
-        SdkKind::Software { .. } | SdkKind::UKey | SdkKind::UKeyTwoPhase { .. } => {
+        SdkKind::Auto { .. }
+        | SdkKind::Software { .. }
+        | SdkKind::UKey
+        | SdkKind::UKeyTwoPhase { .. } => {
             tracing::warn!("encrypted-skill SDK kind is not compiled in on this platform");
             Arc::new(UnavailableSdk)
         }
@@ -423,6 +526,71 @@ mod tests {
             TestZipSdk.decrypt_package(Path::new("/nonexistent/secret.zip.enc")),
             Err(EnvelopeError::PackageNotFound(_))
         ));
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    mod auto_sdk_tests {
+        use super::*;
+
+        fn write_mock_package(skill_dir: &Path, mode: Option<&str>) {
+            let frontmatter = match mode {
+                Some(mode) => format!(
+                    "---\nmetadata:\n  encrypted: true\n  encryption:\n    mode: {mode}\n---\n\n<!-- ENCRYPTED:SKILL -->\n"
+                ),
+                None => "---\nmetadata:\n  encrypted: true\n---\n\n<!-- ENCRYPTED:SKILL -->\n"
+                    .to_string(),
+            };
+            std::fs::write(skill_dir.join("SKILL.md"), frontmatter).unwrap();
+            let package = skill_dir.join("secret.zip.enc");
+            let file = std::fs::File::create(&package).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            writer
+                .start_file("SKILL.md", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(b"# Encrypted skill").unwrap();
+            writer.finish().unwrap();
+        }
+
+        fn auto_sdk() -> AutoSdk {
+            AutoSdk::new(SdkSoftwareAlgorithm::HpkeX25519Aes256Gcm, None, "key.enc")
+        }
+
+        #[test]
+        fn auto_sdk_decrypts_mock_mode_package_without_global_config() {
+            let tmp = tempfile::tempdir().unwrap();
+            write_mock_package(tmp.path(), Some("mock"));
+
+            let entries = auto_sdk()
+                .decrypt_package(&tmp.path().join("secret.zip.enc"))
+                .unwrap();
+            assert_eq!(entries.len(), 1);
+            assert_eq!(entries[0].contents, b"# Encrypted skill");
+        }
+
+        #[test]
+        fn auto_sdk_fails_closed_for_software_mode_without_privkey() {
+            let tmp = tempfile::tempdir().unwrap();
+            write_mock_package(tmp.path(), Some("software"));
+
+            let error = auto_sdk()
+                .decrypt_package(&tmp.path().join("secret.zip.enc"))
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("software"),
+                "expected a software-mode error, got: {error}"
+            );
+        }
+
+        #[test]
+        fn auto_sdk_fails_when_no_backend_is_available() {
+            let tmp = tempfile::tempdir().unwrap();
+            write_mock_package(tmp.path(), None);
+
+            let error = auto_sdk()
+                .decrypt_package(&tmp.path().join("secret.zip.enc"))
+                .unwrap_err();
+            assert!(!error.to_string().is_empty());
+        }
     }
 
     #[test]

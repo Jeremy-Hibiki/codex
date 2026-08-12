@@ -64,6 +64,7 @@ fn skills_to_info(
                         version: encryption.version,
                         key_id: encryption.key_id,
                         algorithm: encryption.algorithm,
+                        mode: encryption.mode,
                         package: encryption.package,
                     }
                 }),

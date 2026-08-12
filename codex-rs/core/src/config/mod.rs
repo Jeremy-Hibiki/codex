@@ -649,6 +649,21 @@ impl EncryptedSkillsRuntimeConfig {
     /// warning next to the mapping that produces it.
     pub fn into_sdk(&self) -> fm_encrypted_skills::sdk::SdkKind {
         match self.sdk {
+            codex_config::config_toml::EncryptedSkillsSdkToml::Auto => {
+                let algorithm = match self.software_algorithm {
+                    codex_config::config_toml::SoftwareAlgorithmToml::Sm2Sm4Cbc => {
+                        fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::Sm2Sm4Cbc
+                    }
+                    codex_config::config_toml::SoftwareAlgorithmToml::HpkeX25519Aes256Gcm => {
+                        fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::HpkeX25519Aes256Gcm
+                    }
+                };
+                fm_encrypted_skills::sdk::SdkKind::Auto {
+                    software_algorithm: algorithm,
+                    software_privkey: self.software_privkey.clone(),
+                    key_envelope: self.key_envelope.clone(),
+                }
+            }
             codex_config::config_toml::EncryptedSkillsSdkToml::Unavailable => {
                 fm_encrypted_skills::sdk::SdkKind::Unavailable
             }
@@ -4530,7 +4545,7 @@ fn encrypted_skills_toml_with_requirements(
     };
     let mut merged = cfg.clone();
     if let Some(sdk) = &requirements.sdk {
-        merged.sdk = Some(sdk.clone());
+        merged.sdk = Some(*sdk);
     }
     if let Some(ttl) = requirements.skill_idle_ttl_secs {
         merged.skill_idle_ttl_secs = Some(ttl);
@@ -4542,7 +4557,7 @@ fn encrypted_skills_toml_with_requirements(
         merged.software_privkey = Some(path.clone());
     }
     if let Some(algorithm) = &requirements.software_algorithm {
-        merged.software_algorithm = Some(algorithm.clone());
+        merged.software_algorithm = Some(*algorithm);
     }
     if let Some(key_envelope) = &requirements.key_envelope {
         merged.key_envelope = Some(key_envelope.clone());

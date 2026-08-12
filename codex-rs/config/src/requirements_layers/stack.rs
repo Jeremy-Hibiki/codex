@@ -17,6 +17,7 @@ use crate::ConfigRequirementsToml;
 use crate::ConfigRequirementsWithSources;
 use crate::RequirementSource;
 use crate::Sourced;
+use crate::config_toml::EncryptedSkillsToml;
 use crate::merge::merge_toml_values;
 use std::cell::OnceCell;
 use std::io;
@@ -237,6 +238,8 @@ fn populate_merged_regular_fields_with_sources(
         permissions,
         models,
         guardian_policy_config,
+        developer_instructions,
+        encrypted_skills,
     } = requirements;
 
     set_sourced!(sqlite_home, &["sqlite_home"]);
@@ -282,6 +285,22 @@ fn populate_merged_regular_fields_with_sources(
         output.guardian_policy_config = Some(Sourced::new(
             guardian_policy_config,
             source_for_top_level_keys(layers, &["guardian_policy_config"]),
+        ));
+    }
+    if let Some(developer_instructions) =
+        developer_instructions.filter(|value| !value.trim().is_empty())
+    {
+        output.developer_instructions = Some(Sourced::new(
+            developer_instructions,
+            source_for_top_level_keys(layers, &["developer_instructions"]),
+        ));
+    }
+    if let Some(encrypted_skills) =
+        encrypted_skills.filter(|value| !EncryptedSkillsToml::is_empty_for_requirements(value))
+    {
+        output.encrypted_skills = Some(Sourced::new(
+            encrypted_skills,
+            source_for_top_level_keys(layers, &["encrypted_skills"]),
         ));
     }
 }

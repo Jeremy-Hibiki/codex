@@ -8,6 +8,7 @@ use crate::ConfigRequirementsToml;
 use crate::ConfigRequirementsWithSources;
 use crate::RequirementSource;
 use crate::Sourced;
+use crate::config_toml::EncryptedSkillsSdkToml;
 use codex_protocol::protocol::AskForApproval;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use pretty_assertions::assert_eq;
@@ -147,6 +148,64 @@ model_reasoning_effort = "high"
 service_tier = "fast"
 "#
         )
+    );
+}
+
+#[test]
+fn developer_instructions_survives_composition_with_priority() {
+    let composed = compose(vec![
+        layer("a", "a", r#"developer_instructions = "low priority""#),
+        layer("b", "b", r#"developer_instructions = "high priority""#),
+    ])
+    .expect("compose developer instructions");
+    eprintln!("DEBUG composed={composed:?}");
+    assert_eq!(
+        composed.map(|toml| toml.developer_instructions),
+        Some(Some("high priority".to_string()))
+    );
+}
+
+#[test]
+fn encrypted_skills_survives_composition_with_priority() {
+    let composed = compose(vec![
+        layer(
+            "a",
+            "a",
+            r#"
+[encrypted_skills]
+sdk = "test_zip"
+skill_idle_ttl_secs = 120
+"#,
+        ),
+        layer(
+            "b",
+            "b",
+            r#"
+[encrypted_skills]
+sdk = "software"
+audit_path = "/var/log/codex/encrypted-skills.log"
+
+[encrypted_skills.guardrail]
+enabled = true
+base_url = "http://192.168.131.51:8080"
+"#,
+        ),
+    ])
+    .expect("compose encrypted skills");
+    let composed = composed.expect("requirements present");
+    let encrypted = composed
+        .encrypted_skills
+        .expect("encrypted_skills must survive composition");
+    assert_eq!(encrypted.sdk, Some(EncryptedSkillsSdkToml::Software));
+    assert_eq!(encrypted.skill_idle_ttl_secs, Some(120));
+    assert_eq!(
+        encrypted.audit_path.as_deref(),
+        Some("/var/log/codex/encrypted-skills.log")
+    );
+    assert_eq!(encrypted.guardrail.enabled, Some(true));
+    assert_eq!(
+        encrypted.guardrail.base_url.as_deref(),
+        Some("http://192.168.131.51:8080")
     );
 }
 

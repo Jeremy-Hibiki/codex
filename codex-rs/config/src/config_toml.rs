@@ -215,6 +215,21 @@ pub struct EncryptedSkillsToml {
     pub guardrail: GuardrailToml,
 }
 
+impl EncryptedSkillsToml {
+    /// True when every field is unset, used to drop empty `[encrypted_skills]`
+    /// tables from requirements layers.
+    pub(crate) fn is_empty_for_requirements(&self) -> bool {
+        self.sdk.is_none()
+            && self.skill_idle_ttl_secs.is_none()
+            && self.audit_path.is_none()
+            && self.software_privkey.is_none()
+            && self.software_algorithm.is_none()
+            && self.key_envelope.is_none()
+            && self.guardrail.enabled.is_none()
+            && self.guardrail.base_url.is_none()
+    }
+}
+
 /// Settings for the external guardrail (prompt sanitizer) service, nested
 /// under `[encrypted_skills.guardrail]` in `config.toml`.
 ///

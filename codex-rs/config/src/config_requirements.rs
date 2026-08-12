@@ -21,6 +21,7 @@ use crate::Constrained;
 use crate::ConstraintError;
 use crate::ManagedHooksRequirementsToml;
 use crate::config_toml::ConfigToml;
+use crate::config_toml::EncryptedSkillsToml;
 use crate::mcp_requirements::McpServerRequirement;
 use crate::mcp_types::AppToolApproval;
 use crate::permissions_toml::PermissionProfileToml;
@@ -176,6 +177,10 @@ pub struct ConfigRequirements {
     pub filesystem: Option<Sourced<FilesystemConstraints>>,
     /// Source for the managed guardian policy config, when one is configured.
     pub guardian_policy_config_source: Option<RequirementSource>,
+    /// Source for the managed developer instructions, when one is configured.
+    pub developer_instructions_source: Option<RequirementSource>,
+    /// Source for the managed encrypted-skill settings, when configured.
+    pub encrypted_skills_source: Option<RequirementSource>,
 }
 
 impl Default for ConfigRequirements {
@@ -225,6 +230,8 @@ impl Default for ConfigRequirements {
             network: None,
             filesystem: None,
             guardian_policy_config_source: None,
+            developer_instructions_source: None,
+            encrypted_skills_source: None,
         }
     }
 }
@@ -906,6 +913,12 @@ pub struct ConfigRequirementsToml {
     pub permissions: Option<PermissionsRequirementsToml>,
     pub models: Option<ModelsRequirementsToml>,
     pub guardian_policy_config: Option<String>,
+    /// Managed developer instructions injected as a `developer` role message,
+    /// overriding any user-configured value.
+    pub developer_instructions: Option<String>,
+    /// Managed encrypted-skill settings, overriding user-configured values
+    /// field by field. Unset fields fall back to the user config.
+    pub encrypted_skills: Option<EncryptedSkillsToml>,
 }
 
 #[derive(Deserialize, Debug, Clone, Default, PartialEq, Eq)]
@@ -994,6 +1007,8 @@ pub struct ConfigRequirementsWithSources {
     pub permissions: Option<Sourced<PermissionsRequirementsToml>>,
     pub models: Option<Sourced<ModelsRequirementsToml>>,
     pub guardian_policy_config: Option<Sourced<String>>,
+    pub developer_instructions: Option<Sourced<String>>,
+    pub encrypted_skills: Option<Sourced<EncryptedSkillsToml>>,
 }
 
 impl ConfigRequirementsWithSources {
@@ -1046,6 +1061,8 @@ impl ConfigRequirementsWithSources {
             permissions: _,
             models: _,
             guardian_policy_config: _,
+            developer_instructions: _,
+            encrypted_skills: _,
         } = &other;
 
         let mut other = other;
@@ -1055,6 +1072,20 @@ impl ConfigRequirementsWithSources {
             .is_some_and(|value| value.trim().is_empty())
         {
             other.guardian_policy_config = None;
+        }
+        if other
+            .developer_instructions
+            .as_deref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            other.developer_instructions = None;
+        }
+        if other
+            .encrypted_skills
+            .as_ref()
+            .is_some_and(EncryptedSkillsToml::is_empty_for_requirements)
+        {
+            other.encrypted_skills = None;
         }
         fill_missing_take!(
             self,
@@ -1090,6 +1121,8 @@ impl ConfigRequirementsWithSources {
                 permissions,
                 models,
                 guardian_policy_config,
+                developer_instructions,
+                encrypted_skills,
             }
         );
 
@@ -1134,6 +1167,8 @@ impl ConfigRequirementsWithSources {
             permissions,
             models,
             guardian_policy_config,
+            developer_instructions,
+            encrypted_skills,
         } = self;
         ConfigRequirementsToml {
             sqlite_home: sqlite_home.map(|sourced| sourced.value),
@@ -1167,6 +1202,8 @@ impl ConfigRequirementsWithSources {
             permissions: permissions.map(|sourced| sourced.value),
             models: models.map(|sourced| sourced.value),
             guardian_policy_config: guardian_policy_config.map(|sourced| sourced.value),
+            developer_instructions: developer_instructions.map(|sourced| sourced.value),
+            encrypted_skills: encrypted_skills.map(|sourced| sourced.value),
         }
     }
 }
@@ -1299,6 +1336,14 @@ impl ConfigRequirementsToml {
                 .guardian_policy_config
                 .as_deref()
                 .is_none_or(|value| value.trim().is_empty())
+            && self
+                .developer_instructions
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+            && self
+                .encrypted_skills
+                .as_ref()
+                .is_none_or(EncryptedSkillsToml::is_empty_for_requirements)
     }
 
     /// Applies the requirements whose values replace config values.
@@ -1446,6 +1491,8 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
             permissions,
             models: _,
             guardian_policy_config,
+            developer_instructions,
+            encrypted_skills,
         } = toml;
 
         if let Some(requirements) = &mcp_servers {
@@ -1743,6 +1790,8 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
             Sourced::new(FilesystemConstraints::from(value), source)
         });
         let guardian_policy_config_source = guardian_policy_config.map(|sourced| sourced.source);
+        let developer_instructions_source = developer_instructions.map(|sourced| sourced.source);
+        let encrypted_skills_source = encrypted_skills.map(|sourced| sourced.source);
         Ok(ConfigRequirements {
             sqlite_home,
             log_dir,
@@ -1770,6 +1819,8 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
             network,
             filesystem,
             guardian_policy_config_source,
+            developer_instructions_source,
+            encrypted_skills_source,
         })
     }
 }
@@ -1804,6 +1855,7 @@ mod tests {
     use crate::McpServerCommandMatcher;
     use crate::McpServerIdentity;
     use crate::McpServerValueMatcher;
+    use crate::config_toml::EncryptedSkillsSdkToml;
     use anyhow::Result;
     use codex_execpolicy::Decision;
     use codex_execpolicy::Evaluation;
@@ -1929,6 +1981,8 @@ mod tests {
             permissions,
             models,
             guardian_policy_config,
+            developer_instructions,
+            encrypted_skills,
         } = toml;
         ConfigRequirementsWithSources {
             sqlite_home: sqlite_home.map(|value| Sourced::new(value, RequirementSource::Unknown)),
@@ -1975,6 +2029,10 @@ mod tests {
             permissions: permissions.map(|value| Sourced::new(value, RequirementSource::Unknown)),
             models: models.map(|value| Sourced::new(value, RequirementSource::Unknown)),
             guardian_policy_config: guardian_policy_config
+                .map(|value| Sourced::new(value, RequirementSource::Unknown)),
+            developer_instructions: developer_instructions
+                .map(|value| Sourced::new(value, RequirementSource::Unknown)),
+            encrypted_skills: encrypted_skills
                 .map(|value| Sourced::new(value, RequirementSource::Unknown)),
         }
     }
@@ -2197,6 +2255,7 @@ mod tests {
         let enforce_residency = ResidencyRequirement::Us;
         let enforce_source = source.clone();
         let guardian_policy_config = "Use the company-managed guardian policy.".to_string();
+        let developer_instructions = "Use the company-managed developer instructions.".to_string();
 
         // Intentionally constructed without `..Default::default()` so adding a new field to
         // `ConfigRequirementsToml` forces this test to be updated.
@@ -2232,6 +2291,16 @@ mod tests {
             permissions: None,
             models: Some(models.clone()),
             guardian_policy_config: Some(guardian_policy_config.clone()),
+            developer_instructions: Some(developer_instructions.clone()),
+            encrypted_skills: Some(EncryptedSkillsToml {
+                sdk: Some(EncryptedSkillsSdkToml::Software),
+                skill_idle_ttl_secs: Some(900),
+                audit_path: None,
+                software_privkey: None,
+                software_algorithm: None,
+                key_envelope: None,
+                guardrail: Default::default(),
+            }),
         };
 
         target.merge_unset_fields(source.clone(), other);
@@ -2292,7 +2361,20 @@ mod tests {
                 network: None,
                 permissions: None,
                 models: Some(Sourced::new(models, source.clone())),
-                guardian_policy_config: Some(Sourced::new(guardian_policy_config, source)),
+                guardian_policy_config: Some(Sourced::new(guardian_policy_config, source.clone(),)),
+                encrypted_skills: Some(Sourced::new(
+                    EncryptedSkillsToml {
+                        sdk: Some(EncryptedSkillsSdkToml::Software),
+                        skill_idle_ttl_secs: Some(900),
+                        audit_path: None,
+                        software_privkey: None,
+                        software_algorithm: None,
+                        key_envelope: None,
+                        guardrail: Default::default(),
+                    },
+                    source.clone(),
+                )),
+                developer_instructions: Some(Sourced::new(developer_instructions, source)),
             }
         );
     }
@@ -3276,6 +3358,34 @@ allowed_approvals_reviewers = ["user"]
             })
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn developer_instructions_merges_with_source_and_drops_empty_values() -> Result<()> {
+        let source = RequirementSource::LegacyManagedConfigTomlFromMdm;
+        let requirements_toml: ConfigRequirementsToml =
+            from_str("developer_instructions = \"managed policy\"\n")?;
+        let mut requirements_with_sources = ConfigRequirementsWithSources::default();
+        requirements_with_sources.merge_unset_fields(source.clone(), requirements_toml);
+        assert_eq!(
+            requirements_with_sources
+                .developer_instructions
+                .as_ref()
+                .map(|sourced| sourced.value.as_str()),
+            Some("managed policy")
+        );
+
+        let requirements = ConfigRequirements::try_from(requirements_with_sources)?;
+        assert_eq!(
+            requirements.developer_instructions_source,
+            Some(source.clone())
+        );
+
+        let blank: ConfigRequirementsToml = from_str("developer_instructions = \"   \"\n")?;
+        let mut with_sources = ConfigRequirementsWithSources::default();
+        with_sources.merge_unset_fields(source, blank);
+        assert!(with_sources.developer_instructions.is_none());
         Ok(())
     }
 

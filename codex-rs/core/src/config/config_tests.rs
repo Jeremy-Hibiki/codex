@@ -9322,6 +9322,8 @@ async fn test_requirements_web_search_mode_allowlist_does_not_warn_when_unset() 
         permissions: None,
         models: None,
         guardian_policy_config: None,
+        developer_instructions: None,
+        encrypted_skills: None,
     };
     let requirement_source = codex_config::RequirementSource::Unknown;
     let requirement_source_for_error = requirement_source.clone();
@@ -12090,5 +12092,102 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
     );
     assert!(warnings.is_empty());
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn requirements_developer_instructions_override_user_config() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let requirements_dir = TempDir::new()?;
+    let requirements_path = requirements_dir.path().join("requirements.toml");
+    tokio::fs::write(
+        &requirements_path,
+        "developer_instructions = \"managed policy instructions\"\n",
+    )
+    .await?;
+    tokio::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        "developer_instructions = \"user instructions\"",
+    )
+    .await?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .loader_overrides(LoaderOverrides {
+            system_requirements_path: Some(requirements_path),
+            ..LoaderOverrides::without_managed_config_for_tests()
+        })
+        .build()
+        .await?;
+
+    assert_eq!(
+        config.developer_instructions.as_deref(),
+        Some("managed policy instructions"),
+        "requirements.toml developer_instructions must override config.toml"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn requirements_encrypted_skills_override_user_config_field_by_field() -> std::io::Result<()>
+{
+    let codex_home = TempDir::new()?;
+    let requirements_dir = TempDir::new()?;
+    let requirements_path = requirements_dir.path().join("requirements.toml");
+    tokio::fs::write(
+        &requirements_path,
+        r#"
+[encrypted_skills]
+sdk = "software"
+audit_path = "/var/log/codex/encrypted-skills.log"
+
+[encrypted_skills.guardrail]
+enabled = true
+base_url = "http://192.168.131.51:8080"
+"#,
+    )
+    .await?;
+    tokio::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"
+[encrypted_skills]
+sdk = "test_zip"
+skill_idle_ttl_secs = 120
+"#,
+    )
+    .await?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .loader_overrides(LoaderOverrides {
+            system_requirements_path: Some(requirements_path),
+            ..LoaderOverrides::without_managed_config_for_tests()
+        })
+        .build()
+        .await?;
+
+    let encrypted = &config.encrypted_skills;
+    assert_eq!(
+        encrypted.sdk,
+        codex_config::config_toml::EncryptedSkillsSdkToml::Software,
+        "requirements sdk must override config.toml"
+    );
+    assert_eq!(
+        encrypted.audit_path.as_deref(),
+        Some(std::path::Path::new("/var/log/codex/encrypted-skills.log")),
+        "requirements audit_path must apply"
+    );
+    assert_eq!(
+        encrypted.ttl.skill_idle,
+        std::time::Duration::from_secs(120),
+        "unset requirement fields must keep the user config value"
+    );
+    assert!(encrypted.guardrail.enabled);
+    assert_eq!(
+        encrypted.guardrail.base_url.as_deref(),
+        Some("http://192.168.131.51:8080")
+    );
     Ok(())
 }

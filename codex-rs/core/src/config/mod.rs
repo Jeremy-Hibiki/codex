@@ -3272,6 +3272,8 @@ impl Config {
             network: network_requirements,
             filesystem: filesystem_requirements,
             guardian_policy_config_source: _,
+            developer_instructions_source: _,
+            encrypted_skills_source: _,
         } = config_layer_stack.requirements().clone();
 
         // Destructure ConfigOverrides fully to ensure all overrides are applied.
@@ -3903,7 +3905,11 @@ impl Config {
         let base_instructions = base_instructions
             .or(file_base_instructions)
             .or(cfg.instructions.clone());
-        let developer_instructions = developer_instructions.or(cfg.developer_instructions);
+        let developer_instructions = developer_instructions_from_requirements(
+            config_layer_stack.requirements_toml(),
+        )
+        .or(developer_instructions)
+        .or(cfg.developer_instructions);
         let include_permissions_instructions = cfg.include_permissions_instructions.unwrap_or(true);
         let include_apps_instructions = cfg.include_apps_instructions.unwrap_or(true);
         let include_collaboration_mode_instructions =
@@ -4078,33 +4084,33 @@ impl Config {
         )
         .map_err(std::io::Error::from)?;
         let otel = otel::resolve_config(cfg.otel.unwrap_or_default(), &mut startup_warnings);
+        let encrypted_skills_toml = encrypted_skills_toml_with_requirements(
+            &cfg.encrypted_skills,
+            config_layer_stack.requirements_toml(),
+        );
         let config = Self {
             encrypted_skills: EncryptedSkillsRuntimeConfig {
-                sdk: cfg.encrypted_skills.sdk.unwrap_or_default(),
+                sdk: encrypted_skills_toml.sdk.unwrap_or_default(),
                 ttl: fm_encrypted_skills::registry::TtlConfig {
                     skill_idle: std::time::Duration::from_secs(
-                        cfg.encrypted_skills.skill_idle_ttl_secs.unwrap_or(600),
+                        encrypted_skills_toml.skill_idle_ttl_secs.unwrap_or(600),
                     ),
                 },
-                audit_path: cfg
-                    .encrypted_skills
+                audit_path: encrypted_skills_toml
                     .audit_path
                     .map(std::path::PathBuf::from),
-                software_privkey: cfg
-                    .encrypted_skills
+                software_privkey: encrypted_skills_toml
                     .software_privkey
                     .map(std::path::PathBuf::from),
-                software_algorithm: cfg
-                    .encrypted_skills
+                software_algorithm: encrypted_skills_toml
                     .software_algorithm
                     .unwrap_or_default(),
-                key_envelope: cfg
-                    .encrypted_skills
+                key_envelope: encrypted_skills_toml
                     .key_envelope
                     .unwrap_or_else(|| "key.enc".to_string()),
                 guardrail: GuardrailRuntimeConfig {
-                    enabled: cfg.encrypted_skills.guardrail.enabled.unwrap_or(false),
-                    base_url: cfg.encrypted_skills.guardrail.base_url.clone(),
+                    enabled: encrypted_skills_toml.guardrail.enabled.unwrap_or(false),
+                    base_url: encrypted_skills_toml.guardrail.base_url,
                 },
             },
             product_policy: ProductPolicyRuntimeConfig {
@@ -4500,6 +4506,54 @@ fn guardian_policy_config_from_requirements(
     requirements_toml: &ConfigRequirementsToml,
 ) -> Option<String> {
     normalize_guardian_policy_config(requirements_toml.guardian_policy_config.as_deref())
+}
+
+/// Developer instructions managed by `requirements.toml`, overriding any
+/// user-configured value. Empty values are treated as unset.
+fn developer_instructions_from_requirements(
+    requirements_toml: &ConfigRequirementsToml,
+) -> Option<String> {
+    requirements_toml
+        .developer_instructions
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+}
+
+/// Merges `requirements.toml` encrypted-skill settings over the user config,
+/// field by field. Unset requirement fields keep the user-configured value.
+fn encrypted_skills_toml_with_requirements(
+    cfg: &codex_config::config_toml::EncryptedSkillsToml,
+    requirements_toml: &ConfigRequirementsToml,
+) -> codex_config::config_toml::EncryptedSkillsToml {
+    let Some(requirements) = requirements_toml.encrypted_skills.as_ref() else {
+        return cfg.clone();
+    };
+    let mut merged = cfg.clone();
+    if let Some(sdk) = &requirements.sdk {
+        merged.sdk = Some(sdk.clone());
+    }
+    if let Some(ttl) = requirements.skill_idle_ttl_secs {
+        merged.skill_idle_ttl_secs = Some(ttl);
+    }
+    if let Some(path) = &requirements.audit_path {
+        merged.audit_path = Some(path.clone());
+    }
+    if let Some(path) = &requirements.software_privkey {
+        merged.software_privkey = Some(path.clone());
+    }
+    if let Some(algorithm) = &requirements.software_algorithm {
+        merged.software_algorithm = Some(algorithm.clone());
+    }
+    if let Some(key_envelope) = &requirements.key_envelope {
+        merged.key_envelope = Some(key_envelope.clone());
+    }
+    if let Some(enabled) = requirements.guardrail.enabled {
+        merged.guardrail.enabled = Some(enabled);
+    }
+    if let Some(base_url) = &requirements.guardrail.base_url {
+        merged.guardrail.base_url = Some(base_url.clone());
+    }
+    merged
 }
 
 fn merge_managed_permission_profiles(

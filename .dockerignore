@@ -5,6 +5,10 @@ bazel-out/
 bazel-testlogs/
 bazel-license/
 bazel-code*
+bazel-agent-security/
+.codex/
+.omp/
+analysis/
 .codegraph/
 .git/
 output/

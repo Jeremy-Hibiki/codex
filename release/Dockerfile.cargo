@@ -45,7 +45,6 @@ ARG CARGO_PROFILE=release
 ENV http_proxy=${HTTP_PROXY} \
     https_proxy=${HTTPS_PROXY} \
     no_proxy=${NO_PROXY} \
-    FM_BUILD_SUFFIX=${FM_BUILD_SUFFIX} \
     DEBIAN_FRONTEND=noninteractive
 
 # Aliyun apt mirror for China network (classic sources.list format).
@@ -120,6 +119,11 @@ ENV CARGO_NET_GIT_FETCH_WITH_CLI=true \
 # hashes, so without this touch the old suffix is baked into a reused layer.
 ARG FM_BUILD_SUFFIX
 RUN echo "$FM_BUILD_SUFFIX" > /tmp/build-suffix-marker
+# FM_BUILD_SUFFIX deliberately enters the environment only after the COPY, so
+# the apt/rustup layers (and the COPY itself) stay cached across builds: the
+# suffix changes with every git commit and would otherwise invalidate every
+# layer below this point. build.rs watches it via rerun-if-env-changed.
+ENV FM_BUILD_SUFFIX=${FM_BUILD_SUFFIX}
 
 # Build. CARGO_PROFILE=release (default) uses --release + strip; =debug
 # builds without optimization and keeps symbols for profiling/debugging.

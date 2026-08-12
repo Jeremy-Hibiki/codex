@@ -115,6 +115,7 @@ pub use codex_thread_store::ExtraConfig;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_absolute_path::AbsolutePathBufGuard;
 use codex_utils_path_uri::PathUri;
+use fm_encrypted_skills::guardrail::GuardrailRuntimeConfig;
 use rmcp::model::ElicitationCapability;
 use rmcp::model::FormElicitationCapability;
 use rmcp::model::UrlElicitationCapability;
@@ -625,6 +626,8 @@ pub struct EncryptedSkillsRuntimeConfig {
     pub software_algorithm: codex_config::config_toml::SoftwareAlgorithmToml,
     /// Per-skill key envelope file name (`sdk = "ukey-two-phase"`).
     pub key_envelope: String,
+    /// External guardrail (prompt sanitizer) settings for user prompts.
+    pub guardrail: GuardrailRuntimeConfig,
 }
 
 impl Default for EncryptedSkillsRuntimeConfig {
@@ -636,6 +639,7 @@ impl Default for EncryptedSkillsRuntimeConfig {
             software_privkey: None,
             software_algorithm: Default::default(),
             key_envelope: "key.enc".to_string(),
+            guardrail: GuardrailRuntimeConfig::default(),
         }
     }
 }
@@ -4098,6 +4102,10 @@ impl Config {
                     .encrypted_skills
                     .key_envelope
                     .unwrap_or_else(|| "key.enc".to_string()),
+                guardrail: GuardrailRuntimeConfig {
+                    enabled: cfg.encrypted_skills.guardrail.enabled.unwrap_or(false),
+                    base_url: cfg.encrypted_skills.guardrail.base_url.clone(),
+                },
             },
             product_policy: ProductPolicyRuntimeConfig {
                 plugin_management_disabled: cfg

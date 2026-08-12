@@ -210,6 +210,26 @@ pub struct EncryptedSkillsToml {
     /// The file lives next to the skill package (default `key.enc`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key_envelope: Option<String>,
+    /// External guardrail (prompt sanitizer) settings for user prompts.
+    #[serde(default)]
+    pub guardrail: GuardrailToml,
+}
+
+/// Settings for the external guardrail (prompt sanitizer) service, nested
+/// under `[encrypted_skills.guardrail]` in `config.toml`.
+///
+/// When enabled, each user prompt is checked against the service; a flagged
+/// input gets a `<reminder>` fragment injected so the model handles it
+/// cautiously.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct GuardrailToml {
+    /// Whether user prompts are checked against the guardrail service.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// Base URL of the guardrail service, e.g. `http://192.168.131.51:8080`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
 }
 
 /// Product policy toggles. Defaults are open (features enabled), matching the
@@ -1149,6 +1169,30 @@ command = "   "
         assert_eq!(
             parsed.audit_path.as_deref(),
             Some("/var/log/codex/encrypted-skills.log")
+        );
+    }
+
+    #[test]
+    fn guardrail_toml_defaults_are_disabled() {
+        let parsed: EncryptedSkillsToml = toml::from_str("").unwrap();
+        assert_eq!(parsed.guardrail.enabled, None);
+        assert_eq!(parsed.guardrail.base_url, None);
+    }
+
+    #[test]
+    fn guardrail_toml_parses_nested_encrypted_skills_config() {
+        let parsed: ConfigToml = toml::from_str(
+            r#"
+[encrypted_skills.guardrail]
+enabled = true
+base_url = "http://192.168.131.51:8080"
+"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.encrypted_skills.guardrail.enabled, Some(true));
+        assert_eq!(
+            parsed.encrypted_skills.guardrail.base_url.as_deref(),
+            Some("http://192.168.131.51:8080")
         );
     }
 

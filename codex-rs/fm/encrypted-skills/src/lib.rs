@@ -24,6 +24,7 @@ pub mod audit;
 pub mod cache;
 pub mod export_guard;
 pub mod guard;
+pub mod guardrail;
 pub mod mem_root;
 pub mod memfd;
 pub mod paths;

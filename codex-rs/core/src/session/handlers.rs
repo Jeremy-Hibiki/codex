@@ -25,6 +25,8 @@ use crate::tasks::execute_user_shell_command;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::AdditionalContextEntry;
+use codex_protocol::protocol::AdditionalContextKind;
 use codex_protocol::protocol::CodexErrorInfo;
 use codex_protocol::protocol::ErrorEvent;
 use codex_protocol::protocol::Event;
@@ -46,6 +48,7 @@ use codex_protocol::protocol::TurnAbortReason;
 use codex_protocol::protocol::WarningEvent;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputResponse;
+use codex_protocol::user_input::UserInput;
 
 use crate::context_manager::is_user_turn_boundary;
 use codex_protocol::dynamic_tools::DynamicToolResponse;
@@ -210,6 +213,37 @@ pub(super) async fn user_input_or_turn_inner(
     }
     sess.maybe_emit_model_warnings_for_turn(current_context.as_ref())
         .await;
+    let mut additional_context = additional_context;
+    if let Some(guardrail) = fm_encrypted_skills::guardrail::GuardrailClient::from_runtime_config(
+        &current_context.config.encrypted_skills.guardrail,
+    ) {
+        let prompt = items
+            .iter()
+            .filter_map(|item| match item {
+                UserInput::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !prompt.trim().is_empty() {
+            match guardrail.is_attack(&prompt).await {
+                Ok(true) => {
+                    info!("guardrail flagged user input; injecting reminder for cautious handling");
+                    additional_context.insert(
+                        fm_encrypted_skills::guardrail::REMINDER_KEY.to_string(),
+                        AdditionalContextEntry {
+                            value: fm_encrypted_skills::guardrail::REMINDER_TEXT.to_string(),
+                            kind: AdditionalContextKind::Application,
+                        },
+                    );
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    warn!(error = %error, "guardrail check failed; proceeding without reminder")
+                }
+            }
+        }
+    }
     match sess
         .steer_input(
             items.clone(),

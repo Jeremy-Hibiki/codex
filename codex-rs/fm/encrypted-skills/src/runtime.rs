@@ -13,6 +13,7 @@ use std::sync::atomic::Ordering;
 
 use crate::audit::AuditEvent;
 use crate::audit::AuditSink;
+use crate::audit::InvocationSource;
 use crate::cache::CachedContent;
 use crate::cache::ContentCache;
 use crate::mem_root::decrypted_dir_name;
@@ -51,6 +52,16 @@ pub struct EncryptedSkillRuntime {
     /// Per-(session, skill) gates so concurrent loads of the same skill share
     /// one decryption instead of racing to decrypt and replace each other.
     inflight: Mutex<HashMap<SkillLoadGateKey, Arc<Mutex<()>>>>,
+    /// Package paths registered by implicit-invocation detection, keyed by
+    /// (session, skill). Rehydration decrypts these on demand so the model's
+    /// shell read of the on-disk stub happens before the session engages.
+    implicit_stub_sources: Mutex<HashMap<String, HashMap<String, PathBuf>>>,
+    /// Implicit skills already injected into a session's model context this
+    /// turn, so repeated requests do not duplicate the framed content.
+    implicit_injected: Mutex<HashMap<String, HashSet<String>>>,
+    /// Per-(session, skill) decrypt failure counts for implicit loads, so a
+    /// broken package is not retried on every request in a turn.
+    implicit_load_failures: Mutex<HashMap<String, HashMap<String, u32>>>,
     sdk: Arc<dyn EnvelopeSdk>,
     mem_root: PathBuf,
     namespace: String,
@@ -59,6 +70,9 @@ pub struct EncryptedSkillRuntime {
 }
 
 pub const DEFAULT_MIN_FREE_BYTES: u64 = 4 * 1024 * 1024;
+/// Maximum implicit decrypt attempts per (session, skill) per turn before the
+/// skill is treated as handled and skipped.
+pub const MAX_IMPLICIT_LOAD_ATTEMPTS: u32 = 3;
 
 /// Process-level registry of live runtimes, used by thread-less surfaces
 /// (app-server RPC) to determine whether any session is engaged.
@@ -131,6 +145,9 @@ impl EncryptedSkillRuntime {
             in_flight_sessions: Mutex::new(HashSet::new()),
             state_lock: Mutex::new(()),
             inflight: Mutex::new(HashMap::new()),
+            implicit_stub_sources: Mutex::new(HashMap::new()),
+            implicit_injected: Mutex::new(HashMap::new()),
+            implicit_load_failures: Mutex::new(HashMap::new()),
             sdk,
             mem_root,
             namespace: process_namespace(),
@@ -148,6 +165,23 @@ impl EncryptedSkillRuntime {
         skill_name: &str,
         package_path: &Path,
     ) -> Result<String, EnvelopeError> {
+        self.load_or_register_with_source(
+            session_id,
+            skill_name,
+            package_path,
+            InvocationSource::Explicit,
+        )
+    }
+
+    /// Like [`load_or_register`], but records how the skill was triggered on
+    /// the decryption/tokenization audit events.
+    pub fn load_or_register_with_source(
+        &self,
+        session_id: &str,
+        skill_name: &str,
+        package_path: &Path,
+        source: InvocationSource,
+    ) -> Result<String, EnvelopeError> {
         let key = (session_id.to_string(), skill_name.to_string());
         let gate = {
             let mut inflight = self.inflight.lock().map_err(lock_error)?;
@@ -159,7 +193,7 @@ impl EncryptedSkillRuntime {
         // Serialize concurrent loads for the same session+skill: the second
         // caller waits here and then hits the registry cache-hit path.
         let _gate = gate.lock().map_err(lock_error)?;
-        let result = self.load_or_register_inner(session_id, skill_name, package_path);
+        let result = self.load_or_register_inner(session_id, skill_name, package_path, source);
         drop(_gate);
         if let Ok(mut inflight) = self.inflight.lock()
             && inflight
@@ -171,11 +205,137 @@ impl EncryptedSkillRuntime {
         result
     }
 
+    /// Records the package path for a skill the model may read implicitly
+    /// (e.g. `cat <skill>/SKILL.md`). Does not decrypt or engage the session;
+    /// rehydration loads the package on demand once the stub appears in model
+    /// input, so the guard stays permissive while the read executes.
+    pub fn register_implicit_skill_package(
+        &self,
+        session_id: &str,
+        skill_name: &str,
+        package_path: PathBuf,
+    ) {
+        recover_lock(self.implicit_stub_sources.lock())
+            .entry(session_id.to_string())
+            .or_default()
+            .insert(skill_name.to_string(), package_path);
+    }
+
+    /// Decrypts every registered implicit skill that has not been injected
+    /// into this session's context yet and returns its framed plaintext.
+    /// Identification is metadata-driven (the detection result), never based
+    /// on on-disk stub content. Failed loads stay pending for a later retry.
+    pub fn take_pending_implicit_skill_injections(&self, session_id: &str) -> Vec<String> {
+        let mut pending: Vec<(String, PathBuf)> = Vec::new();
+        {
+            let sources = recover_lock(self.implicit_stub_sources.lock());
+            let mut injected = recover_lock(self.implicit_injected.lock());
+            let injected_for_session = injected.entry(session_id.to_string()).or_default();
+            for (skill_name, package_path) in sources.get(session_id).into_iter().flatten() {
+                if !injected_for_session.contains(skill_name) {
+                    pending.push((skill_name.clone(), package_path.clone()));
+                }
+            }
+        }
+
+        // Decrypt first, without holding any lock: load_or_register takes the
+        // cache and registry locks itself. Failures are counted per
+        // (session, skill) and stop being retried after the attempt cap.
+        let mut loaded: Vec<String> = Vec::new();
+        for (skill_name, package_path) in pending {
+            if let Err(error) = self.load_or_register_with_source(
+                session_id,
+                &skill_name,
+                &package_path,
+                InvocationSource::Implicit,
+            ) {
+                tracing::warn!(
+                    session_id,
+                    skill_name,
+                    error = %error,
+                    "failed to decrypt implicitly invoked skill for injection"
+                );
+                let attempts = {
+                    let mut failures = recover_lock(self.implicit_load_failures.lock());
+                    let bucket = failures.entry(session_id.to_string()).or_default();
+                    let attempts = bucket.entry(skill_name.clone()).or_default();
+                    *attempts += 1;
+                    *attempts
+                };
+                if attempts >= MAX_IMPLICIT_LOAD_ATTEMPTS {
+                    // Treat the broken package as handled for this turn so a
+                    // long tool loop does not re-attempt decryption N times.
+                    recover_lock(self.implicit_injected.lock())
+                        .entry(session_id.to_string())
+                        .or_default()
+                        .insert(skill_name);
+                }
+                continue;
+            }
+            loaded.push(skill_name);
+        }
+
+        // Frame plaintext by reference (no non-zeroized copies) while the
+        // cache lock is held.
+        let mut framed: Vec<(String, String)> = Vec::new();
+        {
+            let cache = recover_lock(self.cache.lock());
+            for skill_name in &loaded {
+                if let Some(content) = cache.lookup_by_skill_name(session_id, skill_name) {
+                    framed.push((
+                        skill_name.clone(),
+                        wrap_with_framing(
+                            &content.plaintext,
+                            &content.skill_name,
+                            content.base_dir.as_deref(),
+                        ),
+                    ));
+                }
+            }
+        }
+
+        // Double-check before marking: a concurrent caller may have injected
+        // the same skill while we were decrypting, which must not duplicate
+        // the framed content in this request.
+        let mut out = Vec::new();
+        {
+            let mut injected = recover_lock(self.implicit_injected.lock());
+            let injected_for_session = injected.entry(session_id.to_string()).or_default();
+            for (skill_name, text) in framed {
+                if injected_for_session.insert(skill_name.clone()) {
+                    self.emit(AuditEvent::ImplicitInjection {
+                        session_id: session_id.to_string(),
+                        skill_name,
+                    });
+                    out.push(text);
+                }
+            }
+        }
+        out
+    }
+
+    /// Unique skill names whose cached plaintext appears in any of `texts`.
+    /// Used to audit redaction events; never exposes the plaintext itself.
+    pub fn matched_skills_in_texts(&self, session_id: &str, texts: &[&str]) -> Vec<String> {
+        let cache = recover_lock(self.cache.lock());
+        let mut seen = HashSet::new();
+        let mut out = Vec::new();
+        for (skill_name, plaintext) in cache.skill_plaintexts(session_id) {
+            if texts.iter().any(|text| text.contains(plaintext))
+                && seen.insert(skill_name.to_string())
+            {
+                out.push(skill_name.to_string());
+            }
+        }
+        out
+    }
+
     fn load_or_register_inner(
         &self,
         session_id: &str,
         skill_name: &str,
         package_path: &Path,
+        source: InvocationSource,
     ) -> Result<String, EnvelopeError> {
         {
             let mut registry = self.registry.lock().map_err(lock_error)?;
@@ -192,6 +352,7 @@ impl EncryptedSkillRuntime {
                     session_id: session_id.to_string(),
                     skill_name: skill_name.to_string(),
                     cache_hit: true,
+                    source,
                 });
                 return Ok(Token::new(session_id, token).serialize());
             }
@@ -267,10 +428,12 @@ impl EncryptedSkillRuntime {
             session_id: session_id.to_string(),
             skill_name: skill_name.to_string(),
             cache_hit: false,
+            source,
         });
         self.emit(AuditEvent::Tokenization {
             session_id: session_id.to_string(),
             skill_name: skill_name.to_string(),
+            source,
         });
         Ok(Token::new(session_id, hex).serialize())
     }
@@ -280,8 +443,9 @@ impl EncryptedSkillRuntime {
         recover_lock(self.registry.lock()).touch_skill(session_id, skill_name);
     }
 
-    /// Rehydrates tokens with trust-tier framing, skill name, and the skill's
-    /// original base directory anchor. Never emits the decrypted path.
+    /// Rehydrates sentinel tokens and on-disk stub blocks with trust-tier
+    /// framing, skill name, and the skill's original base directory anchor.
+    /// Never emits the decrypted path.
     pub fn rehydrate_framed(&self, owner_session: Option<&str>, text: &str) -> String {
         // Request-level TTL sweep: any model request activity also enforces
         // the skill TTL, so idle skills on long-lived processes do not keep
@@ -293,15 +457,18 @@ impl EncryptedSkillRuntime {
         };
         let mut replaced = 0usize;
         let mut touched_skills: Vec<String> = Vec::new();
+        let mut frame = |skill_name: &str, plaintext: &str, base_dir: Option<&str>| {
+            replaced += 1;
+            if !touched_skills.contains(&skill_name.to_string()) {
+                touched_skills.push(skill_name.to_string());
+            }
+            wrap_with_framing(plaintext, skill_name, base_dir)
+        };
         let out = rehydrate_text_mapped(text, owner_session, &mut |token| {
             cache.lookup(&token.session_id, &token.hex).map(|content| {
-                replaced += 1;
-                if !touched_skills.contains(&content.skill_name) {
-                    touched_skills.push(content.skill_name.clone());
-                }
-                wrap_with_framing(
-                    &content.plaintext,
+                frame(
                     &content.skill_name,
+                    &content.plaintext,
                     content.base_dir.as_deref(),
                 )
             })
@@ -316,6 +483,7 @@ impl EncryptedSkillRuntime {
             self.emit(AuditEvent::Rehydration {
                 session_id: owner_session.unwrap_or("").to_string(),
                 token_count: replaced,
+                skills: touched_skills,
             });
         }
         out
@@ -430,6 +598,9 @@ impl EncryptedSkillRuntime {
         if let Ok(mut sessions) = self.in_flight_sessions.lock() {
             sessions.remove(session_id);
         }
+        recover_lock(self.implicit_stub_sources.lock()).remove(session_id);
+        recover_lock(self.implicit_injected.lock()).remove(session_id);
+        recover_lock(self.implicit_load_failures.lock()).remove(session_id);
         let Ok(_state) = self.state_lock.lock() else {
             tracing::error!("encrypted-skill lifecycle lock poisoned; session cleanup skipped");
             return;
@@ -511,7 +682,7 @@ impl EncryptedSkillRuntime {
         });
     }
 
-    fn emit(&self, event: AuditEvent) {
+    pub(crate) fn emit(&self, event: AuditEvent) {
         if let Some(sink) = &self.audit {
             sink.emit(event);
         }

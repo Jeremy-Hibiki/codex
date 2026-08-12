@@ -182,6 +182,77 @@ fn rehydrate_framed_wraps_content_with_skill_and_base_dir() {
 }
 
 #[test]
+fn implicit_injections_are_metadata_driven_and_deduped() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let (runtime, _tmp) = test_runtime(sdk);
+    runtime.register_implicit_skill_package(
+        "t1",
+        "secret",
+        PathBuf::from("/skills/secret.zip.enc"),
+    );
+    assert!(
+        !runtime.is_engaged("t1"),
+        "registration must not engage the session"
+    );
+
+    let injections = runtime.take_pending_implicit_skill_injections("t1");
+
+    assert_eq!(injections.len(), 1);
+    assert!(injections[0].contains("<skill_name>secret</skill_name>"));
+    assert!(injections[0].contains("<base_directory>/skills</base_directory>"));
+    assert!(injections[0].contains(SKILL_MD));
+    assert!(
+        runtime.is_engaged("t1"),
+        "injection should decrypt and engage"
+    );
+    assert!(
+        runtime
+            .take_pending_implicit_skill_injections("t1")
+            .is_empty(),
+        "already injected skills must not be injected again"
+    );
+}
+
+#[test]
+fn implicit_injections_are_session_scoped_and_survive_clear_only_via_reregistration() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let (runtime, _tmp) = test_runtime(sdk);
+    runtime.register_implicit_skill_package(
+        "t1",
+        "secret",
+        PathBuf::from("/skills/secret.zip.enc"),
+    );
+
+    assert!(
+        runtime
+            .take_pending_implicit_skill_injections("t2")
+            .is_empty()
+    );
+    assert_eq!(
+        runtime.take_pending_implicit_skill_injections("t1").len(),
+        1
+    );
+
+    runtime.unload_turn("t1");
+    assert!(!runtime.is_engaged("t1"));
+    assert!(
+        runtime
+            .take_pending_implicit_skill_injections("t1")
+            .is_empty()
+    );
+
+    runtime.register_implicit_skill_package(
+        "t1",
+        "secret",
+        PathBuf::from("/skills/secret.zip.enc"),
+    );
+    assert_eq!(
+        runtime.take_pending_implicit_skill_injections("t1").len(),
+        1
+    );
+}
+
+#[test]
 fn missing_skill_md_entry_is_an_error() {
     struct NoSkillMd;
     impl EnvelopeSdk for NoSkillMd {
@@ -543,15 +614,18 @@ fn audit_events_cover_decryption_and_tokenization() {
         session_id: "t1".into(),
         skill_name: "secret".into(),
         cache_hit: false,
+        source: InvocationSource::Explicit,
     }));
     assert!(events.contains(&AuditEvent::Decryption {
         session_id: "t1".into(),
         skill_name: "secret".into(),
         cache_hit: true,
+        source: InvocationSource::Explicit,
     }));
     assert!(events.contains(&AuditEvent::Tokenization {
         session_id: "t1".into(),
         skill_name: "secret".into(),
+        source: InvocationSource::Explicit,
     }));
 }
 
@@ -578,6 +652,7 @@ fn audit_events_cover_rehydration_and_cleanup() {
     assert!(events.contains(&AuditEvent::Rehydration {
         session_id: "t1".into(),
         token_count: 1,
+        skills: vec!["secret".into()],
     }));
     assert!(events.contains(&AuditEvent::Blocked {
         session_id: "t1".into(),
@@ -589,6 +664,109 @@ fn audit_events_cover_rehydration_and_cleanup() {
         dirs_removed: 1,
         reason: "thread_end".into(),
     }));
+}
+
+#[test]
+fn implicit_injection_records_audit_events_with_implicit_source() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let sink = Arc::new(CollectingSink::default());
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime = EncryptedSkillRuntime::new_with_audit(
+        sdk,
+        TtlConfig::default(),
+        tmp.path().join("mem-root"),
+        Some(sink.clone()),
+    );
+    runtime.register_implicit_skill_package(
+        "t1",
+        "secret",
+        PathBuf::from("/skills/secret.zip.enc"),
+    );
+
+    assert_eq!(
+        runtime.take_pending_implicit_skill_injections("t1").len(),
+        1
+    );
+
+    let events = sink.events();
+    assert!(events.contains(&AuditEvent::Decryption {
+        session_id: "t1".into(),
+        skill_name: "secret".into(),
+        cache_hit: false,
+        source: InvocationSource::Implicit,
+    }));
+    assert!(events.contains(&AuditEvent::Tokenization {
+        session_id: "t1".into(),
+        skill_name: "secret".into(),
+        source: InvocationSource::Implicit,
+    }));
+    assert!(events.contains(&AuditEvent::ImplicitInjection {
+        session_id: "t1".into(),
+        skill_name: "secret".into(),
+    }));
+}
+
+#[test]
+fn implicit_injection_stops_retrying_failed_decrypts_after_cap() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let sdk = Arc::new(CountingSdk {
+        calls: Arc::clone(&calls),
+        fail: true,
+        content_for: |_| SKILL_MD,
+    });
+    let (runtime, _tmp) = test_runtime(sdk);
+    runtime.register_implicit_skill_package(
+        "t1",
+        "secret",
+        PathBuf::from("/skills/secret.zip.enc"),
+    );
+
+    for _ in 0..MAX_IMPLICIT_LOAD_ATTEMPTS {
+        assert!(
+            runtime
+                .take_pending_implicit_skill_injections("t1")
+                .is_empty(),
+            "failed decrypts must not inject content"
+        );
+    }
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        MAX_IMPLICIT_LOAD_ATTEMPTS as usize,
+        "decrypt attempts must stop after the cap"
+    );
+    assert!(
+        runtime
+            .take_pending_implicit_skill_injections("t1")
+            .is_empty(),
+        "capped skill must not be retried"
+    );
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        MAX_IMPLICIT_LOAD_ATTEMPTS as usize
+    );
+    assert!(!runtime.is_engaged("t1"));
+}
+
+#[test]
+fn matched_skills_in_texts_is_session_scoped_and_content_free() {
+    let sdk = Arc::new(counting_sdk(Arc::new(AtomicUsize::new(0)), |_| SKILL_MD));
+    let (runtime, _tmp) = test_runtime(sdk);
+    runtime
+        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+        .unwrap();
+
+    assert_eq!(
+        runtime.matched_skills_in_texts("t1", &["no match here"]),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        runtime.matched_skills_in_texts("t1", &[&format!("prefix {SKILL_MD} suffix")]),
+        vec!["secret".to_string()]
+    );
+    assert_eq!(
+        runtime.matched_skills_in_texts("t2", &["# Encrypted skill"]),
+        Vec::<String>::new()
+    );
 }
 
 #[test]

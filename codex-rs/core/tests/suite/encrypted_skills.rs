@@ -23,6 +23,7 @@ use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_reasoning_item;
 use core_test_support::responses::ev_response_created;
+use core_test_support::responses::mount_function_call_agent_response;
 use core_test_support::responses::mount_sse_once;
 use core_test_support::responses::mount_sse_sequence;
 use core_test_support::responses::sse;
@@ -377,6 +378,63 @@ async fn text_read_of_skill_md_is_blocked() -> Result<()> {
         "rollout must not contain skill plaintext from a text read, got: {rollout}"
     );
     let _ = mock;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn implicit_read_of_skill_md_injects_encrypted_content() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let test = build_test_with_encrypted_skill(&server).await?;
+    let skill_md = format!(
+        "{}/.agents/skills/{SKILL_NAME}/SKILL.md",
+        test.config.cwd.as_path().display()
+    );
+    let mocks = mount_function_call_agent_response(
+        &server,
+        "call-1",
+        &serde_json::to_string(&serde_json::json!({
+            "command": format!("cat {skill_md}")
+        }))?,
+        "shell_command",
+    )
+    .await;
+
+    submit_single_turn(&test, "review the current state of the repo").await?;
+
+    let request = mocks.completion.last_request().expect("second request");
+    let injected = request
+        .inputs_of_type("message")
+        .into_iter()
+        .find_map(|item| {
+            serde_json::to_string(&item)
+                .ok()
+                .filter(|text| text.contains("REAL_SKILL_CONTENT_MARKER"))
+        })
+        .expect("implicitly invoked skill must be injected into the request");
+    assert!(
+        injected.contains("<skill_name>secret-skill</skill_name>"),
+        "decrypted content must be framed, got: {injected}"
+    );
+    assert!(
+        request
+            .function_call_output_text("call-1")
+            .is_some_and(|output| !output.contains("REAL_SKILL_CONTENT_MARKER")),
+        "tool output must keep the stub; plaintext only enters via injection"
+    );
+    let rollout = std::fs::read_to_string(
+        test.session_configured
+            .rollout_path
+            .as_ref()
+            .expect("rollout path"),
+    )?;
+    assert!(
+        !rollout.contains("REAL_SKILL_CONTENT_MARKER"),
+        "rollout must never contain skill plaintext, got: {rollout}"
+    );
+    let _ = mocks;
     Ok(())
 }
 

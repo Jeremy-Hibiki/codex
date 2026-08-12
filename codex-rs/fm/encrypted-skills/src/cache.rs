@@ -90,12 +90,37 @@ impl ContentCache {
         })
     }
 
+    /// Resolves cached content for a session by skill name, used to rehydrate
+    /// on-disk stub blocks that name the skill's encrypted package.
+    pub fn lookup_by_skill_name(
+        &self,
+        session_id: &str,
+        skill_name: &str,
+    ) -> Option<&CachedContent> {
+        self.by_session.get(session_id).and_then(|bucket| {
+            bucket
+                .iter()
+                .find(|(_, content)| content.skill_name == skill_name)
+                .map(|(_, content)| content)
+        })
+    }
+
     pub fn plaintexts(&self, session_id: &str) -> impl Iterator<Item = &str> {
         self.by_session
             .get(session_id)
             .into_iter()
             .flatten()
             .map(|(_, content)| content.plaintext.as_str())
+    }
+
+    /// Iterates `(skill_name, plaintext)` pairs for a session, used by
+    /// redaction auditing to name affected skills without exposing content.
+    pub fn skill_plaintexts(&self, session_id: &str) -> impl Iterator<Item = (&str, &str)> {
+        self.by_session
+            .get(session_id)
+            .into_iter()
+            .flatten()
+            .map(|(_, content)| (content.skill_name.as_str(), content.plaintext.as_str()))
     }
 
     pub fn drop_session(&mut self, session_id: &str) {

@@ -80,6 +80,25 @@ impl Prompt {
             strip_image_details(&mut input);
         }
         if let Some(rehydrator) = &self.encrypted_skills {
+            // Implicitly invoked encrypted skills (identified by the detection
+            // metadata, not by on-disk stub content) are decrypted here and
+            // injected as a framed context fragment, just before the request
+            // is transmitted to the model.
+            let implicit_injections = rehydrator
+                .runtime
+                .take_pending_implicit_skill_injections(&rehydrator.session_id);
+            if !implicit_injections.is_empty() {
+                input.push(ResponseItem::Message {
+                    id: None,
+                    role: "developer".to_string(),
+                    content: implicit_injections
+                        .into_iter()
+                        .map(|text| ContentItem::InputText { text })
+                        .collect(),
+                    phase: None,
+                    internal_chat_message_metadata_passthrough: None,
+                });
+            }
             for item in &mut input {
                 if let ResponseItem::Message { content, .. } = item {
                     for content_item in content {

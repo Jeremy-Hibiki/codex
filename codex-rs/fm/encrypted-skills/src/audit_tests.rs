@@ -6,12 +6,14 @@ fn serialize_contains_event_type_and_fields() {
         session_id: "t1".into(),
         skill_name: "secret-skill".into(),
         cache_hit: false,
+        source: InvocationSource::Implicit,
     };
     let line = serialize(&event);
     assert!(line.contains("\"event\":\"decryption\""));
     assert!(line.contains("\"session_id\":\"t1\""));
     assert!(line.contains("\"skill_name\":\"secret-skill\""));
     assert!(line.contains("\"cache_hit\":false"));
+    assert!(line.contains("\"source\":\"implicit\""));
     assert!(line.contains("\"timestamp_ms\":"));
 }
 
@@ -20,6 +22,7 @@ fn write_event_appends_one_line() {
     let event = AuditEvent::Rehydration {
         session_id: "t1".into(),
         token_count: 3,
+        skills: vec!["secret".into()],
     };
     let mut buf = Vec::new();
     write_event(&mut buf, &event).unwrap();
@@ -37,10 +40,34 @@ fn audit_lines_never_contain_plaintext() {
     let event = AuditEvent::Tokenization {
         session_id: "t1".into(),
         skill_name: "secret-skill".into(),
+        source: InvocationSource::Explicit,
     };
     let line = serialize(&event);
     assert!(!line.contains("SKILL.md content"));
     assert!(!line.contains("/dev/shm/fm-agent-security"));
+    assert!(line.contains("\"source\":\"explicit\""));
+}
+
+#[test]
+fn serialize_implicit_injection_and_redaction_events() {
+    let injection = AuditEvent::ImplicitInjection {
+        session_id: "t1".into(),
+        skill_name: "secret-skill".into(),
+    };
+    let line = serialize(&injection);
+    assert!(line.contains("\"event\":\"implicit_injection\""));
+    assert!(line.contains("\"skill_name\":\"secret-skill\""));
+
+    let redaction = AuditEvent::Redaction {
+        session_id: "t1".into(),
+        skills: vec!["secret-skill".into()],
+        surface: "tool_output",
+    };
+    let line = serialize(&redaction);
+    assert!(line.contains("\"event\":\"redaction\""));
+    assert!(line.contains("\"skills\":[\"secret-skill\"]"));
+    assert!(line.contains("\"surface\":\"tool_output\""));
+    assert!(!line.contains("REAL_SKILL_CONTENT"));
 }
 
 #[test]
@@ -65,10 +92,12 @@ fn file_audit_sink_writes_jsonl_lines() {
         session_id: "t1".into(),
         skill_name: "secret".into(),
         cache_hit: false,
+        source: InvocationSource::Explicit,
     });
     sink.emit(AuditEvent::Rehydration {
         session_id: "t1".into(),
         token_count: 2,
+        skills: vec!["secret".into()],
     });
 
     let text = std::fs::read_to_string(&path).unwrap();
@@ -86,6 +115,7 @@ fn file_audit_sink_rotates_at_size_limit() {
             session_id: "t1".into(),
             skill_name: "secret".into(),
             cache_hit: false,
+            source: InvocationSource::Explicit,
         });
     }
 
@@ -133,6 +163,7 @@ fn shared_file_sink_recreates_instance_after_last_reference_drops() {
         session_id: "t1".into(),
         skill_name: "secret".into(),
         cache_hit: false,
+        source: InvocationSource::Explicit,
     });
     let text = std::fs::read_to_string(tmp.path().join("audit.log")).unwrap();
     assert_eq!(text.lines().count(), 1);

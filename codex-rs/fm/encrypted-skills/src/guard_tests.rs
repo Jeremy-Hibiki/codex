@@ -1283,6 +1283,45 @@ fn blocked_actions_record_specific_audit_reasons() {
 }
 
 #[test]
+fn redaction_emits_audit_event_with_skill_names_but_never_content() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sink = Arc::new(GuardCollectingSink::default());
+    let runtime = EncryptedSkillRuntime::new_with_audit(
+        Arc::new(GuardTestSdk),
+        TtlConfig::default(),
+        tmp.path().join("mem-root"),
+        Some(sink.clone()),
+    );
+    runtime
+        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+        .unwrap();
+
+    assert_eq!(
+        redact_text(&runtime, "t1", "nothing sensitive"),
+        "nothing sensitive"
+    );
+    assert!(
+        !sink
+            .events()
+            .iter()
+            .any(|event| matches!(event, AuditEvent::Redaction { .. }))
+    );
+
+    let redacted = redact_text(&runtime, "t1", "before # Guarded content after");
+    assert!(!redacted.contains("# Guarded content"));
+    let events = sink.events();
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AuditEvent::Redaction { skills, surface, .. }
+            if skills == &vec!["secret".to_string()] && *surface == "text"
+    )));
+    assert!(
+        !format!("{events:?}").contains("Guarded content"),
+        "audit events must never carry skill plaintext, got {events:?}"
+    );
+}
+
+#[test]
 fn guards_export_surfaces_with_known_plaintext() {
     let (runtime, _tmp) = loaded_runtime();
     let blocked_cases = [

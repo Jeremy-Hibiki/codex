@@ -22,6 +22,7 @@ use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
 use serde_json::Value;
 
+use crate::audit::AuditEvent;
 use crate::export_guard;
 use crate::paths;
 use crate::runtime::EncryptedSkillRuntime;
@@ -382,6 +383,226 @@ fn path_under_dirs(path: &str, dirs: &[PathBuf]) -> bool {
     })
 }
 
+/// Emits a `redaction` audit event when any cached skill plaintext appears in
+/// `texts`. Names the affected skills; content is never included.
+fn emit_redaction_if_matched(
+    runtime: &EncryptedSkillRuntime,
+    session_id: &str,
+    surface: &'static str,
+    texts: &[&str],
+) {
+    let skills = runtime.matched_skills_in_texts(session_id, texts);
+    if !skills.is_empty() {
+        runtime.emit(AuditEvent::Redaction {
+            session_id: session_id.to_string(),
+            skills,
+            surface,
+        });
+    }
+}
+
+/// Text fields redacted by [`redact_response_item_all_text`].
+fn response_item_all_texts(item: &ResponseItem) -> Vec<&str> {
+    let mut out = Vec::new();
+    match item {
+        ResponseItem::Message { content, .. } => {
+            for content_item in content {
+                match content_item {
+                    ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+                        out.push(text.as_str())
+                    }
+                    ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => {}
+                }
+            }
+        }
+        ResponseItem::AgentMessage { content, .. } => {
+            for content_item in content {
+                if let AgentMessageInputContent::InputText { text } = content_item {
+                    out.push(text.as_str());
+                }
+            }
+        }
+        ResponseItem::FunctionCall { arguments, .. } => out.push(arguments.as_str()),
+        ResponseItem::CustomToolCall { input, .. } => out.push(input.as_str()),
+        ResponseItem::FunctionCallOutput { output, .. }
+        | ResponseItem::CustomToolCallOutput { output, .. } => match &output.body {
+            FunctionCallOutputBody::Text(text) => out.push(text.as_str()),
+            FunctionCallOutputBody::ContentItems(items) => {
+                for content in items {
+                    if let FunctionCallOutputContentItem::InputText { text } = content {
+                        out.push(text.as_str());
+                    }
+                }
+            }
+        },
+        ResponseItem::Reasoning {
+            summary, content, ..
+        } => {
+            for entry in summary {
+                let ReasoningItemReasoningSummary::SummaryText { text } = entry;
+                out.push(text.as_str());
+            }
+            if let Some(content) = content {
+                for entry in content {
+                    match entry {
+                        ReasoningItemContent::ReasoningText { text }
+                        | ReasoningItemContent::Text { text } => out.push(text.as_str()),
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+/// Text fields redacted by [`redact_response_item_text`] (assistant replies).
+fn assistant_reply_texts(item: &ResponseItem) -> Vec<&str> {
+    match item {
+        ResponseItem::Message { role, content, .. } if role == "assistant" => content
+            .iter()
+            .filter_map(|content_item| match content_item {
+                ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+                    Some(text.as_str())
+                }
+                _ => None,
+            })
+            .collect(),
+        ResponseItem::AgentMessage { content, .. } => content
+            .iter()
+            .filter_map(|content_item| {
+                if let AgentMessageInputContent::InputText { text } = content_item {
+                    Some(text.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect(),
+        ResponseItem::Reasoning {
+            summary, content, ..
+        } => {
+            let mut out = Vec::new();
+            for entry in summary {
+                let ReasoningItemReasoningSummary::SummaryText { text } = entry;
+                out.push(text.as_str());
+            }
+            if let Some(content) = content {
+                for entry in content {
+                    match entry {
+                        ReasoningItemContent::ReasoningText { text }
+                        | ReasoningItemContent::Text { text } => out.push(text.as_str()),
+                    }
+                }
+            }
+            out
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Text fields redacted by [`redact_tool_output_plaintext_for_persistence`].
+fn persistence_texts(item: &ResponseItem) -> Vec<&str> {
+    let mut out = Vec::new();
+    match item {
+        ResponseItem::Message { role, content, .. } if role == "developer" => {
+            for content_item in content {
+                match content_item {
+                    ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+                        out.push(text.as_str())
+                    }
+                    _ => {}
+                }
+            }
+        }
+        ResponseItem::FunctionCall { arguments, .. } => out.push(arguments.as_str()),
+        ResponseItem::CustomToolCall { input, .. } => out.push(input.as_str()),
+        ResponseItem::FunctionCallOutput { output, .. }
+        | ResponseItem::CustomToolCallOutput { output, .. } => match &output.body {
+            FunctionCallOutputBody::Text(text) => out.push(text.as_str()),
+            FunctionCallOutputBody::ContentItems(items) => {
+                for content in items {
+                    if let FunctionCallOutputContentItem::InputText { text } = content {
+                        out.push(text.as_str());
+                    }
+                }
+            }
+        },
+        _ => {}
+    }
+    out
+}
+
+/// Text fields redacted by [`redact_turn_item`].
+fn turn_item_texts(item: &TurnItem) -> Vec<&str> {
+    let mut out = Vec::new();
+    match item {
+        TurnItem::AgentMessage(agent_message) => {
+            for content in &agent_message.content {
+                let AgentMessageContent::Text { text } = content;
+                out.push(text.as_str());
+            }
+        }
+        TurnItem::Reasoning(reasoning) => {
+            out.extend(reasoning.summary_text.iter().map(String::as_str));
+            out.extend(reasoning.raw_content.iter().map(String::as_str));
+        }
+        TurnItem::Plan(plan) => out.push(plan.text.as_str()),
+        TurnItem::CommandExecution(command_execution) => {
+            if let Some(text) = &command_execution.stdout {
+                out.push(text.as_str());
+            }
+            if let Some(text) = &command_execution.stderr {
+                out.push(text.as_str());
+            }
+            if let Some(text) = &command_execution.aggregated_output {
+                out.push(text.as_str());
+            }
+            if let Some(text) = &command_execution.formatted_output {
+                out.push(text.as_str());
+            }
+            if let Some(text) = &command_execution.interaction_input {
+                out.push(text.as_str());
+            }
+        }
+        TurnItem::FileChange(file_change) => {
+            if let Some(text) = &file_change.stdout {
+                out.push(text.as_str());
+            }
+            if let Some(text) = &file_change.stderr {
+                out.push(text.as_str());
+            }
+        }
+        TurnItem::WebSearch(web_search) => out.push(web_search.query.as_str()),
+        TurnItem::CollabAgentToolCall(collab_agent_tool_call) => {
+            if let Some(text) = &collab_agent_tool_call.prompt {
+                out.push(text.as_str());
+            }
+        }
+        TurnItem::DynamicToolCall(dynamic_tool_call) => {
+            if let Some(content_items) = &dynamic_tool_call.content_items {
+                for content in content_items {
+                    if let codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem::InputText {
+                        text,
+                    } = content
+                    {
+                        out.push(text.as_str());
+                    }
+                }
+            }
+            if let Some(text) = &dynamic_tool_call.error {
+                out.push(text.as_str());
+            }
+        }
+        TurnItem::McpToolCall(mcp_tool_call) => {
+            if let Some(error) = &mcp_tool_call.error {
+                out.push(error.message.as_str());
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
 /// Redacts known skill plaintext from assistant replies and plaintext
 /// inter-agent messages before they reach durable history, rollout, or the
 /// client stream.
@@ -397,6 +618,8 @@ pub fn redact_assistant_reply_items<'a>(
     if known.is_empty() {
         return items;
     }
+    let texts: Vec<&str> = items.iter().flat_map(assistant_reply_texts).collect();
+    emit_redaction_if_matched(runtime, session_id, "assistant_reply", &texts);
     let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
     let mut items = items;
     for item in items.to_mut() {
@@ -420,6 +643,8 @@ pub fn redact_assistant_reply_item(
     if known.is_empty() {
         return item;
     }
+    let texts = assistant_reply_texts(&item);
+    emit_redaction_if_matched(runtime, session_id, "assistant_reply", &texts);
     let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
     redact_response_item_text(&mut item, &known);
     item
@@ -469,6 +694,7 @@ fn redact_response_item_text(item: &mut ResponseItem, known: &[&str]) {
 /// Used for hook-provided contexts and trace payloads, which do not pass
 /// through the assistant-reply redaction path.
 pub fn redact_text(runtime: &EncryptedSkillRuntime, session_id: &str, text: &str) -> String {
+    emit_redaction_if_matched(runtime, session_id, "text", std::slice::from_ref(&text));
     let mut out = text.to_string();
     let known = runtime.known_plaintexts(session_id);
     if !known.is_empty() {
@@ -508,6 +734,8 @@ pub fn redact_all_response_item_text(
 ) -> Vec<ResponseItem> {
     let known = runtime.known_plaintexts(session_id);
     let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
+    let texts: Vec<&str> = items.iter().flat_map(response_item_all_texts).collect();
+    emit_redaction_if_matched(runtime, session_id, "response_items", &texts);
     items
         .iter()
         .cloned()
@@ -609,6 +837,8 @@ pub fn redact_tool_output_plaintext_for_persistence(
     if known.is_empty() {
         return item;
     }
+    let texts = persistence_texts(&item);
+    emit_redaction_if_matched(runtime, session_id, "tool_output", &texts);
     let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
     match &mut item {
         ResponseItem::Message { role, content, .. } if role == "developer" => {
@@ -683,6 +913,8 @@ pub fn redact_turn_item(
 ) -> TurnItem {
     let known = runtime.known_plaintexts(session_id);
     let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
+    let texts = turn_item_texts(&item);
+    emit_redaction_if_matched(runtime, session_id, "turn_item", &texts);
     match &mut item {
         TurnItem::AgentMessage(agent_message) => {
             for content in &mut agent_message.content {

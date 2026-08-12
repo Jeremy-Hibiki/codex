@@ -13,20 +13,55 @@ use std::time::SystemTime;
 
 use serde_json::json;
 
+/// How a skill entered the encrypted-skill lifecycle. Recorded on every
+/// decryption/tokenization event so periodic audits can separate explicit
+/// mentions from implicit (command-driven) triggers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvocationSource {
+    Explicit,
+    Implicit,
+}
+
+impl InvocationSource {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Explicit => "explicit",
+            Self::Implicit => "implicit",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuditEvent {
     Decryption {
         session_id: String,
         skill_name: String,
         cache_hit: bool,
+        source: InvocationSource,
     },
     Tokenization {
         session_id: String,
         skill_name: String,
+        source: InvocationSource,
     },
     Rehydration {
         session_id: String,
         token_count: usize,
+        skills: Vec<String>,
+    },
+    /// A skill decrypted through the implicit-invocation path was injected
+    /// into a model request as framed content.
+    ImplicitInjection {
+        session_id: String,
+        skill_name: String,
+    },
+    /// Known skill plaintext was found and redacted in a model-visible or
+    /// durable surface. `skills` names the affected skills; content is never
+    /// included.
+    Redaction {
+        session_id: String,
+        skills: Vec<String>,
+        surface: &'static str,
     },
     Blocked {
         session_id: String,
@@ -46,6 +81,8 @@ impl AuditEvent {
             Self::Decryption { .. } => "decryption",
             Self::Tokenization { .. } => "tokenization",
             Self::Rehydration { .. } => "rehydration",
+            Self::ImplicitInjection { .. } => "implicit_injection",
+            Self::Redaction { .. } => "redaction",
             Self::Blocked { .. } => "blocked",
             Self::Cleanup { .. } => "cleanup",
         }
@@ -56,6 +93,8 @@ impl AuditEvent {
             Self::Decryption { session_id, .. }
             | Self::Tokenization { session_id, .. }
             | Self::Rehydration { session_id, .. }
+            | Self::ImplicitInjection { session_id, .. }
+            | Self::Redaction { session_id, .. }
             | Self::Blocked { session_id, .. }
             | Self::Cleanup { session_id, .. } => session_id,
         }
@@ -81,10 +120,29 @@ pub fn serialize(event: &AuditEvent) -> String {
         AuditEvent::Decryption {
             skill_name,
             cache_hit,
+            source,
             ..
-        } => json!({ "skill_name": skill_name, "cache_hit": cache_hit }),
-        AuditEvent::Tokenization { skill_name, .. } => json!({ "skill_name": skill_name }),
-        AuditEvent::Rehydration { token_count, .. } => json!({ "token_count": token_count }),
+        } => json!({
+            "skill_name": skill_name,
+            "cache_hit": cache_hit,
+            "source": source.as_str(),
+        }),
+        AuditEvent::Tokenization {
+            skill_name, source, ..
+        } => json!({ "skill_name": skill_name, "source": source.as_str() }),
+        AuditEvent::Rehydration {
+            token_count,
+            skills,
+            ..
+        } => json!({ "token_count": token_count, "skills": skills }),
+        AuditEvent::ImplicitInjection { skill_name, .. } => {
+            json!({ "skill_name": skill_name })
+        }
+        AuditEvent::Redaction {
+            skills, surface, ..
+        } => {
+            json!({ "skills": skills, "surface": surface })
+        }
         AuditEvent::Blocked { tool, reason, .. } => {
             json!({ "tool": tool, "reason": reason })
         }

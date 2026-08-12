@@ -61,6 +61,9 @@ pub(crate) async fn maybe_emit_implicit_skill_invocation(
     ) else {
         return;
     };
+    if candidate.is_encrypted() {
+        register_implicit_skill_package(sess, &candidate);
+    }
     let invocation = SkillInvocation {
         skill_name: candidate.name,
         skill_scope: candidate.scope,
@@ -124,4 +127,26 @@ pub(crate) async fn maybe_emit_implicit_skill_invocation(
             ),
             vec![invocation],
         );
+}
+
+/// Records the encrypted package path for an implicitly invoked skill. The
+/// session is deliberately not engaged here: decryption happens later, at
+/// request build time, after the model's shell read of the on-disk stub has
+/// already executed (see `EncryptedSkillRuntime::rehydrate_framed`).
+fn register_implicit_skill_package(sess: &Session, skill: &SkillMetadata) {
+    let Some(skill_dir) = skill.path_to_skills_md.parent() else {
+        return;
+    };
+    let default_package = format!("{}.zip.enc", skill.name);
+    let package_name = skill
+        .encryption
+        .as_ref()
+        .and_then(|encryption| encryption.package.as_deref())
+        .filter(|package| !package.is_empty())
+        .unwrap_or(&default_package);
+    let package_path = skill_dir.join(package_name);
+    let session_id = sess.thread_id().to_string();
+    sess.services
+        .encrypted_skills_runtime
+        .register_implicit_skill_package(&session_id, &skill.name, package_path.to_path_buf());
 }

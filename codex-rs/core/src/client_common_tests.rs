@@ -111,6 +111,63 @@ fn request_input_without_rehydrator_is_unchanged() {
     assert_eq!(text, token);
 }
 
+#[test]
+fn request_input_injects_implicit_encrypted_skill() {
+    let tmp = tempfile::tempdir().unwrap();
+    let runtime = EncryptedSkillRuntime::new(
+        Arc::new(ClientTestSdk),
+        TtlConfig::default(),
+        tmp.path().join("mem-root"),
+    );
+    runtime.register_implicit_skill_package(
+        "thread-1",
+        "secret-skill",
+        PathBuf::from("/skills/secret.zip.enc"),
+    );
+    let rehydrator = EncryptedSkillRehydrator {
+        runtime: Arc::new(runtime),
+        session_id: "thread-1".to_string(),
+    };
+    let prompt = Prompt {
+        input: vec![ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "review the repo".to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }],
+        encrypted_skills: Some(rehydrator),
+        ..Default::default()
+    };
+
+    let formatted = prompt.get_formatted_input_for_request(/*use_responses_lite*/ false);
+
+    assert_eq!(
+        formatted.len(),
+        2,
+        "implicit skill must be injected as a new item"
+    );
+    let ResponseItem::Message { role, content, .. } = &formatted[1] else {
+        panic!("expected injected message item");
+    };
+    assert_eq!(role, "developer");
+    let ContentItem::InputText { text } = &content[0] else {
+        panic!("expected input text");
+    };
+    assert!(text.contains("<skill_name>secret-skill</skill_name>"));
+    assert!(text.contains("# Framed content"));
+    assert!(!text.contains("/dev/shm/fm-agent-security"));
+
+    let second = prompt.get_formatted_input_for_request(/*use_responses_lite*/ false);
+    assert_eq!(
+        second.len(),
+        1,
+        "already injected skills must not be injected again"
+    );
+}
+
 fn prompt_with_image_outputs() -> Prompt {
     Prompt {
         input: vec![

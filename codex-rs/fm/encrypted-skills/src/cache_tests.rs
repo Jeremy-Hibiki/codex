@@ -44,6 +44,23 @@ fn sessions_are_isolated() {
 }
 
 #[test]
+fn lookup_by_skill_name_resolves_cached_content() {
+    let mut cache = ContentCache::new(64);
+    let mut skill = content("instructions");
+    skill.skill_name = "code-review".to_string();
+    cache.store("s1", skill, |_| false);
+
+    assert_eq!(
+        cache
+            .lookup_by_skill_name("s1", "code-review")
+            .map(|c| c.plaintext.as_str()),
+        Some("instructions")
+    );
+    assert_eq!(cache.lookup_by_skill_name("s2", "code-review"), None);
+    assert_eq!(cache.lookup_by_skill_name("s1", "other"), None);
+}
+
+#[test]
 fn fifo_eviction_respects_cap() {
     let mut cache = ContentCache::new(2);
     let a = cache.store("s1", content("one"), |_| false);

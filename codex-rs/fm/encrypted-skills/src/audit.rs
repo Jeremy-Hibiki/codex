@@ -63,6 +63,11 @@ pub enum AuditEvent {
         skills: Vec<String>,
         surface: &'static str,
     },
+    /// The external guardrail (prompt sanitizer) flagged the user's input;
+    /// `prompt` is the full flagged input, recorded for periodic review of
+    /// violations and sample collection. User input is untrusted data, not
+    /// skill content, so it is safe to record.
+    GuardrailBlocked { session_id: String, prompt: String },
     Blocked {
         session_id: String,
         tool: String,
@@ -83,6 +88,7 @@ impl AuditEvent {
             Self::Rehydration { .. } => "rehydration",
             Self::ImplicitInjection { .. } => "implicit_injection",
             Self::Redaction { .. } => "redaction",
+            Self::GuardrailBlocked { .. } => "guardrail_blocked",
             Self::Blocked { .. } => "blocked",
             Self::Cleanup { .. } => "cleanup",
         }
@@ -95,6 +101,7 @@ impl AuditEvent {
             | Self::Rehydration { session_id, .. }
             | Self::ImplicitInjection { session_id, .. }
             | Self::Redaction { session_id, .. }
+            | Self::GuardrailBlocked { session_id, .. }
             | Self::Blocked { session_id, .. }
             | Self::Cleanup { session_id, .. } => session_id,
         }
@@ -103,18 +110,22 @@ impl AuditEvent {
 
 /// Appends one JSONL line. Audit entries never carry skill plaintext by
 /// construction.
-pub fn write_event(writer: &mut impl Write, event: &AuditEvent) -> io::Result<()> {
-    writeln!(writer, "{}", serialize(event))
+pub(crate) fn write_event(writer: &mut impl Write, event: &AuditEvent) -> io::Result<()> {
+    let line = serialize(event);
+    writer.write_all(line.as_bytes())?;
+    writer.write_all(b"\n")
 }
 
-pub fn serialize(event: &AuditEvent) -> String {
+pub(crate) fn serialize(event: &AuditEvent) -> String {
+    let timestamp_ms = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| u64::try_from(duration.as_millis()).ok())
+        .unwrap_or(0);
     let mut value = json!({
         "event": event.event_type(),
         "session_id": event.session_id(),
-        "timestamp_ms": SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map(|duration| duration.as_millis() as u64)
-            .unwrap_or(0),
+        "timestamp_ms": timestamp_ms,
     });
     let fields = match event {
         AuditEvent::Decryption {
@@ -143,6 +154,9 @@ pub fn serialize(event: &AuditEvent) -> String {
         } => {
             json!({ "skills": skills, "surface": surface })
         }
+        AuditEvent::GuardrailBlocked { prompt, .. } => {
+            json!({ "prompt": prompt })
+        }
         AuditEvent::Blocked { tool, reason, .. } => {
             json!({ "tool": tool, "reason": reason })
         }
@@ -167,121 +181,162 @@ pub trait AuditSink: Send + Sync {
     fn emit(&self, event: AuditEvent);
 }
 
-/// Append-only JSONL audit sink with size-based rotation. The active file is
-/// rotated to `<path>.1` once it exceeds the size limit.
+/// Append-only JSONL audit sink backed by `tracing-appender`'s daily rolling
+/// writer. Files are named `<dir>/<stem>.<date>.<ext>`; old files are never
+/// pruned. The appender appends with `O_APPEND` and the shared-writer
+/// registry below serializes access across threads in this process, so
+/// concurrent writers (and separate processes appending to the same file) do
+/// not lose events.
+#[derive(Debug)]
 pub struct FileAuditSink {
     path: PathBuf,
-    max_bytes: u64,
-    writer: Mutex<std::fs::File>,
+    writer: Mutex<tracing_appender::rolling::RollingFileAppender>,
 }
 
 impl FileAuditSink {
-    pub const DEFAULT_MAX_BYTES: u64 = 10 * 1024 * 1024;
-
+    /// Opens an audit sink for `path`, rotating daily. The on-disk file name
+    /// gets a date suffix (`<stem>.<date>.<ext>`).
     pub fn new(path: PathBuf) -> io::Result<Self> {
-        Self::new_with_limit(path, Self::DEFAULT_MAX_BYTES)
-    }
+        let directory = path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let Some(prefix) = path
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().into_owned())
+        else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("audit log path {} has no file name", path.display()),
+            ));
+        };
+        let suffix = path
+            .extension()
+            .map(|ext| ext.to_string_lossy().into_owned());
+        std::fs::create_dir_all(&directory)?;
 
-    pub fn new_with_limit(path: PathBuf, max_bytes: u64) -> io::Result<Self> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+        let mut builder = tracing_appender::rolling::RollingFileAppender::builder()
+            .rotation(tracing_appender::rolling::Rotation::DAILY)
+            .filename_prefix(&prefix);
+        if let Some(suffix) = &suffix {
+            builder = builder.filename_suffix(suffix);
         }
-        let mut options = std::fs::OpenOptions::new();
-        options.create(true).append(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let writer = options.open(&path)?;
+        let writer = builder.build(&directory).map_err(io::Error::other)?;
+        restrict_audit_file_permissions(&directory, &prefix, suffix.as_deref())?;
         Ok(Self {
             path,
-            max_bytes,
             writer: Mutex::new(writer),
         })
-    }
-
-    fn rotate_locked(&self, writer: &mut std::fs::File) {
-        let rotated = rotated_path(&self.path);
-        if let Err(error) = std::fs::remove_file(&rotated) {
-            tracing::warn!(error = %error, path = %rotated.display(), "failed to remove rotated audit log");
-        }
-        if let Err(error) = std::fs::rename(&self.path, &rotated) {
-            tracing::warn!(error = %error, path = %self.path.display(), "failed to rotate audit log");
-            return;
-        }
-        if let Ok(fresh) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)
-        {
-            *writer = fresh;
-        } else {
-            tracing::error!(path = %self.path.display(), "failed to reopen audit log after rotation");
-        }
     }
 }
 
 impl AuditSink for FileAuditSink {
     fn emit(&self, event: AuditEvent) {
         let line = serialize(&event);
-        let Ok(mut writer) = self.writer.lock() else {
-            tracing::error!(path = %self.path.display(), "audit sink mutex poisoned; event dropped");
-            return;
+        let mut writer = match self.writer.lock() {
+            Ok(writer) => writer,
+            Err(poisoned) => poisoned.into_inner(),
         };
-        let over_limit = writer
-            .metadata()
-            .map(|metadata| metadata.len() + line.len() as u64 > self.max_bytes)
-            .unwrap_or(false);
-        if over_limit {
-            self.rotate_locked(&mut writer);
-        }
         if let Err(error) = writeln!(writer, "{line}") {
-            tracing::error!(error = %error, path = %self.path.display(), "failed to write audit event");
+            tracing::error!(
+                path = %self.path.display(),
+                error = ?error,
+                "failed to write audit event"
+            );
         }
         if let Err(error) = writer.flush() {
-            tracing::error!(error = %error, path = %self.path.display(), "failed to flush audit log");
+            tracing::error!(
+                path = %self.path.display(),
+                error = ?error,
+                "failed to flush audit log"
+            );
         }
     }
 }
 
-/// Process-level registry of shared audit sinks, keyed by `(path, max_bytes)`.
-///
-/// Sessions must not open the same audit file independently: concurrent
-/// rotation (`rename` to `<path>.1`) from multiple sinks can split or drop
-/// events. All callers that target the same file should go through
-/// [`shared_file_sink`] so writes and rotation are serialized by one writer.
-/// Registry key identifying one audit file configuration.
-type SharedSinkKey = (PathBuf, u64);
+/// Restricts the freshly created audit file to owner-only on Unix, matching
+/// the previous hand-rolled sink's `0600` permissions.
+#[cfg(unix)]
+fn restrict_audit_file_permissions(
+    directory: &Path,
+    prefix: &str,
+    suffix: Option<&str>,
+) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
 
-static SHARED_SINKS: OnceLock<Mutex<HashMap<SharedSinkKey, Weak<FileAuditSink>>>> = OnceLock::new();
+    let mut newest: Option<(PathBuf, std::time::SystemTime)> = None;
+    let prefix_marker = format!("{prefix}.");
+    let suffix_marker = suffix.map(|suffix| format!(".{suffix}"));
+    for entry in std::fs::read_dir(directory)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.starts_with(&prefix_marker) {
+            continue;
+        }
+        if let Some(suffix_marker) = &suffix_marker
+            && !name.ends_with(suffix_marker)
+        {
+            continue;
+        }
+        let modified = entry
+            .metadata()?
+            .modified()
+            .unwrap_or(std::time::UNIX_EPOCH);
+        if newest.as_ref().is_none_or(|(_, latest)| modified > *latest) {
+            newest = Some((entry.path(), modified));
+        }
+    }
+    if let Some((path, _)) = newest {
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
 
-/// Returns the process-wide [`FileAuditSink`] for `path` and `max_bytes`,
-/// reusing the live instance when one already exists.
+#[cfg(not(unix))]
+fn restrict_audit_file_permissions(
+    _directory: &Path,
+    _prefix: &str,
+    _suffix: Option<&str>,
+) -> io::Result<()> {
+    Ok(())
+}
+
+/// Process-level registry of shared audit sinks, keyed by the configured log
+/// path.
 ///
-/// The key includes `max_bytes` so callers that configure a different rotation
-/// limit for the same path do not silently share a writer with the wrong
-/// threshold. The returned value is an `Arc<dyn AuditSink>`; the registry keeps
-/// only a `Weak` reference, so the sink is reclaimed when no caller holds it.
-pub fn shared_file_sink(path: PathBuf, max_bytes: u64) -> io::Result<Arc<dyn AuditSink>> {
+/// Sessions must not open the same audit file independently: each
+/// `RollingFileAppender` maintains its own file handle and rollover state.
+/// All callers that target the same path should go through
+/// [`shared_file_sink`] so writes from this process are serialized by one
+/// writer.
+static SHARED_SINKS: OnceLock<Mutex<HashMap<PathBuf, Weak<FileAuditSink>>>> = OnceLock::new();
+
+/// Returns the process-wide [`FileAuditSink`] for `path`, reusing the live
+/// instance when one already exists. Separate processes may append to the
+/// same file: the appender opens with `O_APPEND`, and daily rotation only
+/// switches to a new date-named file, so cross-process rollover cannot race.
+pub fn shared_file_sink(path: PathBuf) -> io::Result<Arc<dyn AuditSink>> {
     let map = SHARED_SINKS.get_or_init(|| Mutex::new(HashMap::new()));
+    {
+        let mut map = map
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        map.retain(|_, sink| sink.strong_count() > 0);
+        if let Some(sink) = map.get(&path).and_then(Weak::upgrade) {
+            return Ok(sink as Arc<dyn AuditSink>);
+        }
+    }
+    // Build outside the registry lock: file IO can block other callers.
+    let sink = Arc::new(FileAuditSink::new(path.clone())?);
     let mut map = map
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     map.retain(|_, sink| sink.strong_count() > 0);
-    let key = (path.clone(), max_bytes);
-    if let Some(sink) = map.get(&key).and_then(Weak::upgrade) {
-        return Ok(sink as Arc<dyn AuditSink>);
+    if let Some(existing) = map.get(&path).and_then(Weak::upgrade) {
+        return Ok(existing as Arc<dyn AuditSink>);
     }
-    let sink = Arc::new(FileAuditSink::new_with_limit(path, max_bytes)?);
-    map.insert(key, Arc::downgrade(&sink));
+    map.insert(path, Arc::downgrade(&sink));
     Ok(sink as Arc<dyn AuditSink>)
-}
-
-fn rotated_path(path: &Path) -> PathBuf {
-    let mut rotated = path.as_os_str().to_owned();
-    rotated.push(".1");
-    PathBuf::from(rotated)
 }
 
 #[cfg(test)]

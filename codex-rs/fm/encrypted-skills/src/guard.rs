@@ -695,6 +695,13 @@ fn redact_response_item_text(item: &mut ResponseItem, known: &[&str]) {
 /// through the assistant-reply redaction path.
 pub fn redact_text(runtime: &EncryptedSkillRuntime, session_id: &str, text: &str) -> String {
     emit_redaction_if_matched(runtime, session_id, "text", std::slice::from_ref(&text));
+    redact_text_quiet(runtime, session_id, text)
+}
+
+/// Redacts without emitting a per-call audit event. Used for high-frequency
+/// streaming deltas (every streamed fragment would otherwise flood the audit
+/// log); the complete-item redaction still records one `redaction` event.
+pub fn redact_text_quiet(runtime: &EncryptedSkillRuntime, session_id: &str, text: &str) -> String {
     let mut out = text.to_string();
     let known = runtime.known_plaintexts(session_id);
     if !known.is_empty() {

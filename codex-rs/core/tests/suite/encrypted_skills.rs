@@ -21,6 +21,8 @@ use core_test_support::responses::ev_apply_patch_custom_tool_call;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_function_call;
+use core_test_support::responses::ev_message_item_added;
+use core_test_support::responses::ev_output_text_delta;
 use core_test_support::responses::ev_reasoning_item;
 use core_test_support::responses::ev_response_created;
 use core_test_support::responses::mount_function_call_agent_response;
@@ -193,8 +195,7 @@ async fn encrypted_skill_keeps_plaintext_out_of_context_and_rollout() -> Result<
         !rollout.contains("/dev/shm/fm-agent-security"),
         "rollout must not contain the decrypted path"
     );
-    let audit = std::fs::read_to_string(std::env::temp_dir().join("fm_skill_security_audit.log"))
-        .unwrap_or_default();
+    let audit = core_test_support::read_encrypted_skill_audit_log();
     assert!(
         audit.contains("\"event\":\"decryption\""),
         "audit log should record the decryption, got: {audit}"
@@ -320,6 +321,92 @@ async fn encrypted_skills_auto_detect_mode_without_sdk_config() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn streamed_assistant_text_is_redacted_before_client_events() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let test = build_test_with_encrypted_skill(&server).await?;
+    let mock = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_message_item_added("msg-1", ""),
+            ev_output_text_delta("the skill says: "),
+            ev_output_text_delta("# REAL_SKILL_CONTENT_MARKER"),
+            ev_output_text_delta(" run scripts/build.sh"),
+            ev_assistant_message("msg-1", "done"),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+
+    let session_model = test.session_configured.model.clone();
+    let (sandbox_policy, permission_profile) =
+        turn_permission_fields(PermissionProfile::Disabled, test.config.cwd.as_path());
+    test.codex
+        .submit(Op::UserInput {
+            items: vec![UserInput::Text {
+                text: "please use $secret-skill".to_string(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
+                environments: Some(local_selections(test.config.cwd.clone())),
+                approval_policy: Some(AskForApproval::Never),
+                sandbox_policy: Some(sandbox_policy),
+                permission_profile,
+                collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
+                    mode: codex_protocol::config_types::ModeKind::Default,
+                    settings: codex_protocol::config_types::Settings {
+                        model: session_model,
+                        reasoning_effort: None,
+                        developer_instructions: None,
+                    },
+                }),
+                ..Default::default()
+            },
+        })
+        .await?;
+
+    // Every streamed delta emitted to the client must already be redacted:
+    // the client must never see skill plaintext, even mid-stream.
+    let deltas = std::cell::RefCell::new(Vec::new());
+    loop {
+        let done = core_test_support::wait_for_event_match(&test.codex, |event| match event {
+            codex_protocol::protocol::EventMsg::AgentMessageContentDelta(delta_event) => {
+                deltas.borrow_mut().push(delta_event.delta.clone());
+                Some(false)
+            }
+            codex_protocol::protocol::EventMsg::TurnComplete(_) => Some(true),
+            _ => None,
+        })
+        .await;
+        if done {
+            break;
+        }
+    }
+    assert!(
+        deltas
+            .borrow()
+            .iter()
+            .all(|delta| !delta.contains("REAL_SKILL_CONTENT_MARKER")),
+        "streamed deltas must be redacted before reaching the client, got {deltas:?}"
+    );
+    assert!(
+        deltas
+            .borrow()
+            .iter()
+            .any(|delta| delta.contains("[REDACTED]")),
+        "expected at least one redacted delta, got {deltas:?}"
+    );
+    let _ = mock;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn direct_reads_of_decrypted_script_are_blocked_across_tools() -> Result<()> {
     skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
     skip_if_no_network!(Ok(()));
@@ -356,9 +443,7 @@ async fn direct_reads_of_decrypted_script_are_blocked_across_tools() -> Result<(
             rollout.contains("Direct access to encrypted skill storage is not allowed"),
             "{tool} reads should be blocked by the guard, got: {rollout}"
         );
-        let audit =
-            std::fs::read_to_string(std::env::temp_dir().join("fm_skill_security_audit.log"))
-                .unwrap_or_default();
+        let audit = core_test_support::read_encrypted_skill_audit_log();
         assert!(
             audit.contains("\"event\":\"blocked\""),
             "audit log should record the blocked access, got: {audit}"

@@ -12,6 +12,7 @@ use codex_protocol::items::TurnItem;
 use codex_protocol::models::ResponseItem;
 use serde_json::Value;
 
+use crate::audit::AuditEvent;
 use crate::guard::GuardDecision;
 use crate::runtime::EncryptedSkillRuntime;
 
@@ -99,6 +100,21 @@ impl SessionGuard<'_> {
     /// Redacts known plaintext and decrypted paths from arbitrary text.
     pub fn redact_text(&self, text: &str) -> String {
         crate::guard::redact_text(self.runtime, self.session_id(), text)
+    }
+
+    /// Redacts streaming text without emitting per-fragment audit events; the
+    /// complete-item redaction records the `redaction` event once.
+    pub fn redact_text_streaming(&self, text: &str) -> String {
+        crate::guard::redact_text_quiet(self.runtime, self.session_id(), text)
+    }
+
+    /// Records that the external guardrail flagged a user input. `prompt` is
+    /// the flagged input (truncate at the call site if needed).
+    pub fn record_guardrail_blocked(&self, prompt: String) {
+        self.runtime.emit(AuditEvent::GuardrailBlocked {
+            session_id: self.session_id().to_string(),
+            prompt,
+        });
     }
 
     /// Redacts one assistant reply item at the model stream intake.

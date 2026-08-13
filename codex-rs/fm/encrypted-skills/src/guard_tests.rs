@@ -1322,6 +1322,31 @@ fn redaction_emits_audit_event_with_skill_names_but_never_content() {
 }
 
 #[test]
+fn streaming_redaction_does_not_emit_per_fragment_audit_events() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sink = Arc::new(GuardCollectingSink::default());
+    let runtime = EncryptedSkillRuntime::new_with_audit(
+        Arc::new(GuardTestSdk),
+        TtlConfig::default(),
+        tmp.path().join("mem-root"),
+        Some(sink.clone()),
+    );
+    runtime
+        .load_or_register("t1", "secret", Path::new("/skills/secret.zip.enc"))
+        .unwrap();
+
+    let redacted = redact_text_quiet(&runtime, "t1", "before # Guarded content after");
+    assert!(!redacted.contains("# Guarded content"));
+    assert!(
+        !sink
+            .events()
+            .iter()
+            .any(|event| matches!(event, AuditEvent::Redaction { .. })),
+        "streaming redaction must not flood the audit log"
+    );
+}
+
+#[test]
 fn guards_export_surfaces_with_known_plaintext() {
     let (runtime, _tmp) = loaded_runtime();
     let blocked_cases = [

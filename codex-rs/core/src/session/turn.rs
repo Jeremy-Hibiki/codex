@@ -1561,11 +1561,12 @@ impl ProposedPlanItemState {
         if delta.is_empty() {
             return;
         }
+        let delta = sess.encrypted_skills_guard().redact_text_streaming(delta);
         let event = PlanDeltaEvent {
             thread_id: sess.thread_id.to_string(),
             turn_id: turn_context.sub_id.clone(),
             item_id: self.item_id.clone(),
-            delta: delta.to_string(),
+            delta,
         };
         sess.send_event(turn_context, EventMsg::PlanDelta(event))
             .await;
@@ -1742,6 +1743,7 @@ async fn handle_plan_segments(
                     delta
                 };
                 maybe_emit_pending_agent_message_start(sess, turn_context, state, item_id).await;
+                let delta = sess.encrypted_skills_guard().redact_text_streaming(&delta);
 
                 let event = AgentMessageContentDeltaEvent {
                     thread_id: sess.thread_id.to_string(),
@@ -1797,11 +1799,14 @@ async fn emit_streamed_assistant_text_delta(
     if parsed.visible_text.is_empty() {
         return;
     }
+    let visible_text = sess
+        .encrypted_skills_guard()
+        .redact_text_streaming(&parsed.visible_text);
     let event = AgentMessageContentDeltaEvent {
         thread_id: sess.thread_id.to_string(),
         turn_id: turn_context.sub_id.clone(),
         item_id: item_id.to_string(),
-        delta: parsed.visible_text,
+        delta: visible_text,
     };
     sess.send_event(turn_context, EventMsg::AgentMessageContentDelta(event))
         .await;
@@ -2425,6 +2430,7 @@ async fn try_run_sampling_request(
                         )
                         .await;
                     } else {
+                        let delta = sess.encrypted_skills_guard().redact_text_streaming(&delta);
                         let event = AgentMessageContentDeltaEvent {
                             thread_id: sess.thread_id.to_string(),
                             turn_id: turn_context.sub_id.clone(),
@@ -2467,6 +2473,7 @@ async fn try_run_sampling_request(
                     if !active_item_is_streaming_to_client {
                         continue;
                     }
+                    let delta = sess.encrypted_skills_guard().redact_text_streaming(&delta);
                     let event = ReasoningContentDeltaEvent {
                         thread_id: sess.thread_id.to_string(),
                         turn_id: turn_context.sub_id.clone(),
@@ -2522,6 +2529,7 @@ async fn try_run_sampling_request(
                     )
                     .await;
                 }
+                let text = sess.encrypted_skills_guard().redact_text_streaming(&text);
                 let event = ReasoningContentDeltaEvent {
                     thread_id: sess.thread_id.to_string(),
                     turn_id: turn_context.sub_id.clone(),
@@ -2540,6 +2548,7 @@ async fn try_run_sampling_request(
                     if !active_item_is_streaming_to_client {
                         continue;
                     }
+                    let delta = sess.encrypted_skills_guard().redact_text_streaming(&delta);
                     let event = ReasoningRawContentDeltaEvent {
                         thread_id: sess.thread_id.to_string(),
                         turn_id: turn_context.sub_id.clone(),

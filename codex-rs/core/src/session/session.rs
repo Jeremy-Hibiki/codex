@@ -1115,7 +1115,6 @@ impl Session {
                 Arc<dyn fm_encrypted_skills::audit::AuditSink>,
             > = match fm_encrypted_skills::audit::shared_file_sink(
                 encrypted_skills_audit_path.clone(),
-                fm_encrypted_skills::audit::FileAuditSink::DEFAULT_MAX_BYTES,
             ) {
                 Ok(sink) => Some(sink),
                 Err(error) => {

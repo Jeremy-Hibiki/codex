@@ -150,6 +150,26 @@ pub fn test_tmp_path() -> AbsolutePathBuf {
     test_absolute_path_with_windows("/tmp", Some(r"C:\Users\codex\AppData\Local\Temp"))
 }
 
+/// Reads the shared encrypted-skill audit log (daily-rotated
+/// `fm_skill_security_audit.<date>.log` files) from the process temp
+/// directory.
+pub fn read_encrypted_skill_audit_log() -> String {
+    let dir = std::env::temp_dir();
+    let mut entries = std::fs::read_dir(&dir)
+        .unwrap_or_else(|_| panic!("failed to read temp dir {}", dir.display()))
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("fm_skill_security_audit.")
+        })
+        .map(|entry| std::fs::read_to_string(entry.path()).unwrap_or_default())
+        .collect::<Vec<_>>();
+    entries.sort();
+    entries.join("")
+}
+
 pub fn test_tmp_path_buf() -> PathBuf {
     test_tmp_path().into_path_buf()
 }

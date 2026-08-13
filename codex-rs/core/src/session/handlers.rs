@@ -229,6 +229,8 @@ pub(super) async fn user_input_or_turn_inner(
             match guardrail.is_attack(&prompt).await {
                 Ok(true) => {
                     info!("guardrail flagged user input; injecting reminder for cautious handling");
+                    sess.encrypted_skills_guard()
+                        .record_guardrail_blocked(prompt);
                     additional_context.insert(
                         fm_encrypted_skills::guardrail::REMINDER_KEY.to_string(),
                         AdditionalContextEntry {

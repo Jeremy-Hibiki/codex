@@ -109,7 +109,9 @@ impl AuditEvent {
 }
 
 /// Appends one JSONL line. Audit entries never carry skill plaintext by
-/// construction.
+/// construction. Only used by tests: the on-disk sink writes through the
+/// rolling appender directly.
+#[cfg(test)]
 pub(crate) fn write_event(writer: &mut impl Write, event: &AuditEvent) -> io::Result<()> {
     let line = serialize(event);
     writer.write_all(line.as_bytes())?;

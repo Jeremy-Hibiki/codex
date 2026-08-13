@@ -795,7 +795,8 @@ fn extract_skill_md(entries: &[PackageEntry]) -> Result<String, EnvelopeError> {
         .iter()
         .find(|entry| entry.rel_path == Path::new("SKILL.md"))
         .ok_or_else(|| EnvelopeError::Decrypt("package has no SKILL.md entry".into()))?;
-    String::from_utf8(skill_md.contents.clone())
+    std::str::from_utf8(&skill_md.contents)
+        .map(str::to_owned)
         .map_err(|_| EnvelopeError::Decrypt("SKILL.md is not valid UTF-8".into()))
 }
 

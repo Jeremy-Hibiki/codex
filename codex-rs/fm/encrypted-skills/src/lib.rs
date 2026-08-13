@@ -36,7 +36,3 @@ pub mod sandbox_policy;
 pub mod sdk;
 pub mod session_guard;
 pub mod token;
-
-#[cfg(test)]
-#[path = "rpc_tests.rs"]
-mod rpc_tests;

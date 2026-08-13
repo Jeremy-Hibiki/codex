@@ -6,6 +6,7 @@ use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputBody;
 use codex_protocol::models::FunctionCallOutputContentItem;
+use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ReasoningItemContent;
 use codex_protocol::models::ReasoningItemReasoningSummary;
 use codex_protocol::models::ResponseItem;
@@ -84,57 +85,98 @@ pub fn strip_tokens(text: &str, replacement: &str) -> String {
     out
 }
 
+/// Shared traversal over every text-bearing field of a response item. The
+/// surface list lives in exactly one place here; [`for_each_response_item_text`]
+/// and [`for_each_response_item_text_ref`] instantiate it with `&mut` and `&`
+/// access respectively, so the two mutation modes cannot drift apart.
+macro_rules! for_each_response_item_text {
+    ($item:expr, $text:ident, $visit:expr) => {
+        match $item {
+            ResponseItem::Message { content, .. } => {
+                for content_item in content {
+                    match content_item {
+                        ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+                            let $text = text;
+                            $visit;
+                        }
+                        ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => {}
+                    }
+                }
+            }
+            ResponseItem::AgentMessage { content, .. } => {
+                for content_item in content {
+                    if let AgentMessageInputContent::InputText { text } = content_item {
+                        let $text = text;
+                        $visit;
+                    }
+                }
+            }
+            ResponseItem::FunctionCall { arguments, .. } => {
+                let $text = arguments;
+                $visit;
+            }
+            ResponseItem::CustomToolCall { input, .. } => {
+                let $text = input;
+                $visit;
+            }
+            ResponseItem::FunctionCallOutput { output, .. }
+            | ResponseItem::CustomToolCallOutput { output, .. } => match output {
+                FunctionCallOutputPayload {
+                    body: FunctionCallOutputBody::Text(text),
+                    ..
+                } => {
+                    let $text = text;
+                    $visit;
+                }
+                FunctionCallOutputPayload {
+                    body: FunctionCallOutputBody::ContentItems(items),
+                    ..
+                } => {
+                    for content_item in items {
+                        if let FunctionCallOutputContentItem::InputText { text } = content_item {
+                            let $text = text;
+                            $visit;
+                        }
+                    }
+                }
+            },
+            ResponseItem::Reasoning {
+                summary, content, ..
+            } => {
+                for entry in summary {
+                    let ReasoningItemReasoningSummary::SummaryText { text } = entry;
+                    let $text = text;
+                    $visit;
+                }
+                if let Some(content) = content {
+                    for entry in content {
+                        match entry {
+                            ReasoningItemContent::ReasoningText { text }
+                            | ReasoningItemContent::Text { text } => {
+                                let $text = text;
+                                $visit;
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    };
+}
+
 /// Applies `f` to every text-bearing field of a response item. Shared by the
 /// host adapters (fork token stripping, redaction) so the text-surface list
 /// stays in one place.
 pub fn for_each_response_item_text(item: &mut ResponseItem, f: &mut impl FnMut(&mut String)) {
-    match item {
-        ResponseItem::Message { content, .. } => {
-            for content_item in content {
-                match content_item {
-                    ContentItem::InputText { text } | ContentItem::OutputText { text } => f(text),
-                    ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => {}
-                }
-            }
-        }
-        ResponseItem::AgentMessage { content, .. } => {
-            for content_item in content {
-                if let AgentMessageInputContent::InputText { text } = content_item {
-                    f(text);
-                }
-            }
-        }
-        ResponseItem::FunctionCall { arguments, .. } => f(arguments),
-        ResponseItem::CustomToolCall { input, .. } => f(input),
-        ResponseItem::FunctionCallOutput { output, .. }
-        | ResponseItem::CustomToolCallOutput { output, .. } => match &mut output.body {
-            FunctionCallOutputBody::Text(text) => f(text),
-            FunctionCallOutputBody::ContentItems(items) => {
-                for content_item in items {
-                    if let FunctionCallOutputContentItem::InputText { text } = content_item {
-                        f(text);
-                    }
-                }
-            }
-        },
-        ResponseItem::Reasoning {
-            summary, content, ..
-        } => {
-            for entry in summary {
-                let ReasoningItemReasoningSummary::SummaryText { text } = entry;
-                f(text);
-            }
-            if let Some(content) = content {
-                for entry in content {
-                    match entry {
-                        ReasoningItemContent::ReasoningText { text }
-                        | ReasoningItemContent::Text { text } => f(text),
-                    }
-                }
-            }
-        }
-        _ => {}
-    }
+    for_each_response_item_text!(item, text, f(text));
+}
+
+/// Read-only variant of [`for_each_response_item_text`] for checks that only
+/// need to inspect text (token-presence detection), avoiding a full item
+/// clone just to walk the surfaces.
+pub fn for_each_response_item_text_ref(item: &ResponseItem, f: &mut impl FnMut(&str)) {
+    for_each_response_item_text!(item, text, f(text));
 }
 
 fn strip_token_text(text: &mut String, replacement: &str) {
@@ -186,8 +228,7 @@ fn rollout_item_contains_token(item: &RolloutItem) -> bool {
     let mut found = false;
     match item {
         RolloutItem::ResponseItem(response_item) => {
-            let mut item = response_item.clone();
-            for_each_response_item_text(&mut item, &mut |text| {
+            for_each_response_item_text_ref(response_item, &mut |text| {
                 if text.contains(TOKEN_PREFIX) {
                     found = true;
                 }
@@ -204,8 +245,7 @@ fn rollout_item_contains_token(item: &RolloutItem) -> bool {
             found = compacted.message.contains(TOKEN_PREFIX);
             if let Some(history) = &compacted.replacement_history {
                 for response_item in history {
-                    let mut item = response_item.clone();
-                    for_each_response_item_text(&mut item, &mut |text| {
+                    for_each_response_item_text_ref(response_item, &mut |text| {
                         if text.contains(TOKEN_PREFIX) {
                             found = true;
                         }

@@ -978,6 +978,8 @@ interrupt_message = false
             network: None,
             permissions: None,
             models: None,
+            developer_instructions: None,
+            encrypted_skills: None,
         };
 
         let user_file = if cfg!(windows) {

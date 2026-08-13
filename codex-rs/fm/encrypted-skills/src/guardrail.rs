@@ -26,27 +26,12 @@ struct SanitizeResponse {
     attack_detected: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum GuardrailError {
-    Http(reqwest::Error),
+    #[error("guardrail request failed: {0}")]
+    Http(#[from] reqwest::Error),
+    #[error("guardrail returned {0}")]
     Status(StatusCode),
-}
-
-impl std::fmt::Display for GuardrailError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Http(error) => write!(f, "guardrail request failed: {error}"),
-            Self::Status(status) => write!(f, "guardrail returned {status}"),
-        }
-    }
-}
-
-impl std::error::Error for GuardrailError {}
-
-impl From<reqwest::Error> for GuardrailError {
-    fn from(error: reqwest::Error) -> Self {
-        Self::Http(error)
-    }
 }
 
 /// Runtime settings for the external guardrail (prompt sanitizer), resolved

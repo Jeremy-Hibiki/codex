@@ -109,7 +109,8 @@ impl SessionGuard<'_> {
     }
 
     /// Records that the external guardrail flagged a user input. `prompt` is
-    /// the flagged input (truncate at the call site if needed).
+    /// the flagged input in full, recorded for periodic review of violations
+    /// and sample collection.
     pub fn record_guardrail_blocked(&self, prompt: String) {
         self.runtime.emit(AuditEvent::GuardrailBlocked {
             session_id: self.session_id().to_string(),

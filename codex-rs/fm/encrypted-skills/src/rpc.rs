@@ -77,3 +77,7 @@ fn collect_string_values<'a>(value: &'a Value, out: &mut impl FnMut(&'a str)) {
         Value::Null | Value::Bool(_) | Value::Number(_) => {}
     }
 }
+
+#[cfg(test)]
+#[path = "rpc_tests.rs"]
+mod tests;

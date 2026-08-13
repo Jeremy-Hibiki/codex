@@ -9,7 +9,7 @@ use crate::sdk::EnvelopeError;
 use crate::sdk::EnvelopeSdk;
 use crate::sdk::PackageEntry;
 
-use super::rpc;
+use super::*;
 
 struct TestSdk;
 
@@ -35,28 +35,28 @@ fn rpc_guard_blocks_guarded_paths_when_engaged() {
         .unwrap();
     let decrypted = runtime.decrypted_dirs("t1").pop().unwrap();
 
-    assert!(rpc::is_guarded_path(&decrypted.join("SKILL.md")));
-    assert!(rpc::is_guarded_path(runtime.mem_root()));
-    assert!(rpc::command_references_guarded_path(&format!(
+    assert!(is_guarded_path(&decrypted.join("SKILL.md")));
+    assert!(is_guarded_path(runtime.mem_root()));
+    assert!(command_references_guarded_path(&format!(
         "cat {}",
         decrypted.join("SKILL.md").to_string_lossy()
     )));
-    assert!(rpc::command_references_guarded_path("find /dev/shm"));
-    assert!(rpc::args_reference_guarded_path(&json!({
+    assert!(command_references_guarded_path("find /dev/shm"));
+    assert!(args_reference_guarded_path(&json!({
         "path": decrypted.join("SKILL.md").to_string_lossy()
     })));
-    assert!(rpc::args_reference_guarded_path(&json!({
+    assert!(args_reference_guarded_path(&json!({
         "path": "/dev/shm"
     })));
-    assert!(rpc::args_reference_guarded_path(&json!({
+    assert!(args_reference_guarded_path(&json!({
         "nested": [{"path": decrypted.join("SKILL.md").to_string_lossy()}]
     })));
-    assert!(!rpc::args_reference_guarded_path(&json!({
+    assert!(!args_reference_guarded_path(&json!({
         "path": "/dev/shmx/foo"
     })));
 
     drop(runtime);
-    assert!(!rpc::is_guarded_path(&decrypted.join("SKILL.md")));
+    assert!(!is_guarded_path(&decrypted.join("SKILL.md")));
 }
 
 #[test]
@@ -69,16 +69,16 @@ fn rpc_guard_allows_unengaged_paths() {
     ));
     let own_path = runtime.mem_root().join("own-file");
 
-    assert!(!rpc::is_guarded_path(&own_path));
-    assert!(!rpc::command_references_guarded_path(&format!(
+    assert!(!is_guarded_path(&own_path));
+    assert!(!command_references_guarded_path(&format!(
         "cat {}",
         own_path.to_string_lossy()
     )));
-    assert!(!rpc::command_references_guarded_path("find /dev/shm"));
-    assert!(!rpc::args_reference_guarded_path(&json!({
+    assert!(!command_references_guarded_path("find /dev/shm"));
+    assert!(!args_reference_guarded_path(&json!({
         "path": own_path.to_string_lossy()
     })));
-    assert!(!rpc::args_reference_guarded_path(&json!({
+    assert!(!args_reference_guarded_path(&json!({
         "path": "/dev/shm"
     })));
 }

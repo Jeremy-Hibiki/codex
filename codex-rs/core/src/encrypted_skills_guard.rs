@@ -16,25 +16,6 @@ pub(crate) use fm_encrypted_skills::guard::redact_storage_paths;
 use crate::guardian::GuardianApprovalRequest;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
-use crate::tools::hook_names::HookToolName;
-
-/// Maps core's typed hook identity onto the fm guard's plain tool-name
-/// boundary and records the block audit event inside the runtime.
-pub(crate) fn before_tool_with_runtime_and_binds(
-    runtime: &EncryptedSkillRuntime,
-    session_id: &str,
-    tool_name: &HookToolName,
-    tool_input: &Value,
-    binds_active: bool,
-) -> GuardDecision {
-    fm_encrypted_skills::guard::before_tool(
-        runtime,
-        session_id,
-        tool_name.name(),
-        tool_input,
-        binds_active,
-    )
-}
 
 /// Wraps a tool output so every surface it feeds (preview, response item,
 /// telemetry, code-mode result) has decrypted paths rewritten away.
@@ -208,6 +189,7 @@ mod tests {
     use crate::guardian::GuardianApprovalRequest;
     use crate::tools::context::FunctionToolOutput;
     use crate::tools::context::ToolPayload;
+    use crate::tools::hook_names::HookToolName;
 
     struct TestSdk;
 
@@ -388,10 +370,10 @@ mod tests {
     #[test]
     fn before_tool_maps_hook_names_and_binds() {
         let (runtime, _tmp) = loaded_runtime();
-        let decision = before_tool_with_runtime_and_binds(
+        let decision = fm_encrypted_skills::guard::before_tool(
             &runtime,
             "t1",
-            &HookToolName::bash(),
+            HookToolName::bash().name(),
             &serde_json::json!({ "command": "cat /skills/secret/SKILL.md" }),
             /*binds_active*/ true,
         );

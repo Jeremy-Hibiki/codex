@@ -16,7 +16,7 @@ impl Clock for SystemClock {
     fn now_millis(&self) -> u64 {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
+            .map(|duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
             .unwrap_or(0)
     }
 }
@@ -144,7 +144,8 @@ impl Registry {
             return false;
         };
         let idle = self.clock.now_millis().saturating_sub(record.last_used_at);
-        idle <= self.ttl.skill_idle.as_millis() as u64
+        let ttl = u64::try_from(self.ttl.skill_idle.as_millis()).unwrap_or(u64::MAX);
+        idle <= ttl
     }
 
     /// Refreshes the skill's `last_used_at`.
@@ -162,7 +163,7 @@ impl Registry {
     /// Evicts skills whose idle time exceeds the skill-level TTL.
     pub fn sweep_expired_skills(&mut self) -> Vec<EvictedSkill> {
         let now = self.clock.now_millis();
-        let ttl = self.ttl.skill_idle.as_millis() as u64;
+        let ttl = u64::try_from(self.ttl.skill_idle.as_millis()).unwrap_or(u64::MAX);
         let mut evicted = Vec::new();
         for (session_id, bucket) in self.skills.iter_mut() {
             let mut expired = Vec::new();

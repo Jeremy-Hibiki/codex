@@ -3,11 +3,12 @@ new file mode 100644
 index 0000000..1e7fd89
 --- /dev/null
 +++ b/vendor/fmsh-ukey-sdk/linux/lib/BUILD.bazel
-@@ -0,0 +1,7 @@
+@@ -0,0 +1,8 @@
 +package(default_visibility = ["//visibility:public"])
 +
 +exports_files([
 +    "libfmsh_ukey_sdk.so",
 +    "libfmsh_ukey_sdk.so.0",
-+    "libcrypto.so.1.1",
++    "libfmsh_ukey_sdk.so.0.3.1",
++    "libgm3000.1.0.so",
 +])

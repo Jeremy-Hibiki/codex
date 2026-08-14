@@ -77,10 +77,13 @@ fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         println!("cargo:rustc-link-arg=-ObjC");
     }
-    // The FMSH UKey SDK (linked transitively via fm-encrypted-skills) is a
-    // dynamic library whose NEEDED libcrypto.so.1.1 is not resolvable through
-    // DT_RUNPATH (runpath is not transitive). Mirror the upstream
-    // fmsh-ukey-enc approach: force a direct NEEDED for libcrypto and point
+    // The FMSH UKey SDK (linked transitively via fm-encrypted-skills) links
+    // dynamically (fmsh-ukey-sdk-wrapper's default FMSH_UKEY_SDK_LINK=shared;
+    // static mode is not usable here because the non-PIC archives' static
+    // libstdc++ clashes with the libc++abi that V8 embeds). Since SDK 0.3.1
+    // the SDK .so NEEDs the host's libcrypto.so.3, which is not resolvable
+    // through DT_RUNPATH (runpath is not transitive), so mirror the upstream
+    // fmsh-ukey-cli approach: force a direct NEEDED for libcrypto and point
     // the loader at $ORIGIN/lib, where the bundled SDK .so files live.
     //
     // rustc-link-arg-bins from dependency crates never reaches this final
@@ -91,9 +94,11 @@ fn main() {
         && std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("x86_64")
         && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("gnu")
     {
-        println!("cargo:rustc-link-arg-bins=-Wl,--no-as-needed");
-        println!("cargo:rustc-link-arg-bins=-l:libcrypto.so.1.1");
-        println!("cargo:rustc-link-arg-bins=-Wl,--as-needed");
+        if std::env::var("DEP_FMSH_UKEY_SDK_MODE").unwrap_or_default() != "static" {
+            println!("cargo:rustc-link-arg-bins=-Wl,--no-as-needed");
+            println!("cargo:rustc-link-arg-bins=-l:libcrypto.so.3");
+            println!("cargo:rustc-link-arg-bins=-Wl,--as-needed");
+        }
         println!("cargo:rustc-link-arg-bins=-Wl,-rpath,$ORIGIN/lib");
     }
 }

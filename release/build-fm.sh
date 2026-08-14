@@ -11,7 +11,7 @@
 #   release/build-fm.sh                          # docker build (default)
 #   release/build-fm.sh --local                  # direct bazel build
 #   release/build-fm.sh --appimage               # docker build + single-file AppImage
-#   release/build-fm.sh --ubuntu-version 22.04   # base image override
+#   release/build-fm.sh --ubuntu-version 24.04   # base image override
 #   release/build-fm.sh --suffix fm.r37-456e4457 # explicit suffix
 #   release/build-fm.sh --tag codex:custom       # explicit image tag
 #   release/build-fm.sh --base-version 0.146.0   # explicit base version
@@ -21,7 +21,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 mode=docker
-ubuntu_version=20.04
+ubuntu_version=22.04
 suffix_arg=""
 tag_arg=""
 base_version=""

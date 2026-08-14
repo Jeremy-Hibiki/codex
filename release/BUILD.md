@@ -4,7 +4,8 @@
 
 ## 前置要求
 
-- Linux x86_64（glibc ≥ 2.28，推荐 Ubuntu 20.04+）
+- Linux x86_64（glibc ≥ 2.34，最低 Ubuntu 22.04；fmsh-ukey SDK 0.3.1 的
+  共享库需要 GLIBC_2.34 与宿主 libcrypto.so.3 / libssl3，不再支持 20.04）
 - Python 3（用于 BCR registry proxy）
 - 网络：需能访问 `ghfast.top`（GitHub 反向代理）、`rsproxy.cn`（crates.io 镜像）
 - 内网 License Server：`192.168.131.126:8089`（lmclient-rust-sdk git 依赖）
@@ -32,18 +33,18 @@ release/build-fm.sh --local
 ### 方式二：Docker 构建（推荐，用于分发）
 
 ```bash
-release/build-fm.sh                        # 默认 Docker 构建，tag: codex:v<base>-fm.rNNN-HHHHHHHH-ubuntu-20.04
-release/build-fm.sh --ubuntu-version 22.04
+release/build-fm.sh                        # 默认 Docker 构建，tag: codex:v<base>-fm.rNNN-HHHHHHHH-ubuntu-22.04
+release/build-fm.sh --ubuntu-version 24.04
 release/build-fm.sh --tag codex:custom
 release/build-fm.sh --appimage            # 额外产出纯 CLI 单文件 AppImage（codex-<version>-x86_64.AppImage，无 desktop/icon；AppDir/打包全在容器 appimage stage 内完成）
 
 # 提取二进制
-id=$(docker create codex:ubuntu-20.04)
+id=$(docker create codex:ubuntu-22.04)
 docker cp "$id:/usr/local/bin/codex" ./codex
 docker rm "$id"
 ```
 
-Docker 构建支持 `UBUNTU_VERSION` ARG 切换基础镜像版本（20.04 / 22.04）。
+Docker 构建支持 `UBUNTU_VERSION` ARG 切换基础镜像版本（默认 22.04，可切 24.04）。
 BuildKit cache mount 会自动持久化 Bazel 编译缓存，增量构建跳过已编译的 action（V8 等）。
 
 ## 网络代理架构
@@ -103,8 +104,8 @@ lmclient-rust-sdk 在源码树内打包了 `liblmclient.a`（CentOS 7 glibc 编�
   patches = [...], deps = ["@crates//:fmsh_ukey_native"])` — 禁用 build.rs 并注入 native 依赖。
 
 运行期说明：`libfmsh_ukey_sdk.so` 的 SONAME 是 `libfmsh_ukey_sdk.so.0`，其 NEEDED
-`libcrypto.so.1.1` 由 Ubuntu 20.04 系统 OpenSSL 1.1 提供。Dockerfile 已把
-`libfmsh_ukey_sdk.so.0` / `libcrypto.so.1.1` / GM3000 provider
+`libcrypto.so.3` 由宿主 Ubuntu 22.04 的 libssl3 提供。Dockerfile 已把
+`libfmsh_ukey_sdk.so.0` / GM3000 provider
 `libgm3000.1.0.so` 打包到 `/usr/local/bin/lib`，且二进制 RUNPATH 包含
 `$ORIGIN/lib`，镜像内外（二进制同级 `lib/` 目录）都能直接解析；GM3000
 provider 是运行时 `dlopen` 加载，需通过 `FMSH_UKEY_PROVIDER` 指定其路径
@@ -142,7 +143,9 @@ gcc/clang，保证本机、CI、Docker 里构建行为完全一致。
   适配自定义 libc++ 与 Windows gnullvm/arm64 需求；
 - `.bazelrc`：`BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1` /
   `BAZEL_NO_APPLE_CPP_TOOLCHAIN=1`，禁用宿主机 C/C++ 工具链探测；
-- `BUILD.bazel`：目标平台标记为 glibc 2.28 兼容，产出 max GLIBC 2.28 的二进制。
+- `BUILD.bazel`：目标平台标记为 glibc 2.28 兼容，产出 max GLIBC 2.28 的二进制；
+  但 fmsh-ukey SDK 0.3.1 的共享库运行时需要 GLIBC_2.34，实际最低运行系统是
+  Ubuntu 22.04（glibc 2.35）。
 
 效果：
 
@@ -165,8 +168,8 @@ $ readelf -V codex | grep -oP 'GLIBC_\K[0-9.]+' | sort -V | tail -1
 2.28
 ```
 
-- 动态链接，max GLIBC 2.28（兼容 Ubuntu 20.04+ / glibc 2.31+）
-- 依赖系统库：`libcurl4`、`libstdc++6`、`libzstd1`（Ubuntu 20.04+ 自带）
+- 动态链接，max GLIBC 2.34（兼容 Ubuntu 22.04+ / glibc 2.35+）
+- 依赖系统库：`libcurl4`、`libssl3`、`libstdc++6`、`libzstd1`（Ubuntu 22.04 自带）
 - OpenSSL / AWS-LC / V8 等由 hermetic LLVM 工具链静态链接
 
 ## 涉及文件清单
@@ -179,7 +182,7 @@ defs.bzl                                    Rust crate 宏（WORKSPACE_VERSION �
 patches/v8_module_deps.patch                V8 模块依赖重构 + ghfast URLs
 patches/rules_rs_rust_archive_url.patch     rules_rs 内部 URL → ghfast.top
 third_party/lmclient/additive.BUILD.bazel   lmclient cc_import + 系统库链接
-release/Dockerfile                          多阶段 Docker 构建（Ubuntu 20.04, BuildKit cache）
+release/Dockerfile                          多阶段 Docker 构建（Ubuntu 22.04, BuildKit cache）
 release/build-fm.sh                         统一构建脚本（计算版本后缀 + Docker/本地 Bazel）
 release/bazel-registry-proxy.py             BCR GitHub URL 重写代理
 release/predownload-deps.sh                 BCR 内部归档预下载脚本

@@ -5,14 +5,15 @@
 #     --build-arg HTTP_PROXY="$HTTP_PROXY" \
 #     --build-arg HTTPS_PROXY="$HTTPS_PROXY" \
 #     --build-arg NO_PROXY="$NO_PROXY" \
-#     --build-arg UBUNTU_VERSION=20.04 \
-#     -t codex:ubuntu-20.04 -f release/Dockerfile .
+#     --build-arg UBUNTU_VERSION=22.04 \
+#     -t codex:ubuntu-22.04 -f release/Dockerfile .
 #
-# For Ubuntu 22.04+:
-#   --build-arg UBUNTU_VERSION=22.04  -t codex:ubuntu-22.04
+# Ubuntu 20.04 is not supported: the fmsh-ukey SDK 0.3.1 shared library
+# needs GLIBC_2.34 and the host's libcrypto.so.3 (libssl3), so the minimum
+# base image is Ubuntu 22.04. Override with e.g. --build-arg UBUNTU_VERSION=24.04.
 #
 # Extract the binary:
-#   id=$(docker create codex:ubuntu-20.04)
+#   id=$(docker create codex:ubuntu-22.04)
 #   docker cp "$id:/usr/local/bin/codex" ./codex
 #   docker rm "$id"
 #
@@ -25,7 +26,7 @@
 # Ubuntu 24.04+ uses deb822 ( /etc/apt/sources.list.d/ubuntu.sources );
 # adapt the sed or remove it if building on newer bases.
 
-ARG UBUNTU_VERSION=20.04
+ARG UBUNTU_VERSION=22.04
 
 # ── builder stage ─────────────────────────────────────────────────────────
 FROM ubuntu:${UBUNTU_VERSION} AS builder
@@ -91,10 +92,11 @@ RUN --mount=type=cache,target=/root/.cache/bazel-disk-cache,sharing=locked \
     && strip /codex/codex \
     # Bundle the fmsh-ukey SDK shared libraries next to the binary. The
     # executable's RUNPATH includes $ORIGIN/lib, so the runtime image only
-    # needs these files copied to /usr/local/bin/lib. The GM3000 provider
-    # (libgm3000.1.0.so) is dlopen'd at runtime via FMSH_UKEY_PROVIDER, so it
-    # never appears in NEEDED/_solib_k8 and must be copied from the vendored
-    # SDK directory explicitly.
+    # needs these files copied to /usr/local/bin/lib. The SDK's NEEDED
+    # libcrypto.so.3 comes from the host (Ubuntu 22.04 ships libssl3). The
+    # GM3000 provider (libgm3000.1.0.so) is dlopen'd at runtime via
+    # FMSH_UKEY_PROVIDER, so it never appears in NEEDED/_solib_k8 and must be
+    # copied from the vendored SDK directory explicitly.
     && cp -L bazel-bin/_solib_k8/*/*.so* /codex/lib/ \
     && gm3000_provider="$(find -L "$(bazel info output_base)/execroot/_main/external" \
         -name 'libgm3000.1.0.so' | head -n1)" \
@@ -122,7 +124,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|
     && sed -i 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
         /etc/apt/sources.list \
     && apt-get update && apt-get install -y --no-install-recommends \
-        curl ca-certificates libcurl4 libstdc++6 libzstd1
+        curl ca-certificates libcurl4 libssl3 libstdc++6 libzstd1
 
 COPY --from=builder /codex/codex /app/usr/bin/codex
 COPY --from=builder /codex/lib /app/usr/bin/lib/
@@ -135,7 +137,7 @@ RUN mkdir -p /app/usr/lib /work \
             case "$lib" in \
                 */ld-linux*|*/libc.so.6|*/libm.so.6|*/libpthread.so.0 \
                 |*/libdl.so.2|*/librt.so.1|*/libutil.so.1|*/libresolv.so.2 \
-                |*/libfmsh_ukey_sdk.so*|*/libcrypto.so.1.1) continue ;; \
+                |*/libfmsh_ukey_sdk.so*|*/libcrypto.so.3) continue ;; \
             esac; \
             cp -L "$lib" /app/usr/lib/; \
           done \
@@ -175,7 +177,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         /etc/apt/sources.list \
     && rm -f /etc/apt/apt.conf.d/docker-clean \
     && apt-get update && apt-get install -y --no-install-recommends \
-        libcurl4 libstdc++6 libzstd1
+        libcurl4 libssl3 libstdc++6 libzstd1
 
 COPY --from=builder /codex/codex /usr/local/bin/codex
 COPY --from=builder /codex/lib /usr/local/bin/lib

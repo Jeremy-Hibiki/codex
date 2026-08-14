@@ -11,7 +11,7 @@
 #   release/build-fm-cargo.sh --local               # direct cargo build (release)
 #   release/build-fm-cargo.sh --local --debug       # debug build (no strip, with symbols)
 #   release/build-fm-cargo.sh --appimage            # docker + single-file AppImage
-#   release/build-fm-cargo.sh --ubuntu-version 22.04
+#   release/build-fm-cargo.sh --ubuntu-version 24.04
 #   release/build-fm-cargo.sh --suffix fm.r37-456e4457
 #   release/build-fm-cargo.sh --tag codex:custom
 #   release/build-fm-cargo.sh --base-version 0.146.0
@@ -21,7 +21,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 mode=docker
-ubuntu_version=20.04
+ubuntu_version=22.04
 suffix_arg=""
 tag_arg=""
 profile=release
@@ -116,9 +116,20 @@ echo "profile: $profile"
 
 find_sdk_lib_dir() {
     local sdk_dir
-    # From cargo checkout
-    sdk_dir="$(find ~/.cargo/git/checkouts/fmsh-ukey-lib-* \
-        -path '*/vendor/fmsh-ukey-sdk/linux/lib' 2>/dev/null | head -1)"
+    # From cargo checkout: prefer the checkout matching the rev pinned in
+    # Cargo.lock (older checkouts of previous revs may linger in ~/.cargo).
+    local locked_rev
+    locked_rev="$(sed -n 's/.*fmsh-ukey-lib.git?rev=\([0-9a-f]*\).*/\1/p' \
+        "$repo_root/codex-rs/Cargo.lock" | head -1)"
+    if [[ -n "$locked_rev" ]]; then
+        sdk_dir="$(find ~/.cargo/git/checkouts/fmsh-ukey-lib-* \
+            -path "*/$locked_rev/vendor/fmsh-ukey-sdk/linux/lib" 2>/dev/null | head -1)"
+    fi
+    if [[ -z "$sdk_dir" ]]; then
+        # Fallback: any checkout.
+        sdk_dir="$(find ~/.cargo/git/checkouts/fmsh-ukey-lib-* \
+            -path '*/vendor/fmsh-ukey-sdk/linux/lib' 2>/dev/null | head -1)"
+    fi
     if [[ -z "$sdk_dir" ]]; then
         # From FMSH_UKEY_SDK_DIR env or a sibling repo
         if [[ -n "${FMSH_UKEY_SDK_DIR:-}" ]] && [[ -d "$FMSH_UKEY_SDK_DIR/linux/lib" ]]; then
@@ -162,7 +173,6 @@ build_local() {
     sdk_lib_dir="$(find_sdk_lib_dir)"
     if [[ -n "$sdk_lib_dir" ]]; then
         cp -fL "$sdk_lib_dir"/libfmsh_ukey_sdk.so.0 "$out_dir/lib/" 2>/dev/null || true
-        cp -fL "$sdk_lib_dir"/libcrypto.so.1.1 "$out_dir/lib/" 2>/dev/null || true
         cp -fL "$sdk_lib_dir"/libgm3000.1.0.so "$out_dir/lib/" 2>/dev/null || true
         echo "  SDK libs: $sdk_lib_dir → $out_dir/lib/"
     else
@@ -260,7 +270,7 @@ build_appimage() {
              case "\$lib" in
                  */ld-linux*|*/libc.so.6|*/libm.so.6|*/libpthread.so.0 \
                  |*/libdl.so.2|*/librt.so.1|*/libutil.so.1|*/libresolv.so.2 \
-                 |*/libfmsh_ukey_sdk.so*|*/libcrypto.so.1.1) continue ;;
+                 |*/libfmsh_ukey_sdk.so*|*/libcrypto.so.3) continue ;;
              esac
              cp -L "\$lib" "'"$stage"'/app/usr/lib/" 2>/dev/null || true
            done' || true

@@ -1,4 +1,4 @@
-"""Additive BUILD file for the fmsh-ukey-wrapper crate (Bazel).
+"""Additive BUILD file for the fmsh-ukey-sdk-wrapper crate (Bazel).
 
 The upstream build.rs resolves the vendored SDK at
 `<repo-root>/vendor/fmsh-ukey-sdk` and emits `cargo:rustc-link-search` +
@@ -6,8 +6,9 @@ The upstream build.rs resolves the vendored SDK at
 sandbox runfiles are invisible to the separate rustc/link action (the same
 issue lmclient-rust-sdk had), so we disable the build script and link the SDK
 shared library through cc_import instead. The SDK's SONAME is
-`libfmsh_ukey_sdk.so.0` and it NEEDs `libcrypto.so.1.1`; both ship in this
-package and are added to runfiles of any binary that links the crate.
+`libfmsh_ukey_sdk.so.0`; since SDK 0.3.1 the library NEEDs the host's
+`libcrypto.so.3` (Ubuntu 22.04 ships it as libssl3), so no vendored libcrypto
+is needed and only the SDK .so files land in runfiles / _solib_k8.
 """
 
 load("@rules_cc//cc:defs.bzl", "cc_import", "cc_library")
@@ -26,30 +27,11 @@ cc_import(
     shared_library = "//vendor/fmsh-ukey-sdk/linux/lib:libfmsh_ukey_sdk.so.0",
 )
 
-# libcrypto.so.1.1 is a NEEDED dependency of libfmsh_ukey_sdk.so. DT_RUNPATH
-# is not transitive, so the executable's RUNPATH alone cannot resolve it for
-# the SDK. Link it directly so it lands in the same _solib_k8 directory the
-# SDK lands in, making both resolvable through the executable's RUNPATH.
-cc_import(
-    name = "fmsh_ukey_crypto_shared",
-    shared_library = "//vendor/fmsh-ukey-sdk/linux/lib:libcrypto.so.1.1",
-)
-
 cc_library(
     name = "fmsh_ukey_native",
     data = ["//vendor/fmsh-ukey-sdk/linux/lib:libfmsh_ukey_sdk.so.0"],
-    # libcrypto.so.1.1 is NEEDED by the SDK but nothing in the main binary
-    # references it directly, so --as-needed drops it from the final link and
-    # DT_RUNPATH (not transitive) can never resolve it for the SDK. Force a
-    # direct NEEDED on the main binary, mirroring the cargo build.rs approach.
-    linkopts = [
-        "-Wl,--no-as-needed",
-        "-l:libcrypto.so.1.1",
-        "-Wl,--as-needed",
-    ],
     visibility = ["//visibility:public"],
     deps = [
-        ":fmsh_ukey_crypto_shared",
         ":fmsh_ukey_sdk_shared",
         ":fmsh_ukey_sdk_soname_shared",
     ],

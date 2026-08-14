@@ -10,24 +10,28 @@
 #     --build-arg HTTP_PROXY="$HTTP_PROXY" \
 #     --build-arg HTTPS_PROXY="$HTTPS_PROXY" \
 #     --build-arg NO_PROXY="$NO_PROXY" \
-#     --build-arg UBUNTU_VERSION=20.04 \
-#     -t codex:ubuntu-20.04 -f release/Dockerfile.cargo .
+#     --build-arg UBUNTU_VERSION=22.04 \
+#     -t codex:ubuntu-22.04 -f release/Dockerfile.cargo .
 #
 # Extract the binary:
-#   id=$(docker create codex:ubuntu-20.04)
+#   id=$(docker create codex:ubuntu-22.04)
 #   docker cp "$id:/usr/local/bin/codex" ./codex
 #   docker rm "$id"
 #
 # Why Cargo instead of Bazel?
 # - fmsh-ukey is the only dynamic library; lmclient is already static.
-# - cli/build.rs embeds RPATH $ORIGIN/lib + forces NEEDED libcrypto.so.1.1
+# - cli/build.rs embeds RPATH $ORIGIN/lib + forces NEEDED libcrypto.so.3
 #   at link time — no patchelf or cc_import needed.
 # - Docker provides host isolation + reproducible toolchain = hermetic enough
 #   for single-platform release builds. Bazel's action sandbox is the source
 #   of the cc_import/patch complexity, not a benefit for this use case.
 # - Cargo.lock replaces MODULE.bazel.lock for dependency pinning.
+#
+# Ubuntu 20.04 is not supported: the fmsh-ukey SDK 0.3.1 shared library
+# needs GLIBC_2.34 and the host's libcrypto.so.3 (libssl3), so the minimum
+# base image is Ubuntu 22.04.
 
-ARG UBUNTU_VERSION=20.04
+ARG UBUNTU_VERSION=22.04
 
 # ── builder stage ─────────────────────────────────────────────────────────
 FROM ubuntu:${UBUNTU_VERSION} AS builder
@@ -35,17 +39,12 @@ FROM ubuntu:${UBUNTU_VERSION} AS builder
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY
-ARG FM_BUILD_SUFFIX=fm.r0-unknown
-ARG CARGO_PROFILE=release
 
 # Proxy is only needed for apt + rustup (reaching the external network).
 # It is cleared before `cargo build` because rsproxy.cn, ghfast.top, and the
 # internal git server (192.168.131.126) are directly reachable, and the proxy
 # breaks TLS to ghfast.top (HTTPS interception).
-ENV http_proxy=${HTTP_PROXY} \
-    https_proxy=${HTTPS_PROXY} \
-    no_proxy=${NO_PROXY} \
-    DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Aliyun apt mirror for China network (classic sources.list format).
 # Note: if the proxy is set this is unnecessary; if not, it covers bare-VM builds.
@@ -117,7 +116,8 @@ ENV CARGO_NET_GIT_FETCH_WITH_CLI=true \
 # Force a cache miss when FM_BUILD_SUFFIX changes. build.rs reads this at
 # compile time (cargo:rustc-env), but Docker layer caching only keys on file
 # hashes, so without this touch the old suffix is baked into a reused layer.
-ARG FM_BUILD_SUFFIX
+ARG FM_BUILD_SUFFIX=fm.r0-unknown
+ARG CARGO_PROFILE=release
 RUN echo "$FM_BUILD_SUFFIX" > /tmp/build-suffix-marker
 # FM_BUILD_SUFFIX deliberately enters the environment only after the COPY, so
 # the apt/rustup layers (and the COPY itself) stay cached across builds: the
@@ -139,16 +139,16 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     fi
 
 # ── bundle SDK libs ──────────────────────────────────────────────────────
-# The fmsh-ukey SDK is dynamically linked (NEEDED libfmsh_ukey_sdk.so.0 +
-# libcrypto.so.1.1; libgm3000.1.0.so is dlopen'd at runtime via
-# FMSH_UKEY_PROVIDER). build.rs set RPATH=$ORIGIN/lib, so copy the .so files
-# next to the binary. They resolve from the fmsh-ukey-lib cargo checkout
-# (vendored SDK under vendor/fmsh-ukey-sdk/linux/lib/).
+# The fmsh-ukey SDK is dynamically linked (NEEDED libfmsh_ukey_sdk.so.0;
+# since SDK 0.3.1 its libcrypto.so.3 comes from the host — Ubuntu 22.04 ships
+# libssl3; libgm3000.1.0.so is dlopen'd at runtime via FMSH_UKEY_PROVIDER).
+# build.rs set RPATH=$ORIGIN/lib, so copy the .so files next to the binary.
+# They resolve from the fmsh-ukey-lib cargo checkout (vendored SDK under
+# vendor/fmsh-ukey-sdk/linux/lib/).
 RUN mkdir -p /codex/lib \
     && cp /codex-codex /codex/codex \
     && SDK_LIB="$(find /root/.cargo/git/checkouts/fmsh-ukey-lib-* -path '*/vendor/fmsh-ukey-sdk/linux/lib' | head -1)" \
     && cp -fL "$SDK_LIB"/libfmsh_ukey_sdk.so.0 /codex/lib/ \
-    && cp -fL "$SDK_LIB"/libcrypto.so.1.1 /codex/lib/ \
     && (cp -fL "$SDK_LIB"/libgm3000.1.0.so /codex/lib/ 2>/dev/null || true)
 
 # ── runtime stage ─────────────────────────────────────────────────────────
@@ -163,7 +163,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     /etc/apt/sources.list \
     && rm -f /etc/apt/apt.conf.d/docker-clean \
     && apt-get update && apt-get install -y --no-install-recommends \
-    libcurl4 libstdc++6 libzstd1 ca-certificates
+    libcurl4 libssl3 libstdc++6 libzstd1 ca-certificates
 
 COPY --from=builder /codex/codex /usr/local/bin/codex
 COPY --from=builder /codex/lib /usr/local/bin/lib

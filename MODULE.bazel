@@ -273,7 +273,9 @@ crate.annotation(
     # repo root (`vendor/fmsh-ukey-sdk`), which is not part of the
     # build-script sandbox. Disable the build script and link the shared
     # library via cc_import instead (mirrors lmclient-rust-sdk); the patch
-    # marks the vendored SDK directory as a Bazel package.
+    # marks the vendored SDK directory as a Bazel package. Since SDK 0.3.1
+    # the .so NEEDs the host's libcrypto.so.3 (Ubuntu 22.04+ / libssl3), so
+    # no vendored libcrypto is bundled anymore.
     crate = "fmsh-ukey-sdk-wrapper",
     extra_aliased_targets = {"fmsh_ukey_native": "fmsh_ukey_native"},
     gen_build_script = "off",

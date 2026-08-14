@@ -32,12 +32,15 @@ zip = { workspace = true, features = ["deflate"] }
 
 # Real envelope backends (software / ukey / ukey-two-phase) backed by
 # `fmsh-ukey-core`, hard-bound on the platform where the vendor SDK ships.
-# The upstream repo vendors `libfmsh_ukey_sdk.so` under vendor/, so no
-# FMSH_UKEY_SDK_DIR is needed at build time; the ukey modes still need
-# FMSH_UKEY_PROVIDER / FMSH_UKEY_CONTAINER (and the hardware) at runtime.
+# The upstream repo vendors the SDK under vendor/ (SDK 0.3.1 ships both
+# static archives and the shared library), so no FMSH_UKEY_SDK_DIR is needed
+# at build time. The ukey modes still need FMSH_UKEY_PROVIDER /
+# FMSH_UKEY_CONTAINER (and the hardware) at runtime. The SDK 0.3.1 shared
+# library needs the host's libcrypto.so.3 and GLIBC_2.34, so the build
+# target must be Ubuntu 22.04+.
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
-fmsh-ukey-core = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "9c479813182d7f37c3fcae2c4a80342e1e3188ee" }
-fmsh-ukey-skill = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "9c479813182d7f37c3fcae2c4a80342e1e3188ee" }
+fmsh-ukey-core = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "aaffd9c0f55d34d38531b6863fa6c91d0efe983c" }
+fmsh-ukey-skill = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "aaffd9c0f55d34d38531b6863fa6c91d0efe983c" }
 
 [dev-dependencies]
 anyhow = { workspace = true }

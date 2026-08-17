@@ -27,11 +27,18 @@
 #   of the cc_import/patch complexity, not a benefit for this use case.
 # - Cargo.lock replaces MODULE.bazel.lock for dependency pinning.
 #
-# Ubuntu 20.04 is not supported: the fmsh-ukey SDK 0.3.1 shared library
-# needs GLIBC_2.34 and the host's libcrypto.so.3 (libssl3), so the minimum
-# base image is Ubuntu 22.04.
+# SDK link mode (default: static since the fm work): FMSH_UKEY_SDK_LINK=static
+# embeds the SDK archives + vendored libcrypto, keeps libstdc++ dynamic
+# (FMSH_UKEY_LIBSTDCPP=shared — statically embedding it would clash with the
+# libc++abi V8 embeds on the __cxa_* ABI symbols), and dedups the symbols
+# lmclient shares with the SDK archives. The static path supports both
+# Ubuntu 22.04 and 20.04 (the SDK .so's GLIBC_2.34 / libcrypto.so.3 floor no
+# longer applies). --sdk-link shared restores the legacy dynamic mode, which
+# still requires Ubuntu 22.04+.
 
 ARG UBUNTU_VERSION=22.04
+ARG FMSH_UKEY_SDK_LINK=static
+ARG FMSH_UKEY_LIBSTDCPP=shared
 
 # ── builder stage ─────────────────────────────────────────────────────────
 FROM ubuntu:${UBUNTU_VERSION} AS builder
@@ -39,6 +46,8 @@ FROM ubuntu:${UBUNTU_VERSION} AS builder
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY
+ARG FMSH_UKEY_SDK_LINK
+ARG FMSH_UKEY_LIBSTDCPP
 
 # Proxy is only needed for apt + rustup (reaching the external network).
 # It is cleared before `cargo build` because rsproxy.cn, ghfast.top, and the
@@ -129,6 +138,12 @@ ENV FM_BUILD_SUFFIX=${FM_BUILD_SUFFIX}
 # builds without optimization and keeps symbols for profiling/debugging.
 RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/workspace/codex-rs/target,sharing=locked \
+    export FMSH_UKEY_SDK_LINK FMSH_UKEY_LIBSTDCPP; \
+    if [ "$FMSH_UKEY_SDK_LINK" = "static" ]; then \
+    cargo fetch; \
+    export FMSH_UKEY_STATIC_DEDUP_AGAINST="$(find /root/.cargo/git/checkouts/lmclient-rust-sdk-* -path '*/lmclient/lib/*/release/liblmclient.a' | head -1)"; \
+    echo "dedup against: $FMSH_UKEY_STATIC_DEDUP_AGAINST"; \
+    fi; \
     if [ "$CARGO_PROFILE" = "debug" ]; then \
     cargo build -p codex-cli; \
     cp target/debug/codex /codex-codex; \
@@ -138,22 +153,25 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     cp target/release/codex /codex-codex; \
     fi
 
-# ── bundle SDK libs ──────────────────────────────────────────────────────
-# The fmsh-ukey SDK is dynamically linked (NEEDED libfmsh_ukey_sdk.so.0;
-# since SDK 0.3.1 its libcrypto.so.3 comes from the host — Ubuntu 22.04 ships
-# libssl3; libgm3000.1.0.so is dlopen'd at runtime via FMSH_UKEY_PROVIDER).
-# build.rs set RPATH=$ORIGIN/lib, so copy the .so files next to the binary.
-# They resolve from the fmsh-ukey-lib cargo checkout (vendored SDK under
-# vendor/fmsh-ukey-sdk/linux/lib/).
+# ── bundle runtime libs ───────────────────────────────────────────────────
+# Static mode embeds the SDK + vendored libcrypto; only the dlopened GM3000
+# provider (found via FMSH_UKEY_PROVIDER or $ORIGIN/lib) ships. Shared mode
+# additionally bundles libfmsh_ukey_sdk.so.0 (its libcrypto.so.3 comes from
+# the host: Ubuntu 22.04 ships libssl3).
+ARG FMSH_UKEY_SDK_LINK
 RUN mkdir -p /codex/lib \
     && cp /codex-codex /codex/codex \
     && SDK_LIB="$(find /root/.cargo/git/checkouts/fmsh-ukey-lib-* -path '*/vendor/fmsh-ukey-sdk/linux/lib' | head -1)" \
-    && cp -fL "$SDK_LIB"/libfmsh_ukey_sdk.so.0 /codex/lib/ \
+    && if [ "$FMSH_UKEY_SDK_LINK" != "static" ]; then \
+    cp -fL "$SDK_LIB"/libfmsh_ukey_sdk.so.0 /codex/lib/; \
+    fi \
     && (cp -fL "$SDK_LIB"/libgm3000.1.0.so /codex/lib/ 2>/dev/null || true)
 
 # ── runtime stage ─────────────────────────────────────────────────────────
 FROM ubuntu:${UBUNTU_VERSION}
 
+ARG UBUNTU_VERSION
+ARG FMSH_UKEY_SDK_LINK
 ENV DEBIAN_FRONTEND=noninteractive
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -163,7 +181,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     /etc/apt/sources.list \
     && rm -f /etc/apt/apt.conf.d/docker-clean \
     && apt-get update && apt-get install -y --no-install-recommends \
-    libcurl4 libssl3 libstdc++6 libzstd1 ca-certificates
+    libcurl4 libstdc++6 libzstd1 ca-certificates \
+    $( [ "$UBUNTU_VERSION" != "20.04" ] && echo libssl3 || true )
 
 COPY --from=builder /codex/codex /usr/local/bin/codex
 COPY --from=builder /codex/lib /usr/local/bin/lib

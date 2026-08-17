@@ -6241,7 +6241,7 @@ dependencies = [
 [[package]]
 name = "fmsh-ukey-core"
 version = "0.4.0+sdk.0.3.1"
-source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=aaffd9c0f55d34d38531b6863fa6c91d0efe983c#aaffd9c0f55d34d38531b6863fa6c91d0efe983c"
+source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=26b8ade02268bf4f8f48538ce0ba8c0fc2a89048#26b8ade02268bf4f8f48538ce0ba8c0fc2a89048"
 dependencies = [
  "anyhow",
  "fmsh-ukey-sdk-wrapper",
@@ -6256,7 +6256,7 @@ dependencies = [
 [[package]]
 name = "fmsh-ukey-sdk-wrapper"
 version = "0.4.0+sdk.0.3.1"
-source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=aaffd9c0f55d34d38531b6863fa6c91d0efe983c#aaffd9c0f55d34d38531b6863fa6c91d0efe983c"
+source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=26b8ade02268bf4f8f48538ce0ba8c0fc2a89048#26b8ade02268bf4f8f48538ce0ba8c0fc2a89048"
 dependencies = [
  "openssl",
  "parking_lot",
@@ -6266,7 +6266,7 @@ dependencies = [
 [[package]]
 name = "fmsh-ukey-skill"
 version = "0.4.0+sdk.0.3.1"
-source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=aaffd9c0f55d34d38531b6863fa6c91d0efe983c#aaffd9c0f55d34d38531b6863fa6c91d0efe983c"
+source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=26b8ade02268bf4f8f48538ce0ba8c0fc2a89048#26b8ade02268bf4f8f48538ce0ba8c0fc2a89048"
 dependencies = [
  "anyhow",
  "fmsh-ukey-core",

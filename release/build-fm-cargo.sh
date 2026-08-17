@@ -15,6 +15,12 @@
 #   release/build-fm-cargo.sh --suffix fm.r37-456e4457
 #   release/build-fm-cargo.sh --tag codex:custom
 #   release/build-fm-cargo.sh --base-version 0.146.0
+#   release/build-fm-cargo.sh --sdk-link shared   # dynamic SDK .so (legacy)
+#
+# SDK link mode (default: static): the fmsh-ukey SDK archives + vendored
+# libcrypto are embedded; NEEDED keeps only libstdc++.so.6/libcurl.so.4 and
+# the glibc floor stays below 2.33 (Ubuntu 20.04 hosts). The wrapper's stat
+# shim and lmclient symbol dedup are wired automatically.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,13 +28,14 @@ cd "$repo_root"
 
 mode=docker
 ubuntu_version=22.04
+sdk_link=static
 suffix_arg=""
 tag_arg=""
 profile=release
 base_version=""
 
 usage() {
-    sed -n '2,18p' "${BASH_SOURCE[0]}"
+    sed -n '2,20p' "${BASH_SOURCE[0]}"
     exit 1
 }
 
@@ -42,6 +49,10 @@ while [[ $# -gt 0 ]]; do
         ;;
     --debug)
         profile=debug
+        ;;
+    --sdk-link)
+        sdk_link="${2:?missing value for --sdk-link (static|shared)}"
+        shift
         ;;
     --ubuntu-version)
         ubuntu_version="${2:?missing value for --ubuntu-version}"
@@ -137,6 +148,33 @@ find_sdk_lib_dir() {
         fi
     fi
     echo "$sdk_dir"
+}
+
+# ── Static SDK link mode ───────────────────────────────────────────────────
+# FMSH_UKEY_SDK_LINK=static embeds the SDK archives + vendored libcrypto;
+# libstdc++ stays dynamic (statically embedding it would clash with the
+# libc++abi V8 embeds on the __cxa_* ABI symbols), and the wrapper's stat
+# shim keeps the glibc floor below 2.33 (Ubuntu 20.04 hosts). The FMSH SDKs
+# share their utility layer, so the wrapper must also dedup against
+# lmclient's own copies (FMSH_UKEY_STATIC_DEDUP_AGAINST).
+
+find_lmclient_lib() {
+    find ~/.cargo/git/checkouts/lmclient-rust-sdk-* \
+        -path '*/lmclient/lib/*/release/liblmclient.a' 2>/dev/null | head -1
+}
+
+static_sdk_env() {
+    export FMSH_UKEY_SDK_LINK=static
+    export FMSH_UKEY_LIBSTDCPP=shared
+    local lmc
+    lmc="$(find_lmclient_lib)"
+    if [[ -n "$lmc" ]]; then
+        export FMSH_UKEY_STATIC_DEDUP_AGAINST="$lmc"
+    else
+        echo "  WARNING: liblmclient.a not found in cargo checkouts —" \
+            "static SDK link will fail with duplicate symbols" >&2
+        echo "  (run once without the env to let cargo fetch lmclient-rust-sdk)" >&2
+    fi
 }
 
 # ── Local build ────────────────────────────────────────────────────────────

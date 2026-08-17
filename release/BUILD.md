@@ -4,8 +4,9 @@
 
 ## 前置要求
 
-- Linux x86_64（glibc ≥ 2.34，最低 Ubuntu 22.04；fmsh-ukey SDK 0.3.1 的
-  共享库需要 GLIBC_2.34 与宿主 libcrypto.so.3 / libssl3，不再支持 20.04）
+- Linux x86_64（Cargo 发布构建默认静态链入 fmsh-ukey SDK 与 vendored
+  libcrypto，glibc 上限 < 2.33，支持 Ubuntu 20.04+；`--sdk-link shared`
+  退回动态 SDK `.so`，则需 glibc ≥ 2.34 / Ubuntu 22.04+ 与宿主 libssl3）
 - Python 3（用于 BCR registry proxy）
 - 网络：需能访问 `ghfast.top`（GitHub 反向代理）、`rsproxy.cn`（crates.io 镜像）
 - 内网 License Server：`192.168.131.126:8089`（lmclient-rust-sdk git 依赖）
@@ -168,8 +169,10 @@ $ readelf -V codex | grep -oP 'GLIBC_\K[0-9.]+' | sort -V | tail -1
 2.28
 ```
 
-- 动态链接，max GLIBC 2.34（兼容 Ubuntu 22.04+ / glibc 2.35+）
-- 依赖系统库：`libcurl4`、`libssl3`、`libstdc++6`、`libzstd1`（Ubuntu 22.04 自带）
+- Cargo 发布构建（默认 `--sdk-link static`）：SDK + vendored libcrypto 静态
+  链入，NEEDED 仅 `libcurl4`、`libstdc++6`（20.04+ 自带），glibc 上限 < 2.33
+- `--sdk-link shared`（legacy）：动态链 SDK `.so`，max GLIBC 2.34（Ubuntu
+  22.04+），依赖系统库 `libcurl4`、`libssl3`、`libstdc++6`、`libzstd1`
 - OpenSSL / AWS-LC / V8 等由 hermetic LLVM 工具链静态链接
 
 ## 涉及文件清单

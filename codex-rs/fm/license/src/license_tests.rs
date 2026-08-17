@@ -3,6 +3,7 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use super::LicenseConfig;
+use super::LicenseEnv;
 use super::ensure_active;
 use super::is_active;
 use super::mark_license_active;
@@ -20,13 +21,20 @@ static LICENSE_STATE_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn all_values_are_resolved_from_env() {
-    let config = resolve_config(Some("PRO"), Some("2.0"), Some("MyApp")).unwrap();
+    let config = resolve_config(LicenseEnv {
+        feature: Some("PRO"),
+        version: Some("2.0"),
+        display_name: Some("MyApp"),
+        host_name: Some("build-agent-7"),
+    })
+    .unwrap();
     assert_eq!(
         config,
         LicenseConfig {
             feature: "PRO".to_owned(),
             version: "2.0".to_owned(),
             display_name: "MyApp".to_owned(),
+            host_name: Some("build-agent-7".to_owned()),
         }
     );
 }
@@ -34,24 +42,47 @@ fn all_values_are_resolved_from_env() {
 #[test]
 fn display_name_defaults_to_codex_when_missing_or_empty() {
     for display_name in [None, Some("")] {
-        let config = resolve_config(Some("PRO"), Some("2.0"), display_name).unwrap();
+        let config = resolve_config(LicenseEnv {
+            feature: Some("PRO"),
+            version: Some("2.0"),
+            display_name,
+            ..LicenseEnv::default()
+        })
+        .unwrap();
         assert_eq!(config.display_name, "Codex");
     }
 }
 
 #[test]
+fn host_name_is_optional_and_empty_falls_back_to_sdk_default() {
+    for host_name in [None, Some("")] {
+        let config = resolve_config(LicenseEnv {
+            feature: Some("PRO"),
+            version: Some("2.0"),
+            host_name,
+            ..LicenseEnv::default()
+        })
+        .unwrap();
+        assert_eq!(config.host_name, None);
+    }
+}
+
+#[test]
 fn missing_or_empty_required_fields_are_errors() {
-    for (feature, version, display_name) in [
-        (None, Some("2.0"), None),
-        (Some("PRO"), None, None),
-        (Some(""), Some("2.0"), None),
-        (Some("PRO"), Some(""), None),
-        (None, Some("2.0"), Some("MyApp")),
-        (Some(""), Some("2.0"), Some("MyApp")),
+    for (feature, version) in [
+        (None, Some("2.0")),
+        (Some("PRO"), None),
+        (Some(""), Some("2.0")),
+        (Some("PRO"), Some("")),
     ] {
         assert!(
-            resolve_config(feature, version, display_name).is_err(),
-            "required-field error expected for ({feature:?}, {version:?}, {display_name:?})"
+            resolve_config(LicenseEnv {
+                feature,
+                version,
+                ..LicenseEnv::default()
+            })
+            .is_err(),
+            "required-field error expected for ({feature:?}, {version:?})"
         );
     }
 }

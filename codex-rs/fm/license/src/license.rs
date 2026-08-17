@@ -19,6 +19,10 @@ pub const FEATURE_ENV_VAR: &str = "FMSH_CODEX_LIC_FEATURE";
 pub const VERSION_ENV_VAR: &str = "FMSH_CODEX_LIC_VERSION";
 /// Environment variable for the display name shown to the license server.
 pub const DISPLAY_NAME_ENV_VAR: &str = "FMSH_CODEX_LIC_DISPLAY_NAME";
+/// Environment variable for the client host name reported to the license
+/// server (`LM_INIT_STRUCT.hostName`). Unset or empty falls back to the
+/// LMCLIENT SDK default.
+pub const HOSTNAME_ENV_VAR: &str = "FMSH_CODEX_LIC_HOSTNAME";
 
 const RECHECK_INTERVAL_SECONDS: c_int = 30;
 const RETRY_COUNT: c_int = 10;
@@ -105,28 +109,48 @@ pub(crate) struct LicenseConfig {
     pub feature: String,
     pub version: String,
     pub display_name: String,
+    pub host_name: Option<String>,
 }
 
-/// Resolve license settings from the environment; every value is required
-/// except `display_name` which defaults to `"Codex"`.
-pub(crate) fn resolve_config(
-    feature: Option<&str>,
-    version: Option<&str>,
-    display_name: Option<&str>,
-) -> Result<LicenseConfig> {
-    let feature = feature.filter(|value| !value.is_empty()).context(format!(
-        "{FEATURE_ENV_VAR} is not set; set it to the licensed feature name"
-    ))?;
-    let version = version.filter(|value| !value.is_empty()).context(format!(
-        "{VERSION_ENV_VAR} is not set; set it to the licensed feature version"
-    ))?;
-    let display_name = display_name
+/// Environment inputs to [`resolve_config`], named so call sites stay
+/// self-documenting instead of threading positional `Option`s through.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct LicenseEnv<'a> {
+    pub feature: Option<&'a str>,
+    pub version: Option<&'a str>,
+    pub display_name: Option<&'a str>,
+    pub host_name: Option<&'a str>,
+}
+
+/// Resolve license settings from the environment; `feature` and `version`
+/// are required, `display_name` defaults to `"Codex"`, and `host_name`
+/// defaults to `None` (the LMCLIENT SDK default).
+pub(crate) fn resolve_config(env: LicenseEnv<'_>) -> Result<LicenseConfig> {
+    let feature = env
+        .feature
+        .filter(|value| !value.is_empty())
+        .context(format!(
+            "{FEATURE_ENV_VAR} is not set; set it to the licensed feature name"
+        ))?;
+    let version = env
+        .version
+        .filter(|value| !value.is_empty())
+        .context(format!(
+            "{VERSION_ENV_VAR} is not set; set it to the licensed feature version"
+        ))?;
+    let display_name = env
+        .display_name
         .filter(|value| !value.is_empty())
         .unwrap_or("Codex");
+    let host_name = env
+        .host_name
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
     Ok(LicenseConfig {
         feature: feature.to_owned(),
         version: version.to_owned(),
         display_name: display_name.to_owned(),
+        host_name,
     })
 }
 
@@ -243,7 +267,8 @@ pub fn init_entry() -> Result<LicenseGuard> {
 ///
 /// The LMCLIENT SDK reads `FMSH_LIC_SERVER` internally (`<port>@<host>`).
 /// This function reads `FMSH_CODEX_LIC_FEATURE` and `FMSH_CODEX_LIC_VERSION`
-/// (both required) and optionally `FMSH_CODEX_LIC_DISPLAY_NAME` (defaults to `"Codex"`).
+/// (both required), `FMSH_CODEX_LIC_DISPLAY_NAME` (defaults to `"Codex"`)
+/// and `FMSH_CODEX_LIC_HOSTNAME` (defaults to the LMCLIENT SDK default).
 pub fn verify_at_startup() -> Result<LicenseGuard> {
     if std::env::var_os(CODEX_THREAD_ID_ENV_VAR).is_some() {
         tracing::info!("nested codex process detected; skipping FMSH license checkout");
@@ -264,11 +289,12 @@ pub fn verify_at_startup() -> Result<LicenseGuard> {
     // process observed a lost heartbeat.
     LICENSE_STATE.store(LICENSE_STATE_ACTIVE, Ordering::Release);
 
-    let config = resolve_config(
-        std::env::var(FEATURE_ENV_VAR).ok().as_deref(),
-        std::env::var(VERSION_ENV_VAR).ok().as_deref(),
-        std::env::var(DISPLAY_NAME_ENV_VAR).ok().as_deref(),
-    )?;
+    let config = resolve_config(LicenseEnv {
+        feature: std::env::var(FEATURE_ENV_VAR).ok().as_deref(),
+        version: std::env::var(VERSION_ENV_VAR).ok().as_deref(),
+        display_name: std::env::var(DISPLAY_NAME_ENV_VAR).ok().as_deref(),
+        host_name: std::env::var(HOSTNAME_ENV_VAR).ok().as_deref(),
+    })?;
 
     let client = LicenseClient::init(InitConfig {
         auto_recheck: true,
@@ -276,6 +302,7 @@ pub fn verify_at_startup() -> Result<LicenseGuard> {
         retry_count: RETRY_COUNT,
         sleep_time: SLEEP_TIME_SECONDS,
         display_name: Some(config.display_name.clone()),
+        host_name: config.host_name.clone(),
         retry_routine: Some(on_retry as RetryCallback),
         retry_success: Some(on_retry_success as RetryCallback),
         exit_routine: Some(on_license_lost as RetryCallback),

@@ -19,7 +19,8 @@
 //! The LMCLIENT SDK reads `FMSH_LIC_SERVER` internally (`<port>@<host>`).
 //! `FMSH_CODEX_LIC_FEATURE` and `FMSH_CODEX_LIC_VERSION` must be set
 //! explicitly. `FMSH_CODEX_LIC_DISPLAY_NAME` is optional and defaults to
-//! `"Codex"`.
+//! `"Codex"`; `FMSH_CODEX_LIC_HOSTNAME` is optional and defaults to the
+//! LMCLIENT SDK default client host name.
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
 mod license;

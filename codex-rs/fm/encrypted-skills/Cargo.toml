@@ -40,8 +40,9 @@ zip = { workspace = true, features = ["deflate"] }
 # Release builds set FMSH_UKEY_SDK_LINK=static FMSH_UKEY_LIBSTDCPP=shared:
 # the SDK archives + vendored libcrypto are embedded and only NEEDED
 # libstdc++.so.6 remains (statically embedding libstdc++ clashes with the
-# libc++abi V8 embeds on the __cxa_* ABI symbols), and the wrapper's stat
-# shim keeps the glibc floor below 2.33 so Ubuntu 20.04 hosts work.
+# libc++abi V8 embeds on the __cxa_* ABI symbols). Target platform is
+# Ubuntu 22.04+ (the glibc floor comes from lmclient v1.3.0's
+# __libc_single_threaded, glibc 2.32).
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
 fmsh-ukey-core = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "26b8ade02268bf4f8f48538ce0ba8c0fc2a89048" }
 fmsh-ukey-skill = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "26b8ade02268bf4f8f48538ce0ba8c0fc2a89048" }

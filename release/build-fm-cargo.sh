@@ -159,8 +159,11 @@ find_sdk_lib_dir() {
 # lmclient's own copies (FMSH_UKEY_STATIC_DEDUP_AGAINST).
 
 find_lmclient_lib() {
+    # v1.3.0 ships only lmclient/lib/ubuntu/release/; the v1.2.0 checkout
+    # (centos7/) may still linger in the cargo cache — match the ubuntu path
+    # so the dedup always targets the archive this build actually links.
     find ~/.cargo/git/checkouts/lmclient-rust-sdk-* \
-        -path '*/lmclient/lib/*/release/liblmclient.a' 2>/dev/null | head -1
+        -path '*/lmclient/lib/ubuntu/release/liblmclient.a' 2>/dev/null | head -1
 }
 
 static_sdk_env() {
@@ -190,6 +193,13 @@ build_local() {
         cargo_profile_flag=""
         target_subdir="debug"
     fi
+    if [[ "$sdk_link" == "static" ]]; then
+        echo "== static SDK link (FMSH_UKEY_SDK_LINK=static, shared libstdc++) =="
+        static_sdk_env
+    else
+        export FMSH_UKEY_SDK_LINK=shared
+        unset FMSH_UKEY_LIBSTDCPP FMSH_UKEY_STATIC_DEDUP_AGAINST || true
+    fi
     echo "== cargo build $cargo_profile_flag =="
     (
         cd "$codex_src"
@@ -210,7 +220,11 @@ build_local() {
     local sdk_lib_dir
     sdk_lib_dir="$(find_sdk_lib_dir)"
     if [[ -n "$sdk_lib_dir" ]]; then
-        cp -fL "$sdk_lib_dir"/libfmsh_ukey_sdk.so.0 "$out_dir/lib/" 2>/dev/null || true
+        # Static mode embeds the SDK + libcrypto; only the dlopened GM3000
+        # provider ships. Shared mode bundles the SDK .so as well.
+        if [[ "$sdk_link" == "shared" ]]; then
+            cp -fL "$sdk_lib_dir"/libfmsh_ukey_sdk.so.0 "$out_dir/lib/" 2>/dev/null || true
+        fi
         cp -fL "$sdk_lib_dir"/libgm3000.1.0.so "$out_dir/lib/" 2>/dev/null || true
         echo "  SDK libs: $sdk_lib_dir → $out_dir/lib/"
     else
@@ -244,6 +258,8 @@ build_docker() {
         --build-arg UBUNTU_VERSION="$ubuntu_version" \
         --build-arg FM_BUILD_SUFFIX="$suffix" \
         --build-arg CARGO_PROFILE="${profile:-release}" \
+        --build-arg FMSH_UKEY_SDK_LINK="$sdk_link" \
+        --build-arg FMSH_UKEY_LIBSTDCPP="${FMSH_UKEY_LIBSTDCPP:-shared}" \
         -f release/Dockerfile.cargo \
         "$repo_root"
 

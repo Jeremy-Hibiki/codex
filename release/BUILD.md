@@ -4,9 +4,11 @@
 
 ## 前置要求
 
-- Linux x86_64（Cargo 发布构建默认静态链入 fmsh-ukey SDK 与 vendored
-  libcrypto，glibc 上限 < 2.33，支持 Ubuntu 20.04+；`--sdk-link shared`
-  退回动态 SDK `.so`，则需 glibc ≥ 2.34 / Ubuntu 22.04+ 与宿主 libssl3）
+- Linux x86_64（Cargo 发布构建默认静态链入 fmsh-ukey SDK、vendored
+  libcrypto 与 vendored curl；目标平台 Ubuntu 22.04+。glibc 下限由
+  lmclient v1.3.0 的 `__libc_single_threaded`（glibc 2.32）决定，故
+  20.04 不再受支持；`--sdk-link shared` 退回动态 SDK `.so`，同样需要
+  宿主 libssl3）
 - Python 3（用于 BCR registry proxy）
 - 网络：需能访问 `ghfast.top`（GitHub 反向代理）、`rsproxy.cn`（crates.io 镜像）
 - 内网 License Server：`192.168.131.126:8089`（lmclient-rust-sdk git 依赖）
@@ -153,7 +155,7 @@ gcc/clang，保证本机、CI、Docker 里构建行为完全一致。
 - V8、ICU、AWS-LC/OpenSSL 等 C/C++ 依赖统一由这套 clang/lld 编译，并静态链接进
   `codex` 二进制；
 - 运行镜像不再需要构建机上的任何编译器，只需 glibc 和少数系统动态库
-  （`libcurl4`、`libstdc++6`、`libzstd1`）以及 fmsh-ukey SDK；
+  （`libstdc++6`、`libzstd1`）以及 fmsh-ukey SDK（lmclient v1.3.0 起 curl/ssl/z 全部 vendored 静态链入）；
 - 同一份代码在不同环境构建结果一致，排查问题时不依赖「构建机装了哪个版本的工具链」。
 
 ## 产出规格
@@ -170,7 +172,7 @@ $ readelf -V codex | grep -oP 'GLIBC_\K[0-9.]+' | sort -V | tail -1
 ```
 
 - Cargo 发布构建（默认 `--sdk-link static`）：SDK + vendored libcrypto 静态
-  链入，NEEDED 仅 `libcurl4`、`libstdc++6`（20.04+ 自带），glibc 上限 < 2.33
+  与 vendored curl 链入，NEEDED 仅 `libstdc++6`（22.04+ 自带）
 - `--sdk-link shared`（legacy）：动态链 SDK `.so`，max GLIBC 2.34（Ubuntu
   22.04+），依赖系统库 `libcurl4`、`libssl3`、`libstdc++6`、`libzstd1`
 - OpenSSL / AWS-LC / V8 等由 hermetic LLVM 工具链静态链接

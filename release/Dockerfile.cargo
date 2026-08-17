@@ -64,16 +64,14 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|
 
 # Build deps:
 #   gcc-10/g++-10     — aws-lc-sys rejects GCC 9 (memcmp bug, gcc#95189)
-#   make/perl         — openssl-sys builds OpenSSL from source
+#   make/perl         — openssl-sys + curl-sys vendored builds
 #   pkg-config        — openssl-sys discovery
-#   libcurl4-openssl-dev — lmclient links -lcurl
-#   libssl-dev        — openssl-ssys
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean \
     && apt-get update && apt-get install -y --no-install-recommends \
-    bash curl git ca-certificates xz-utils pkg-config make perl \
-    gcc-10 g++-10 libcurl4-openssl-dev libssl-dev \
+    bash curl git ca-certificates xz-utils pkg-config make perl cmake \
+    gcc-10 g++-10 \
     && update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-10 100 \
     && update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-10 100 \
     && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 \
@@ -91,8 +89,11 @@ RUN curl -fsSL "https://rsproxy.cn/rustup-init.sh" \
     && chmod +x /tmp/rustup-init \
     && RUSTUP_DIST_SERVER=https://rsproxy.cn RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup \
     /tmp/rustup-init -y --default-toolchain 1.95.0 --profile minimal \
-    && rm /tmp/rustup-init
-ENV PATH="/root/.cargo/bin:${PATH}"
+    && rm /tmp/rustup-init \
+    && RUSTUP_DIST_SERVER=https://rsproxy.cn /root/.cargo/bin/rustup component add clippy rustfmt rust-src
+ENV PATH="/root/.cargo/bin:${PATH}" \
+    RUSTUP_DIST_SERVER=https://rsproxy.cn \
+    RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup
 
 # Cargo registry mirror (rsproxy.cn sparse index).
 RUN mkdir -p /root/.cargo && cat > /root/.cargo/config.toml <<'EOF'
@@ -138,19 +139,22 @@ ENV FM_BUILD_SUFFIX=${FM_BUILD_SUFFIX}
 # builds without optimization and keeps symbols for profiling/debugging.
 RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/workspace/codex-rs/target,sharing=locked \
+    set -eu; \
     export FMSH_UKEY_SDK_LINK FMSH_UKEY_LIBSTDCPP; \
     if [ "$FMSH_UKEY_SDK_LINK" = "static" ]; then \
     cargo fetch; \
-    export FMSH_UKEY_STATIC_DEDUP_AGAINST="$(find /root/.cargo/git/checkouts/lmclient-rust-sdk-* -path '*/lmclient/lib/*/release/liblmclient.a' | head -1)"; \
+    export FMSH_UKEY_STATIC_DEDUP_AGAINST="$(find /root/.cargo/git/checkouts/lmclient-rust-sdk-* -path '*/lmclient/lib/ubuntu/release/liblmclient.a' | head -1)"; \
     echo "dedup against: $FMSH_UKEY_STATIC_DEDUP_AGAINST"; \
+    test -n "$FMSH_UKEY_STATIC_DEDUP_AGAINST" \
+    || { echo "ERROR: liblmclient.a not found after fetch — dedup required for static links" >&2; exit 1; }; \
     fi; \
     if [ "$CARGO_PROFILE" = "debug" ]; then \
-    cargo build -p codex-cli; \
-    cp target/debug/codex /codex-codex; \
+    cargo build -p codex-cli \
+    && cp target/debug/codex /codex-codex; \
     else \
-    cargo build --release -p codex-cli; \
-    strip target/release/codex; \
-    cp target/release/codex /codex-codex; \
+    cargo build --release -p codex-cli \
+    && strip target/release/codex \
+    && cp target/release/codex /codex-codex; \
     fi
 
 # ── bundle runtime libs ───────────────────────────────────────────────────
@@ -170,7 +174,6 @@ RUN mkdir -p /codex/lib \
 # ── runtime stage ─────────────────────────────────────────────────────────
 FROM ubuntu:${UBUNTU_VERSION}
 
-ARG UBUNTU_VERSION
 ARG FMSH_UKEY_SDK_LINK
 ENV DEBIAN_FRONTEND=noninteractive
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -181,8 +184,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     /etc/apt/sources.list \
     && rm -f /etc/apt/apt.conf.d/docker-clean \
     && apt-get update && apt-get install -y --no-install-recommends \
-    libcurl4 libstdc++6 libzstd1 ca-certificates \
-    $( [ "$UBUNTU_VERSION" != "20.04" ] && echo libssl3 || true )
+    libstdc++6 ca-certificates \
+    $( [ "$FMSH_UKEY_SDK_LINK" = "static" ] || echo libssl3 )
 
 COPY --from=builder /codex/codex /usr/local/bin/codex
 COPY --from=builder /codex/lib /usr/local/bin/lib

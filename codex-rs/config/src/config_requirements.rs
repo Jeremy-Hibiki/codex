@@ -161,6 +161,9 @@ pub struct ConfigRequirements {
     pub windows_sandbox_private_desktop: Option<Sourced<bool>>,
     pub web_search_mode: ConstrainedWithSource<WebSearchMode>,
     pub allow_managed_hooks_only: Option<Sourced<bool>>,
+    pub allow_sandbox_bypass: Option<Sourced<bool>>,
+    pub allow_managed_plugins_only: Option<Sourced<bool>>,
+    pub allow_managed_marketplaces_only: Option<Sourced<bool>>,
     pub allow_appshots: Option<Sourced<bool>>,
     pub allow_remote_control: Option<Sourced<bool>>,
     pub computer_use: Option<Sourced<ComputerUseRequirementsToml>>,
@@ -214,6 +217,9 @@ impl Default for ConfigRequirements {
                 /*source*/ None,
             ),
             allow_managed_hooks_only: None,
+            allow_sandbox_bypass: None,
+            allow_managed_plugins_only: None,
+            allow_managed_marketplaces_only: None,
             allow_appshots: None,
             allow_remote_control: None,
             computer_use: None,
@@ -894,6 +900,9 @@ pub struct ConfigRequirementsToml {
     pub remote_sandbox_config: Option<Vec<RemoteSandboxConfigToml>>,
     pub allowed_web_search_modes: Option<Vec<WebSearchModeRequirement>>,
     pub allow_managed_hooks_only: Option<bool>,
+    pub allow_sandbox_bypass: Option<bool>,
+    pub allow_managed_plugins_only: Option<bool>,
+    pub allow_managed_marketplaces_only: Option<bool>,
     pub allow_appshots: Option<bool>,
     pub allow_remote_control: Option<bool>,
     pub computer_use: Option<ComputerUseRequirementsToml>,
@@ -990,6 +999,9 @@ pub struct ConfigRequirementsWithSources {
     pub default_permissions: Option<Sourced<String>>,
     pub allowed_web_search_modes: Option<Sourced<Vec<WebSearchModeRequirement>>>,
     pub allow_managed_hooks_only: Option<Sourced<bool>>,
+    pub allow_sandbox_bypass: Option<Sourced<bool>>,
+    pub allow_managed_plugins_only: Option<Sourced<bool>>,
+    pub allow_managed_marketplaces_only: Option<Sourced<bool>>,
     pub allow_appshots: Option<Sourced<bool>>,
     pub allow_remote_control: Option<Sourced<bool>>,
     pub computer_use: Option<Sourced<ComputerUseRequirementsToml>>,
@@ -1044,6 +1056,9 @@ impl ConfigRequirementsWithSources {
             remote_sandbox_config: _,
             allowed_web_search_modes: _,
             allow_managed_hooks_only: _,
+            allow_sandbox_bypass: _,
+            allow_managed_plugins_only: _,
+            allow_managed_marketplaces_only: _,
             allow_appshots: _,
             allow_remote_control: _,
             computer_use: _,
@@ -1105,6 +1120,9 @@ impl ConfigRequirementsWithSources {
                 default_permissions,
                 allowed_web_search_modes,
                 allow_managed_hooks_only,
+                allow_sandbox_bypass,
+                allow_managed_plugins_only,
+                allow_managed_marketplaces_only,
                 allow_appshots,
                 allow_remote_control,
                 computer_use,
@@ -1150,6 +1168,9 @@ impl ConfigRequirementsWithSources {
             default_permissions,
             allowed_web_search_modes,
             allow_managed_hooks_only,
+            allow_sandbox_bypass,
+            allow_managed_plugins_only,
+            allow_managed_marketplaces_only,
             allow_appshots,
             allow_remote_control,
             computer_use,
@@ -1185,6 +1206,10 @@ impl ConfigRequirementsWithSources {
             remote_sandbox_config: None,
             allowed_web_search_modes: allowed_web_search_modes.map(|sourced| sourced.value),
             allow_managed_hooks_only: allow_managed_hooks_only.map(|sourced| sourced.value),
+            allow_sandbox_bypass: allow_sandbox_bypass.map(|sourced| sourced.value),
+            allow_managed_plugins_only: allow_managed_plugins_only.map(|sourced| sourced.value),
+            allow_managed_marketplaces_only: allow_managed_marketplaces_only
+                .map(|sourced| sourced.value),
             allow_appshots: allow_appshots.map(|sourced| sourced.value),
             allow_remote_control: allow_remote_control.map(|sourced| sourced.value),
             computer_use: computer_use.map(|sourced| sourced.value),
@@ -1289,6 +1314,9 @@ impl ConfigRequirementsToml {
             && self.remote_sandbox_config.is_none()
             && self.allowed_web_search_modes.is_none()
             && self.allow_managed_hooks_only.is_none()
+            && self.allow_sandbox_bypass.is_none()
+            && self.allow_managed_plugins_only.is_none()
+            && self.allow_managed_marketplaces_only.is_none()
             && self.allow_appshots.is_none()
             && self.allow_remote_control.is_none()
             && self
@@ -1474,6 +1502,9 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
             default_permissions: _,
             allowed_web_search_modes,
             allow_managed_hooks_only,
+            allow_sandbox_bypass,
+            allow_managed_plugins_only,
+            allow_managed_marketplaces_only,
             allow_appshots,
             allow_remote_control,
             computer_use,
@@ -1806,6 +1837,9 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
             windows_sandbox_private_desktop,
             web_search_mode,
             allow_managed_hooks_only,
+            allow_sandbox_bypass,
+            allow_managed_plugins_only,
+            allow_managed_marketplaces_only,
             allow_appshots,
             allow_remote_control,
             computer_use,
@@ -1964,6 +1998,9 @@ mod tests {
             remote_sandbox_config: _,
             allowed_web_search_modes,
             allow_managed_hooks_only,
+            allow_sandbox_bypass,
+            allow_managed_plugins_only,
+            allow_managed_marketplaces_only,
             allow_appshots,
             allow_remote_control,
             computer_use,
@@ -2007,6 +2044,12 @@ mod tests {
             allowed_web_search_modes: allowed_web_search_modes
                 .map(|value| Sourced::new(value, RequirementSource::Unknown)),
             allow_managed_hooks_only: allow_managed_hooks_only
+                .map(|value| Sourced::new(value, RequirementSource::Unknown)),
+            allow_sandbox_bypass: allow_sandbox_bypass
+                .map(|value| Sourced::new(value, RequirementSource::Unknown)),
+            allow_managed_plugins_only: allow_managed_plugins_only
+                .map(|value| Sourced::new(value, RequirementSource::Unknown)),
+            allow_managed_marketplaces_only: allow_managed_marketplaces_only
                 .map(|value| Sourced::new(value, RequirementSource::Unknown)),
             allow_appshots: allow_appshots
                 .map(|value| Sourced::new(value, RequirementSource::Unknown)),
@@ -2059,6 +2102,23 @@ mod tests {
         )?;
 
         assert_eq!(requirements.allow_managed_hooks_only, Some(false));
+        assert!(!requirements.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn deserialize_flat_product_policy_fields() -> Result<()> {
+        let requirements: ConfigRequirementsToml = from_str(
+            r#"
+                allow_sandbox_bypass = false
+                allow_managed_plugins_only = true
+                allow_managed_marketplaces_only = true
+            "#,
+        )?;
+
+        assert_eq!(requirements.allow_sandbox_bypass, Some(false));
+        assert_eq!(requirements.allow_managed_plugins_only, Some(true));
+        assert_eq!(requirements.allow_managed_marketplaces_only, Some(true));
         assert!(!requirements.is_empty());
         Ok(())
     }
@@ -2274,6 +2334,9 @@ mod tests {
             remote_sandbox_config: None,
             allowed_web_search_modes: Some(allowed_web_search_modes.clone()),
             allow_managed_hooks_only: Some(true),
+            allow_sandbox_bypass: Some(false),
+            allow_managed_plugins_only: Some(true),
+            allow_managed_marketplaces_only: Some(true),
             allow_appshots: Some(false),
             allow_remote_control: Some(false),
             computer_use: Some(computer_use.clone()),
@@ -2336,6 +2399,18 @@ mod tests {
                     enforce_source.clone(),
                 )),
                 allow_managed_hooks_only: Some(Sourced::new(
+                    /*value*/ true,
+                    enforce_source.clone(),
+                )),
+                allow_sandbox_bypass: Some(Sourced::new(
+                    /*value*/ false,
+                    enforce_source.clone(),
+                )),
+                allow_managed_plugins_only: Some(Sourced::new(
+                    /*value*/ true,
+                    enforce_source.clone(),
+                )),
+                allow_managed_marketplaces_only: Some(Sourced::new(
                     /*value*/ true,
                     enforce_source.clone(),
                 )),

@@ -12,7 +12,7 @@ fn codex_command(codex_home: &Path) -> Result<assert_cmd::Command> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_upgrade_runs_under_plugin() -> Result<()> {
     let codex_home = TempDir::new()?;
 
@@ -26,7 +26,7 @@ async fn marketplace_upgrade_runs_under_plugin() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_upgrade_json_prints_upgrade_outcome() -> Result<()> {
     let codex_home = TempDir::new()?;
 
@@ -50,7 +50,7 @@ async fn marketplace_upgrade_json_prints_upgrade_outcome() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_upgrade_no_longer_runs_at_top_level() -> Result<()> {
     let codex_home = TempDir::new()?;
 

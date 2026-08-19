@@ -10,25 +10,29 @@ use tempfile::TempDir;
 use tokio::time::timeout;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
-const POLICY_ERROR: &str = "plugin and marketplace management is disabled by product policy";
+const PLUGIN_POLICY_ERROR: &str = "only managed plugins are allowed by product policy";
+const MARKETPLACE_POLICY_ERROR: &str = "only managed marketplaces are allowed by product policy";
 
 async fn build_server_with_policy(
-    plugin_management_disabled: bool,
-    marketplace_management_disabled: bool,
-) -> Result<TestAppServer> {
+    allow_managed_plugins_only: bool,
+    allow_managed_marketplaces_only: bool,
+) -> Result<(TestAppServer, TempDir)> {
     let codex_home = TempDir::new()?;
-    MockResponsesConfig::new("http://localhost/unused")
-        .with_extra_config(&format!(
-            "[product_policy]\nplugin_management_disabled = {plugin_management_disabled}\nmarketplace_management_disabled = {marketplace_management_disabled}\n"
-        ))
-        .write(codex_home.path())?;
-    TestAppServer::builder()
+    MockResponsesConfig::new("http://localhost/unused").write(codex_home.path())?;
+    std::fs::write(
+        codex_home.path().join("requirements.toml"),
+        format!(
+            "allow_managed_plugins_only = {allow_managed_plugins_only}\nallow_managed_marketplaces_only = {allow_managed_marketplaces_only}\n"
+        ),
+    )?;
+    let mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
         .build_initialized_with_timeout(DEFAULT_TIMEOUT)
-        .await
+        .await?;
+    Ok((mcp, codex_home))
 }
 
-async fn build_server() -> Result<TestAppServer> {
+async fn build_server() -> Result<(TestAppServer, TempDir)> {
     build_server_with_policy(false, false).await
 }
 
@@ -36,6 +40,7 @@ async fn assert_policy_rejection(
     mcp: &mut TestAppServer,
     method: &str,
     params: Value,
+    expected_message: &str,
 ) -> Result<()> {
     let request_id = mcp.send_raw_request(method, Some(params)).await?;
     let error: JSONRPCError = timeout(
@@ -43,13 +48,13 @@ async fn assert_policy_rejection(
         mcp.read_stream_until_error_message(RequestId::Integer(request_id)),
     )
     .await??;
-    assert_eq!(error.error.message, POLICY_ERROR);
+    assert_eq!(error.error.message, expected_message);
     Ok(())
 }
 
 #[tokio::test]
 async fn marketplace_rpcs_are_rejected_by_product_policy() -> Result<()> {
-    let mut mcp = build_server_with_policy(false, true).await?;
+    let (mut mcp, _codex_home) = build_server_with_policy(false, true).await?;
     for (method, params) in [
         (
             "marketplace/add",
@@ -61,14 +66,14 @@ async fn marketplace_rpcs_are_rejected_by_product_policy() -> Result<()> {
         ),
         ("marketplace/upgrade", json!({})),
     ] {
-        assert_policy_rejection(&mut mcp, method, params).await?;
+        assert_policy_rejection(&mut mcp, method, params, MARKETPLACE_POLICY_ERROR).await?;
     }
     Ok(())
 }
 
 #[tokio::test]
 async fn plugin_share_rpcs_are_rejected_by_product_policy() -> Result<()> {
-    let mut mcp = build_server_with_policy(true, false).await?;
+    let (mut mcp, _codex_home) = build_server_with_policy(true, false).await?;
     for (method, params) in [
         ("plugin/share/save", json!({ "pluginPath": "/tmp/example" })),
         (
@@ -88,30 +93,31 @@ async fn plugin_share_rpcs_are_rejected_by_product_policy() -> Result<()> {
             json!({ "remotePluginId": "example" }),
         ),
     ] {
-        assert_policy_rejection(&mut mcp, method, params).await?;
+        assert_policy_rejection(&mut mcp, method, params, PLUGIN_POLICY_ERROR).await?;
     }
     Ok(())
 }
 
 #[tokio::test]
 async fn read_only_plugin_listing_rpcs_are_not_blocked_by_product_policy() -> Result<()> {
-    let mut mcp = build_server().await?;
+    let (mut mcp, _codex_home) = build_server().await?;
     let request_id = mcp.send_raw_request("plugin/list", Some(json!({}))).await?;
-    let outcome = timeout(
-        Duration::from_secs(3),
-        mcp.read_stream_until_error_message(RequestId::Integer(request_id)),
-    )
-    .await;
-    if let Ok(error) = outcome {
-        let error: JSONRPCError = error?;
-        assert_ne!(error.error.message, POLICY_ERROR);
-    }
+    let response: serde_json::Value =
+        timeout(Duration::from_secs(3), mcp.read_response(request_id)).await??;
+    assert_eq!(
+        response,
+        serde_json::json!({
+            "featuredPluginIds": [],
+            "marketplaceLoadErrors": [],
+            "marketplaces": []
+        })
+    );
     Ok(())
 }
 
 #[tokio::test]
 async fn plugin_mutation_rpcs_are_not_blocked_by_product_policy_by_default() -> Result<()> {
-    let mut mcp = build_server().await?;
+    let (mut mcp, _codex_home) = build_server().await?;
     // Mutation requests that fail for non-policy reasons must never report
     // the product-policy error.
     for (method, params) in [
@@ -128,7 +134,11 @@ async fn plugin_mutation_rpcs_are_not_blocked_by_product_policy_by_default() -> 
         )
         .await??;
         assert_ne!(
-            error.error.message, POLICY_ERROR,
+            error.error.message, PLUGIN_POLICY_ERROR,
+            "{method} must not be blocked by product policy by default"
+        );
+        assert_ne!(
+            error.error.message, MARKETPLACE_POLICY_ERROR,
             "{method} must not be blocked by product policy by default"
         );
     }
@@ -147,12 +157,12 @@ async fn plugin_mutation_rpcs_are_not_blocked_by_product_policy_by_default() -> 
 
 #[tokio::test]
 async fn plugin_install_rpcs_are_rejected_by_product_policy() -> Result<()> {
-    let mut mcp = build_server_with_policy(true, false).await?;
+    let (mut mcp, _codex_home) = build_server_with_policy(true, false).await?;
     for (method, params) in [
         ("plugin/install", json!({ "pluginName": "example" })),
         ("plugin/uninstall", json!({ "pluginId": "example@market" })),
     ] {
-        assert_policy_rejection(&mut mcp, method, params).await?;
+        assert_policy_rejection(&mut mcp, method, params, PLUGIN_POLICY_ERROR).await?;
     }
     Ok(())
 }

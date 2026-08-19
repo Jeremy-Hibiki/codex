@@ -27,7 +27,7 @@ const REMOTE_PLUGIN_ID: &str = "plugins~Plugin_linear";
 const WORKSPACE_REMOTE_PLUGIN_ID: &str = "plugins_69f27c3e67848191a45cbaa5f2adb39d";
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_uninstall_removes_plugin_cache_and_config_entry() -> Result<()> {
     let codex_home = TempDir::new()?;
     write_installed_plugin(&codex_home, "debug", "sample-plugin")?;
@@ -66,7 +66,7 @@ enabled = true
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_uninstall_tracks_analytics_event() -> Result<()> {
     let analytics_server = start_analytics_events_server().await?;
     let codex_home = TempDir::new()?;
@@ -134,7 +134,7 @@ async fn plugin_uninstall_tracks_analytics_event() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_uninstall_rejects_remote_plugin_when_plugins_are_disabled() -> Result<()> {
     let codex_home = TempDir::new()?;
     std::fs::write(
@@ -171,7 +171,7 @@ plugins = false
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_uninstall_writes_remote_plugin_to_cloud_when_remote_plugin_enabled() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -271,7 +271,7 @@ async fn plugin_uninstall_writes_remote_plugin_to_cloud_when_remote_plugin_enabl
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_uninstall_uses_detail_scope_for_cache_namespace() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -337,7 +337,7 @@ async fn plugin_uninstall_uses_detail_scope_for_cache_namespace() -> Result<()> 
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_uninstall_accepts_workspace_remote_plugin_id_shape() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -404,7 +404,7 @@ async fn plugin_uninstall_accepts_workspace_remote_plugin_id_shape() -> Result<(
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_uninstall_rejects_before_post_when_remote_detail_fetch_fails() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -464,7 +464,7 @@ async fn plugin_uninstall_rejects_before_post_when_remote_detail_fetch_fails() -
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_uninstall_rejects_remote_plugin_id_with_spaces_before_network_call() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -503,7 +503,7 @@ async fn plugin_uninstall_rejects_remote_plugin_id_with_spaces_before_network_ca
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_uninstall_rejects_invalid_remote_plugin_id_before_network_call() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -542,7 +542,7 @@ async fn plugin_uninstall_rejects_invalid_remote_plugin_id_before_network_call()
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_uninstall_rejects_empty_remote_plugin_id() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;

@@ -258,6 +258,7 @@ impl ToolOrchestrator {
         if let Err(message) = fm_encrypted_skills::sandbox_policy::ensure_encrypted_skill_sandbox(
             session_engaged,
             initial_sandbox != SandboxType::None,
+            turn_ctx.config.product_policy.allow_sandbox_bypass,
         ) {
             return Err(ToolError::Rejected(message.to_string()));
         }

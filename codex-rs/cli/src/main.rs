@@ -1019,15 +1019,26 @@ async fn cli_main(
         profile_v2_for_subcommand(&interactive, subcommand)?;
     }
 
-    // Product policy (I6/I7): full-access execution and plugin/marketplace
-    // management are disabled in this build.
-    if !fm_product_policy::sandbox_policy_bypassed()
-        && (requests_full_access(&interactive.shared)
-            || subcommand
-                .as_ref()
-                .is_some_and(subcommand_requests_full_access))
-    {
-        return Err(fm_product_policy::full_access_error());
+    // Product policy (I6/I7): full-access execution is open by default and
+    // can be blocked by `allow_sandbox_bypass = false` in requirements.
+    let full_access_requested = requests_full_access(&interactive.shared)
+        || subcommand
+            .as_ref()
+            .is_some_and(subcommand_requests_full_access);
+    let allow_sandbox_bypass = if full_access_requested {
+        let overrides = root_config_overrides
+            .parse_overrides()
+            .map_err(anyhow::Error::msg)?;
+        codex_core::config::Config::load_with_cli_overrides(overrides)
+            .await
+            .context("failed to load configuration")?
+            .product_policy
+            .allow_sandbox_bypass
+    } else {
+        true
+    };
+    if !allow_sandbox_bypass {
+        return Err(fm_product_policy::sandbox_bypass_error());
     }
     // Verify the product license before entering any of the main product
     // flows (interactive, exec, review, app-server, mcp-server, resume, fork,
@@ -1142,8 +1153,9 @@ async fn cli_main(
                 subcommand,
             } = plugin_cli;
             prepend_config_flags(&mut config_overrides, root_config_overrides.clone());
-            // Product policy toggles come from `[product_policy]`; defaults are
-            // open so upstream plugin/marketplace behavior is preserved.
+            // Product policy toggles come from top-level config fields;
+            // defaults are open so upstream plugin/marketplace behavior is
+            // preserved.
             let plugin_overrides = config_overrides
                 .parse_overrides()
                 .map_err(anyhow::Error::msg)?;
@@ -1153,16 +1165,16 @@ async fn cli_main(
                     .context("failed to load configuration")?;
             match &subcommand {
                 PluginSubcommand::Marketplace(_)
-                    if policy_config.product_policy.marketplace_management_disabled =>
+                    if policy_config.product_policy.allow_managed_marketplaces_only =>
                 {
-                    return Err(fm_product_policy::plugin_management_error());
+                    return Err(fm_product_policy::managed_marketplaces_only_error());
                 }
                 PluginSubcommand::Add(_)
                 | PluginSubcommand::List(_)
                 | PluginSubcommand::Remove(_)
-                    if policy_config.product_policy.plugin_management_disabled =>
+                    if policy_config.product_policy.allow_managed_plugins_only =>
                 {
-                    return Err(fm_product_policy::plugin_management_error());
+                    return Err(fm_product_policy::managed_plugins_only_error());
                 }
                 _ => {}
             }

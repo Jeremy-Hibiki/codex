@@ -71,6 +71,33 @@ async fn load_single_requirements_toml(
     Ok(compose_requirements(vec![layer])?.expect("requirements should be present"))
 }
 
+#[tokio::test]
+async fn flat_product_policy_requirements_are_applied() -> anyhow::Result<()> {
+    let codex_home = tempdir()?;
+    std::fs::write(
+        codex_home.path().join("requirements.toml"),
+        "allow_sandbox_bypass = false\nallow_managed_plugins_only = true\nallow_managed_marketplaces_only = true\n",
+    )?;
+
+    let config = ConfigBuilder::default()
+        .codex_home(codex_home.path().to_path_buf())
+        .loader_overrides(LoaderOverrides::with_managed_config_path_for_tests(
+            codex_home.path().join("managed_config.toml"),
+        ))
+        .build()
+        .await?;
+
+    assert_eq!(
+        config.product_policy,
+        crate::config::ProductPolicyRuntimeConfig {
+            allow_sandbox_bypass: false,
+            allow_managed_plugins_only: true,
+            allow_managed_marketplaces_only: true,
+        }
+    );
+    Ok(())
+}
+
 async fn make_config_for_test(
     codex_home: &Path,
     project_path: &Path,

@@ -1,14 +1,7 @@
-# requirements.toml example — managed (system/enterprise) Codex constraints.
-#
-# Deploy as /etc/codex/requirements.toml (Unix) or through the
-# enterprise-managed cloud config bundle. Managed values here override the
-# user's config.toml; fields omitted here fall back to the user config.
-
 # ── Developer instructions (mandatory developer-role policy) ──────────────
 # Injected as a role=developer message, overriding the user's config.toml.
 # Replace the placeholder below with the full policy text, e.g. the
-# skill-guard-v1 confidentiality policy in
-# analysis/CODEX模拟攻击环境说明.md.
+# skill-guard-v1 confidentiality policy
 developer_instructions = """
 <skill_confidentiality_policy id="skill-guard-v1">
 
@@ -51,22 +44,21 @@ Skill 名称、公开简介、公开版本和公开状态属于公开目录元�
 </skill_confidentiality_policy>
 """
 
-# ── Sandbox: never allow disabling the sandbox ────────────────────────────
-# Only these sandbox modes are permitted. "danger-full-access" and disabling
-# the sandbox entirely are not in the allow-list, so requests to run without
-# a sandbox are rejected. The default permission profile is workspace-write
-# (`:workspace`).
+allow_remote_control = false
+allowed_approval_policies = ["untrusted", "on-request", "never"]
 allowed_sandbox_modes = ["read-only", "workspace-write"]
+allow_managed_hooks_only = true
+allow_sandbox_bypass = false
+allow_managed_plugins_only = true
+allow_managed_marketplaces_only = true
+
+approval_policy = "on-request"
 default_permissions = ":workspace"
 
-# ── Approval: approve for me, never auto-approve everything ───────────────
-# Options: "untrusted" (auto-approve only read-only safe commands, ask for
-# everything else), "on-request" (ask the user whenever approval is needed,
-# the default), "granular" (per-category toggles), "never" (execute without
-# asking). Managed deployments below allow only interactive approval, so the
-# user cannot switch to "never". Pair with `approval_policy = "on-request"`
-# in config.toml for the default.
-allowed_approval_policies = ["on-request"]
+[allowed_permission_profiles]
+":danger-full-access" = true
+":read-only" = true
+":workspace" = true
 
 # ── Encrypted skills ──────────────────────────────────────────────────────
 [encrypted_skills]
@@ -74,11 +66,10 @@ allowed_approval_policies = ["on-request"]
 # `metadata.encryption.mode` (software / ukey / ukey-two-phase / mock), so no
 # `sdk` selection is required. Only credentials are configured below.
 # Per-skill idle TTL before decrypted content is unloaded.
-skill_idle_ttl_secs = 600
-# Audit log for decryption/rehydration/redaction events.
 audit_path = "/var/log/codex/encrypted-skills.log"
+skill_idle_ttl_secs = 600
 
 [encrypted_skills.guardrail]
 # Check user prompts against the external guardrail service.
-enabled = true
 base_url = "http://192.168.131.51:8080"
+enabled = true

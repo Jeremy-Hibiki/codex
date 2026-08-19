@@ -11,7 +11,7 @@ use tokio::time::timeout;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_add_local_directory_source() -> Result<()> {
     let codex_home = TempDir::new()?;
     let source = codex_home.path().join("alice@example.com/marketplace");

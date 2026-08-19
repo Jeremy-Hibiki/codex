@@ -55,12 +55,8 @@ fn sandbox_applies_binds_only_under_bwrap_profiles() {
 
 #[test]
 fn ensure_encrypted_skill_sandbox_gates_engaged_execution() {
-    // Without the debug bypass env, an engaged session without a sandbox is
-    // rejected; CI never sets the bypass so this is a fixed expectation.
-    assert_eq!(
-        ensure_encrypted_skill_sandbox(true, false).is_ok(),
-        fm_product_policy::sandbox_policy_bypassed()
-    );
-    assert!(ensure_encrypted_skill_sandbox(true, true).is_ok());
-    assert!(ensure_encrypted_skill_sandbox(false, false).is_ok());
+    assert!(ensure_encrypted_skill_sandbox(true, false, /*allow_sandbox_bypass*/ false).is_err());
+    assert!(ensure_encrypted_skill_sandbox(true, false, /*allow_sandbox_bypass*/ true).is_ok());
+    assert!(ensure_encrypted_skill_sandbox(true, true, /*allow_sandbox_bypass*/ false).is_ok());
+    assert!(ensure_encrypted_skill_sandbox(false, false, /*allow_sandbox_bypass*/ false).is_ok());
 }

@@ -41,7 +41,7 @@ fn write_marketplace_source(source: &Path, marker: &str) -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_add_local_directory_source() -> Result<()> {
     let codex_home = TempDir::new()?;
     let source = TempDir::new()?;
@@ -74,7 +74,7 @@ async fn marketplace_add_local_directory_source() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_add_json_prints_add_outcome() -> Result<()> {
     let codex_home = TempDir::new()?;
     let source = TempDir::new()?;
@@ -110,7 +110,7 @@ async fn marketplace_add_json_prints_add_outcome() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_add_rejects_local_manifest_file_source() -> Result<()> {
     let codex_home = TempDir::new()?;
     let source = TempDir::new()?;
@@ -134,7 +134,7 @@ async fn marketplace_add_rejects_local_manifest_file_source() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_add_rejects_sparse_for_local_directory_source() -> Result<()> {
     let codex_home = TempDir::new()?;
     let source = TempDir::new()?;

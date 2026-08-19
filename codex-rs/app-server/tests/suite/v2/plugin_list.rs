@@ -97,7 +97,7 @@ remote_plugin = false
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_skips_invalid_marketplace_file_and_reports_error() -> Result<()> {
     let codex_home = TempDir::new()?;
     let repo_root = TempDir::new()?;
@@ -153,7 +153,7 @@ async fn plugin_list_skips_invalid_marketplace_file_and_reports_error() -> Resul
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_installed_includes_installed_plugins_and_explicit_install_suggestions() -> Result<()>
 {
     let codex_home = TempDir::new()?;
@@ -212,7 +212,7 @@ enabled = true
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_installed_prefers_remote_curated_conflicts_when_remote_plugin_enabled() -> Result<()>
 {
     let codex_home = TempDir::new()?;
@@ -329,7 +329,7 @@ enabled = true
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_installed_ignores_local_cache_without_catalog() -> Result<()> {
     let codex_home = TempDir::new()?;
     write_installed_plugin(&codex_home, "openai-curated", "linear")?;
@@ -365,7 +365,7 @@ enabled = true
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_rejects_relative_cwds() -> Result<()> {
     let codex_home = TempDir::new()?;
     let mut mcp = TestAppServer::builder()
@@ -395,7 +395,7 @@ async fn plugin_list_rejects_relative_cwds() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_keeps_valid_marketplaces_when_another_marketplace_fails_to_load() -> Result<()>
 {
     let codex_home = TempDir::new()?;
@@ -518,7 +518,7 @@ async fn plugin_list_keeps_valid_marketplaces_when_another_marketplace_fails_to_
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_returns_empty_when_workspace_codex_plugins_disabled() -> Result<()> {
     let codex_home = TempDir::new()?;
     let repo_root = TempDir::new()?;
@@ -601,7 +601,7 @@ async fn plugin_list_returns_empty_when_workspace_codex_plugins_disabled() -> Re
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_reuses_cached_workspace_codex_plugins_setting() -> Result<()> {
     let codex_home = TempDir::new()?;
     let repo_root = TempDir::new()?;
@@ -688,7 +688,7 @@ async fn plugin_list_reuses_cached_workspace_codex_plugins_setting() -> Result<(
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_uses_alternate_discoverable_manifest_and_keeps_undiscoverable_plugins()
 -> Result<()> {
     let codex_home = TempDir::new()?;
@@ -839,7 +839,7 @@ async fn plugin_list_uses_alternate_discoverable_manifest_and_keeps_undiscoverab
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_accepts_omitted_cwds() -> Result<()> {
     let codex_home = TempDir::new()?;
     std::fs::create_dir_all(codex_home.path().join(".agents/plugins"))?;
@@ -883,7 +883,7 @@ async fn plugin_list_accepts_omitted_cwds() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_returns_share_context_for_shared_local_plugin() -> Result<()> {
     let codex_home = TempDir::new()?;
     let repo_root = TempDir::new()?;
@@ -957,7 +957,7 @@ async fn plugin_list_returns_share_context_for_shared_local_plugin() -> Result<(
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_force_refetch_waits_for_same_path_local_plugin_upgrade() -> Result<()> {
     let codex_home = TempDir::new()?;
     let marketplace_root = TempDir::new()?;
@@ -1079,7 +1079,7 @@ enabled = true
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_includes_install_and_enabled_state_from_config() -> Result<()> {
     let codex_home = TempDir::new()?;
     let repo_root = TempDir::new()?;
@@ -1215,7 +1215,7 @@ enabled = false
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_uses_home_config_for_enabled_state() -> Result<()> {
     let codex_home = TempDir::new()?;
     std::fs::create_dir_all(codex_home.path().join(".agents/plugins"))?;
@@ -1317,7 +1317,7 @@ enabled = false
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_returns_plugin_interface_with_absolute_asset_paths() -> Result<()> {
     let codex_home = TempDir::new()?;
     let repo_root = TempDir::new()?;
@@ -1452,7 +1452,7 @@ async fn plugin_list_returns_plugin_interface_with_absolute_asset_paths() -> Res
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_accepts_legacy_string_default_prompt() -> Result<()> {
     let codex_home = TempDir::new()?;
     let repo_root = TempDir::new()?;
@@ -1520,7 +1520,7 @@ async fn plugin_list_accepts_legacy_string_default_prompt() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_returns_installed_git_source_interface_from_cache() -> Result<()> {
     let codex_home = TempDir::new()?;
     let repo_root = TempDir::new()?;
@@ -1639,7 +1639,7 @@ enabled = true
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn app_server_startup_sync_downloads_remote_installed_plugin_bundles() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -1709,7 +1709,7 @@ async fn app_server_startup_sync_downloads_remote_installed_plugin_bundles() -> 
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_sync_upgrades_and_removes_remote_installed_plugin_bundles() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -1813,7 +1813,7 @@ async fn plugin_list_sync_upgrades_and_removes_remote_installed_plugin_bundles()
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_includes_remote_marketplaces_when_remote_plugin_enabled() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -2089,7 +2089,7 @@ async fn plugin_list_includes_remote_marketplaces_when_remote_plugin_enabled() -
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_honors_global_remote_catalog_cache_ttl() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -2253,7 +2253,7 @@ async fn plugin_list_honors_global_remote_catalog_cache_ttl() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn app_server_startup_refreshes_cached_remote_catalog_without_blocking_plugin_list()
 -> Result<()> {
     let codex_home = TempDir::new()?;
@@ -2398,7 +2398,7 @@ async fn app_server_startup_refreshes_cached_remote_catalog_without_blocking_plu
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn app_server_startup_skips_disabled_remote_plugin_catalog_scopes() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -2516,7 +2516,7 @@ async fn app_server_startup_skips_disabled_remote_plugin_catalog_scopes() -> Res
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_force_refetch_bypasses_fresh_global_remote_catalog_cache() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -2649,7 +2649,7 @@ async fn plugin_list_force_refetch_bypasses_fresh_global_remote_catalog_cache() 
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_includes_openai_curated_remote_collection_when_remote_plugin_disabled_and_requested()
 -> Result<()> {
     let codex_home = TempDir::new()?;
@@ -2758,7 +2758,7 @@ async fn plugin_list_includes_openai_curated_remote_collection_when_remote_plugi
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_propagates_openai_curated_remote_collection_errors_when_remote_plugin_disabled()
 -> Result<()> {
     let codex_home = TempDir::new()?;
@@ -2820,7 +2820,7 @@ async fn plugin_list_propagates_openai_curated_remote_collection_errors_when_rem
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_skips_openai_curated_remote_collection_for_api_auth_when_remote_plugin_disabled()
 -> Result<()> {
     let codex_home = TempDir::new()?;
@@ -2859,7 +2859,7 @@ async fn plugin_list_skips_openai_curated_remote_collection_for_api_auth_when_re
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_includes_api_curated_marketplace_for_api_auth_when_remote_plugin_enabled()
 -> Result<()> {
     let codex_home = TempDir::new()?;
@@ -2915,7 +2915,7 @@ async fn plugin_list_includes_api_curated_marketplace_for_api_auth_when_remote_p
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_includes_api_curated_marketplace_for_bedrock_without_codex_auth() -> Result<()>
 {
     let codex_home = TempDir::new()?;
@@ -2972,7 +2972,7 @@ plugins = true
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_does_not_query_openai_curated_remote_collection_by_default() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -3026,7 +3026,7 @@ async fn plugin_list_does_not_query_openai_curated_remote_collection_by_default(
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_vertical_kind_noops_when_remote_plugin_enabled() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -3080,7 +3080,7 @@ async fn plugin_list_vertical_kind_noops_when_remote_plugin_enabled() -> Result<
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_does_not_append_global_remote_when_marketplace_kinds_are_explicit()
 -> Result<()> {
     let codex_home = TempDir::new()?;
@@ -3126,7 +3126,7 @@ async fn plugin_list_does_not_append_global_remote_when_marketplace_kinds_are_ex
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_installed_includes_remote_shared_with_me_plugins_when_remote_plugin_disabled()
 -> Result<()> {
     let codex_home = TempDir::new()?;
@@ -3238,7 +3238,7 @@ plugin_sharing = true
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_installed_includes_workspace_directory_without_plugin_sharing_when_remote_plugin_disabled()
 -> Result<()> {
     let codex_home = TempDir::new()?;
@@ -3326,7 +3326,7 @@ plugin_sharing = false
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_installed_includes_created_by_me_when_remote_plugins_enabled() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -3413,7 +3413,7 @@ plugin_sharing = false
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_installed_trusts_new_workspace_listed_plugin_hooks() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -3529,7 +3529,7 @@ trusted_hash = "sha256:unrelated"
 
 #[cfg(unix)]
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_installed_hook_trust_write_failure_stays_untrusted() -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::fs::symlink;
@@ -3596,7 +3596,7 @@ async fn plugin_installed_hook_trust_write_failure_stays_untrusted() -> Result<(
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_fetches_workspace_directory_kind_when_remote_plugin_disabled() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -3786,7 +3786,7 @@ async fn plugin_list_fetches_workspace_directory_kind_when_remote_plugin_disable
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_fetches_user_plugins_in_created_by_me_remote_marketplace() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -3940,7 +3940,7 @@ plugin_sharing = false
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_fetches_shared_with_me_kind() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -4138,7 +4138,7 @@ async fn plugin_list_fetches_shared_with_me_kind() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_omits_shared_with_me_kind_when_plugin_sharing_disabled() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -4198,7 +4198,7 @@ plugin_sharing = false
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_omits_created_by_me_when_remote_plugins_disabled() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -4254,7 +4254,7 @@ plugin_sharing = true
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_marks_remote_plugin_disabled_by_admin() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -4390,7 +4390,7 @@ async fn plugin_list_marks_remote_plugin_disabled_by_admin() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_does_not_fetch_remote_marketplaces_when_plugins_disabled() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -4439,7 +4439,7 @@ remote_plugin = true
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_fetches_featured_plugin_ids_without_chatgpt_auth() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -4478,7 +4478,7 @@ async fn plugin_list_fetches_featured_plugin_ids_without_chatgpt_auth() -> Resul
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_list_uses_warmed_featured_plugin_ids_cache_on_first_request() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;

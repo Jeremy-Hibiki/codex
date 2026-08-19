@@ -20,11 +20,12 @@ async fn build_server() -> Result<(TestAppServer, TempDir)> {
     let server = create_mock_responses_server_sequence_unchecked(Vec::new()).await;
     let codex_home = TempDir::new()?;
     MockResponsesConfig::new(&server.uri()).write(codex_home.path())?;
+    std::fs::write(
+        codex_home.path().join("requirements.toml"),
+        "allow_sandbox_bypass = false\n",
+    )?;
     let mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())
-        // Product policy must be tested without the debug-only sandbox
-        // bypass, which may be inherited from the developer environment.
-        .with_env_overrides(&[(fm_product_policy::SANDBOX_BYPASS_ENV_VAR, None)])
         .build_initialized_with_timeout(DEFAULT_TIMEOUT)
         .await?;
     Ok((mcp, codex_home))
@@ -39,7 +40,7 @@ async fn read_invalid_request_error(mcp: &mut TestAppServer, request_id: Request
     assert_eq!(error.error.code, -32600);
     assert_eq!(
         error.error.message,
-        "danger-full-access is disabled by product policy"
+        "sandbox bypass is disabled by product policy; use a sandboxed permission profile"
     );
     Ok(())
 }

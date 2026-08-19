@@ -453,7 +453,7 @@ impl ThreadRequestProcessor {
         supports_openai_form_elicitation: bool,
         request_context: RequestContext,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        if !fm_product_policy::sandbox_policy_bypassed()
+        if !self.config.product_policy.allow_sandbox_bypass
             && fm_product_policy::full_access_requested(
                 params.sandbox == Some(codex_app_server_protocol::SandboxMode::DangerFullAccess),
                 params.permissions.as_deref()
@@ -461,7 +461,7 @@ impl ThreadRequestProcessor {
             )
         {
             return Err(crate::error_code::invalid_request(
-                "danger-full-access is disabled by product policy",
+                fm_product_policy::SANDBOX_BYPASS_DISABLED_MESSAGE,
             ));
         }
         self.thread_start_inner(

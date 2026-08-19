@@ -5,17 +5,18 @@ use predicates::str::contains;
 use std::path::Path;
 use tempfile::TempDir;
 
-const POLICY_ERROR: &str = "plugin and marketplace management is disabled by product policy";
+const PLUGIN_POLICY_ERROR: &str = "only managed plugins are allowed by product policy";
+const MARKETPLACE_POLICY_ERROR: &str = "only managed marketplaces are allowed by product policy";
 
 fn write_policy_config(
     codex_home: &Path,
-    plugin_disabled: bool,
-    marketplace_disabled: bool,
+    allow_managed_plugins_only: bool,
+    allow_managed_marketplaces_only: bool,
 ) -> std::io::Result<()> {
     std::fs::write(
         codex_home.join(CONFIG_TOML_FILE),
         format!(
-            "[product_policy]\nplugin_management_disabled = {plugin_disabled}\nmarketplace_management_disabled = {marketplace_disabled}\n"
+            "allow_managed_plugins_only = {allow_managed_plugins_only}\nallow_managed_marketplaces_only = {allow_managed_marketplaces_only}\n"
         ),
     )
 }
@@ -36,9 +37,9 @@ plugins = true
 "#,
     )?;
 
-    // With no [product_policy] toggles, neither read nor mutation surfaces
-    // are blocked by product policy (they may fail for other reasons, e.g.
-    // missing marketplace, but never with the policy error).
+    // With no policy fields set, neither read nor mutation surfaces are blocked
+    // by product policy (they may fail for other reasons, e.g. missing
+    // marketplace, but never with the policy error).
     for args in [
         vec!["plugin", "list"],
         vec!["plugin", "add", "sample@debug"],
@@ -48,14 +49,18 @@ plugins = true
         codex_command(codex_home.path())?
             .args(&args)
             .assert()
-            .stderr(contains(POLICY_ERROR).not());
+            .stderr(
+                contains(PLUGIN_POLICY_ERROR)
+                    .not()
+                    .and(contains(MARKETPLACE_POLICY_ERROR).not()),
+            );
     }
 
     Ok(())
 }
 
 #[tokio::test]
-async fn plugin_management_is_rejected_when_disabled_in_config() -> Result<()> {
+async fn plugin_management_is_restricted_to_managed_plugins() -> Result<()> {
     let codex_home = TempDir::new()?;
     write_policy_config(codex_home.path(), true, false)?;
     for args in [
@@ -67,13 +72,13 @@ async fn plugin_management_is_rejected_when_disabled_in_config() -> Result<()> {
             .args(&args)
             .assert()
             .failure()
-            .stderr(contains(POLICY_ERROR));
+            .stderr(contains(PLUGIN_POLICY_ERROR));
     }
     Ok(())
 }
 
 #[tokio::test]
-async fn marketplace_management_is_rejected_when_disabled_in_config() -> Result<()> {
+async fn marketplace_management_is_restricted_to_managed_marketplaces() -> Result<()> {
     let codex_home = TempDir::new()?;
     write_policy_config(codex_home.path(), false, true)?;
     for args in [
@@ -85,13 +90,13 @@ async fn marketplace_management_is_rejected_when_disabled_in_config() -> Result<
             .args(&args)
             .assert()
             .failure()
-            .stderr(contains(POLICY_ERROR));
+            .stderr(contains(MARKETPLACE_POLICY_ERROR));
     }
     Ok(())
 }
 
 #[tokio::test]
-async fn marketplace_add_is_rejected_when_disabled_in_config() -> Result<()> {
+async fn marketplace_add_is_restricted_to_managed_marketplaces() -> Result<()> {
     let codex_home = TempDir::new()?;
     write_policy_config(codex_home.path(), false, true)?;
     let source = TempDir::new()?;
@@ -103,7 +108,7 @@ async fn marketplace_add_is_rejected_when_disabled_in_config() -> Result<()> {
         .args(["plugin", "marketplace", "add", source_arg.as_str()])
         .assert()
         .failure()
-        .stderr(contains(POLICY_ERROR));
+        .stderr(contains(MARKETPLACE_POLICY_ERROR));
 
     Ok(())
 }

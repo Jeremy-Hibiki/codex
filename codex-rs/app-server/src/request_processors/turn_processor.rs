@@ -181,7 +181,7 @@ impl TurnRequestProcessor {
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        if !fm_product_policy::sandbox_policy_bypassed()
+        if !self.config.product_policy.allow_sandbox_bypass
             && fm_product_policy::full_access_requested(
                 params.sandbox_policy
                     == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
@@ -190,7 +190,7 @@ impl TurnRequestProcessor {
             )
         {
             return Err(crate::error_code::invalid_request(
-                "danger-full-access is disabled by product policy",
+                fm_product_policy::SANDBOX_BYPASS_DISABLED_MESSAGE,
             ));
         }
         validate_user_input_image_urls(&params.input)?;
@@ -220,7 +220,7 @@ impl TurnRequestProcessor {
         request_id: &ConnectionRequestId,
         params: ThreadSettingsUpdateParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        if !fm_product_policy::sandbox_policy_bypassed()
+        if !self.config.product_policy.allow_sandbox_bypass
             && fm_product_policy::full_access_requested(
                 params.sandbox_policy
                     == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
@@ -229,7 +229,7 @@ impl TurnRequestProcessor {
             )
         {
             return Err(crate::error_code::invalid_request(
-                "danger-full-access is disabled by product policy",
+                fm_product_policy::SANDBOX_BYPASS_DISABLED_MESSAGE,
             ));
         }
         self.thread_settings_update_inner(request_id, params)

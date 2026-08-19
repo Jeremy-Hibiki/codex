@@ -46,7 +46,7 @@ fn canonicalize_path_with_existing_parent(path: &std::path::Path) -> Result<std:
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_remove_deletes_config_and_installed_root() -> Result<()> {
     let codex_home = TempDir::new()?;
     record_user_marketplace(codex_home.path(), "debug", &configured_marketplace_update())?;
@@ -86,7 +86,7 @@ async fn marketplace_remove_deletes_config_and_installed_root() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_remove_rejects_unknown_marketplace() -> Result<()> {
     let codex_home = TempDir::new()?;
 

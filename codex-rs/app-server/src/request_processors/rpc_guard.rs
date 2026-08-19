@@ -59,21 +59,21 @@ pub(crate) fn ensure_not_engaged_unsandboxed() -> Result<(), JSONRPCErrorError> 
     }
 }
 
-/// Product policy: plugin and marketplace management can be disabled via
-/// `[product_policy]`; defaults are open so upstream behavior is preserved.
+/// Product policy: plugin and marketplace changes can be restricted to managed
+/// entries via flat requirements fields; defaults preserve upstream behavior.
 pub(crate) fn ensure_plugin_management_allowed(
     request: &ClientRequest,
-    plugin_management_disabled: bool,
-    marketplace_management_disabled: bool,
+    allow_managed_plugins_only: bool,
+    allow_managed_marketplaces_only: bool,
 ) -> Result<(), JSONRPCErrorError> {
-    let marketplace_blocked = marketplace_management_disabled
+    let marketplace_blocked = allow_managed_marketplaces_only
         && matches!(
             request,
             ClientRequest::MarketplaceAdd { .. }
                 | ClientRequest::MarketplaceRemove { .. }
                 | ClientRequest::MarketplaceUpgrade { .. }
         );
-    let plugin_blocked = plugin_management_disabled
+    let plugin_blocked = allow_managed_plugins_only
         && matches!(
             request,
             ClientRequest::PluginShareSave { .. }
@@ -83,9 +83,13 @@ pub(crate) fn ensure_plugin_management_allowed(
                 | ClientRequest::PluginInstall { .. }
                 | ClientRequest::PluginUninstall { .. }
         );
-    if marketplace_blocked || plugin_blocked {
+    if marketplace_blocked {
         Err(invalid_request(
-            fm_product_policy::PLUGIN_MANAGEMENT_DISABLED_MESSAGE,
+            fm_product_policy::MANAGED_MARKETPLACES_ONLY_MESSAGE,
+        ))
+    } else if plugin_blocked {
+        Err(invalid_request(
+            fm_product_policy::MANAGED_PLUGINS_ONLY_MESSAGE,
         ))
     } else {
         Ok(())

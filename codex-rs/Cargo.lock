@@ -2701,7 +2701,6 @@ dependencies = [
  "dunce",
  "eventsource-stream",
  "fm-encrypted-skills",
- "fm-product-policy",
  "futures",
  "http 1.4.0",
  "iana-time-zone",
@@ -6212,7 +6211,6 @@ dependencies = [
  "codex-protocol",
  "codex-shell-command",
  "codex-utils-path-uri",
- "fm-product-policy",
  "fmsh-ukey-core",
  "fmsh-ukey-skill",
  "libc",
@@ -6250,7 +6248,6 @@ name = "fm-product-policy"
 version = "0.146.0"
 dependencies = [
  "anyhow",
- "tracing",
 ]
 
 [[package]]

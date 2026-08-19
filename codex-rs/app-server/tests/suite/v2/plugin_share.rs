@@ -48,7 +48,7 @@ const TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS: &str =
     "CODEX_TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS";
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_share_save_uploads_local_plugin() -> Result<()> {
     let codex_home = TempDir::new()?;
     let plugin_root = TempDir::new()?;
@@ -190,7 +190,7 @@ async fn plugin_share_save_uploads_local_plugin() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_share_save_forwards_access_policy() -> Result<()> {
     let codex_home = TempDir::new()?;
     let plugin_root = TempDir::new()?;
@@ -289,7 +289,7 @@ async fn plugin_share_save_forwards_access_policy() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_share_save_rejects_listed_discoverability() -> Result<()> {
     let codex_home = TempDir::new()?;
     let plugin_root = TempDir::new()?;
@@ -335,7 +335,7 @@ async fn plugin_share_save_rejects_listed_discoverability() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_share_save_rejects_when_plugin_sharing_disabled() -> Result<()> {
     let codex_home = TempDir::new()?;
     let plugin_root = TempDir::new()?;
@@ -396,7 +396,7 @@ plugin_sharing = false
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_share_rejects_workspace_targets_from_client() -> Result<()> {
     let codex_home = TempDir::new()?;
     let plugin_root = TempDir::new()?;
@@ -478,7 +478,7 @@ async fn plugin_share_rejects_workspace_targets_from_client() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_share_save_rejects_access_policy_for_existing_plugin() -> Result<()> {
     let codex_home = TempDir::new()?;
     let plugin_root = TempDir::new()?;
@@ -532,7 +532,7 @@ async fn plugin_share_save_rejects_access_policy_for_existing_plugin() -> Result
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_share_list_returns_created_workspace_plugins() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -613,7 +613,7 @@ async fn plugin_share_list_returns_created_workspace_plugins() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_share_checkout_adds_personal_marketplace_entry() -> Result<()> {
     let codex_home = TempDir::new()?;
     let home = TempDir::new()?;
@@ -771,7 +771,7 @@ async fn plugin_share_checkout_adds_personal_marketplace_entry() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_share_checkout_rejects_non_share_remote_plugin() -> Result<()> {
     let codex_home = TempDir::new()?;
     let home = TempDir::new()?;
@@ -836,7 +836,7 @@ async fn plugin_share_checkout_rejects_non_share_remote_plugin() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_share_checkout_cleans_up_path_when_marketplace_update_fails() -> Result<()> {
     let codex_home = TempDir::new()?;
     let home = TempDir::new()?;
@@ -934,7 +934,7 @@ async fn plugin_share_checkout_cleans_up_path_when_marketplace_update_fails() ->
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_share_update_targets_updates_share_targets() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -1049,7 +1049,7 @@ async fn plugin_share_update_targets_updates_share_targets() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_share_update_targets_publishes_workspace_plugin() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -1121,7 +1121,7 @@ async fn plugin_share_update_targets_publishes_workspace_plugin() -> Result<()> 
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_share_update_targets_rejects_when_plugin_sharing_disabled() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;
@@ -1175,7 +1175,7 @@ plugin_sharing = false
 }
 
 #[tokio::test]
-#[ignore = "plugin and marketplace management is disabled by product policy"]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn plugin_share_delete_removes_created_workspace_plugin() -> Result<()> {
     let codex_home = TempDir::new()?;
     let server = MockServer::start().await;

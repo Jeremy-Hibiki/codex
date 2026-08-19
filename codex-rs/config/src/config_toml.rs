@@ -254,20 +254,6 @@ pub struct GuardrailToml {
     pub base_url: Option<String>,
 }
 
-/// Product policy toggles. Defaults are open (features enabled), matching the
-/// upstream Codex behavior; deployments can disable plugin or marketplace
-/// management explicitly.
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
-#[schemars(deny_unknown_fields)]
-pub struct ProductPolicyToml {
-    /// Disable plugin management (plugin add/list/remove).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub plugin_management_disabled: Option<bool>,
-    /// Disable marketplace management (plugin marketplace add/list/remove/upgrade).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub marketplace_management_disabled: Option<bool>,
-}
-
 /// Base config deserialized from ~/.codex/config.toml.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema)]
 #[schemars(deny_unknown_fields)]
@@ -276,9 +262,16 @@ pub struct ConfigToml {
     #[serde(default)]
     pub encrypted_skills: EncryptedSkillsToml,
 
-    /// Product policy toggles (defaults open).
-    #[serde(default)]
-    pub product_policy: ProductPolicyToml,
+    /// Whether plugin management is allowed (defaults to `true`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_managed_plugins_only: Option<bool>,
+    /// Whether marketplace management is allowed (defaults to `true`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_managed_marketplaces_only: Option<bool>,
+    /// Whether full-access execution may bypass the forced sandbox policy
+    /// (defaults to `true`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_sandbox_bypass: Option<bool>,
 
     /// Optional override of model selection.
     pub model: Option<String>,
@@ -1267,22 +1260,21 @@ base_url = "http://192.168.131.51:8080"
     }
 
     #[test]
-    fn product_policy_defaults_are_open() {
+    fn product_policy_fields_default_open() {
         let parsed: ConfigToml = toml::from_str("").unwrap();
-        assert_eq!(parsed.product_policy.plugin_management_disabled, None);
-        assert_eq!(parsed.product_policy.marketplace_management_disabled, None);
+        assert_eq!(parsed.allow_managed_plugins_only, None);
+        assert_eq!(parsed.allow_managed_marketplaces_only, None);
+        assert_eq!(parsed.allow_sandbox_bypass, None);
     }
 
     #[test]
-    fn product_policy_parses_disable_toggles() {
+    fn product_policy_fields_parse() {
         let parsed: ConfigToml = toml::from_str(
-            "[product_policy]\nplugin_management_disabled = true\nmarketplace_management_disabled = true\n",
+            "allow_managed_plugins_only = true\nallow_managed_marketplaces_only = true\nallow_sandbox_bypass = false\n",
         )
         .unwrap();
-        assert_eq!(parsed.product_policy.plugin_management_disabled, Some(true));
-        assert_eq!(
-            parsed.product_policy.marketplace_management_disabled,
-            Some(true)
-        );
+        assert_eq!(parsed.allow_managed_plugins_only, Some(true));
+        assert_eq!(parsed.allow_managed_marketplaces_only, Some(true));
+        assert_eq!(parsed.allow_sandbox_bypass, Some(false));
     }
 }

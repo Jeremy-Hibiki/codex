@@ -709,12 +709,23 @@ impl EncryptedSkillsRuntimeConfig {
     }
 }
 
-/// Product policy toggles resolved from `[product_policy]` in `config.toml`.
-/// Defaults are open (plugin and marketplace management allowed).
-#[derive(Debug, Clone, Default, PartialEq)]
+/// Product policy toggles resolved from `config.toml` and managed
+/// `requirements.toml` fields. Defaults are open.
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProductPolicyRuntimeConfig {
-    pub plugin_management_disabled: bool,
-    pub marketplace_management_disabled: bool,
+    pub allow_managed_plugins_only: bool,
+    pub allow_managed_marketplaces_only: bool,
+    pub allow_sandbox_bypass: bool,
+}
+
+impl Default for ProductPolicyRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            allow_managed_plugins_only: false,
+            allow_managed_marketplaces_only: false,
+            allow_sandbox_bypass: true,
+        }
+    }
 }
 
 /// Application configuration loaded from disk and merged with overrides.
@@ -722,7 +733,7 @@ pub struct ProductPolicyRuntimeConfig {
 pub struct Config {
     /// Encrypted-skill runtime settings resolved from `[encrypted_skills]`.
     pub encrypted_skills: EncryptedSkillsRuntimeConfig,
-    /// Product policy toggles resolved from `[product_policy]`.
+    /// Product policy toggles resolved from flat config and requirements fields.
     pub product_policy: ProductPolicyRuntimeConfig,
 
     /// Provenance for how this [`Config`] was derived (merged layers + enforced
@@ -3274,6 +3285,9 @@ impl Config {
             windows_sandbox_private_desktop: _,
             web_search_mode: mut constrained_web_search_mode,
             allow_managed_hooks_only: _,
+            allow_sandbox_bypass,
+            allow_managed_plugins_only,
+            allow_managed_marketplaces_only,
             allow_appshots: _,
             allow_remote_control: _,
             computer_use: _,
@@ -4129,14 +4143,15 @@ impl Config {
                 },
             },
             product_policy: ProductPolicyRuntimeConfig {
-                plugin_management_disabled: cfg
-                    .product_policy
-                    .plugin_management_disabled
-                    .unwrap_or(false),
-                marketplace_management_disabled: cfg
-                    .product_policy
-                    .marketplace_management_disabled
-                    .unwrap_or(false),
+                allow_managed_plugins_only: allow_managed_plugins_only
+                    .map(|sourced| sourced.value)
+                    .unwrap_or(cfg.allow_managed_plugins_only.unwrap_or(false)),
+                allow_managed_marketplaces_only: allow_managed_marketplaces_only
+                    .map(|sourced| sourced.value)
+                    .unwrap_or(cfg.allow_managed_marketplaces_only.unwrap_or(false)),
+                allow_sandbox_bypass: allow_sandbox_bypass
+                    .map(|sourced| sourced.value)
+                    .unwrap_or(cfg.allow_sandbox_bypass.unwrap_or(true)),
             },
             model,
             service_tier,

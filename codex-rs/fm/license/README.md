@@ -37,18 +37,32 @@
 `codex cloud`、`exec-server`、`responses-api-proxy` 不启动本地 agent（cloud 任务在
 OpenAI 云端执行），因此不占用 FMSH license，也不做校验。
 
-## 心跳耗尽：拒绝新请求，不杀进程
+## 心跳耗尽：补偿 Checkout，失败后拒绝新请求
 
 旧实现中心跳重试耗尽会回调 `on_license_lost` 并 `process::exit(2)`，整个进程连同所有会话
-一起退出。新实现改为进程级状态机：
+一起退出。新实现先依赖 LMClient 心跳内置 Retry；重试耗尽后在**已初始化的全局 client**
+上再执行一次同参数 Checkout（License Server 重启后授权状态只在内存中，旧 license id
+无法通过心跳续接，需要新的 Checkout 建立租约），然后进入进程级状态机：
 
 ```
-Active ──心跳重试耗尽──> Lost ──心跳恢复(on_retry_success)──> Active
+Active ──心跳失败──> 内置 Retry ──成功──> Active
+                        │
+                        └──重试耗尽──> 补偿 Checkout ──成功──> Active
+                                          │
+                                          └──失败──> Lost
 ```
 
-- `on_license_lost`：状态置为 `Lost`，记录 error，**不再退出进程**；已运行的会话继续运行。
+- `on_license_lost`：先置为 `Lost`，尝试一次补偿 Checkout；成功则回到 `Active`，失败则保持
+  `Lost` 并记录 error，**不再退出进程**；已运行的会话继续运行。
 - `on_retry_success`：状态恢复为 `Active`，新请求重新放行。
 - `is_active()` / `ensure_active()`：请求门禁 API。
+- 补偿 Checkout 在进程生命周期内只执行一次，且不重新 `lmInit` 第二个 client；它复用
+  进程内唯一的 LMCLIENT 全局状态，并与 SIGINT/SIGTERM 归还路径互斥。
+- 逆向 `lmclient.a` 确认：心跳重试耗尽只调用 `exitRoutine`，不会调用 `lmExit`、不会清除
+  `g_running` 或其它全局状态；`lmInit` 在 `g_running` 为真时直接失败；`lmCheckOutIncr`
+  使用既有 `g_server` 并把响应中的新 `license_id` 插入心跳集合，因此可在原 client 上补偿
+  Checkout。旧 `license_id` 失效后仍可能留在库内集合中，重新 Checkout 不会移除它；为避免
+  旧项反复触发补偿并新增租约，补偿成功后也不重新武装，下次完整恢复需要进程重启。
 
 ### 请求门禁点
 

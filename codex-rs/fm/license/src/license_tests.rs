@@ -2,6 +2,9 @@ use pretty_assertions::assert_eq;
 use std::process::Command;
 use std::sync::Mutex;
 
+use super::ACTIVE_LICENSE;
+use super::ActiveLicense;
+use super::LicenseCheckout;
 use super::LicenseConfig;
 use super::LicenseEnv;
 use super::ensure_active;
@@ -108,6 +111,68 @@ fn lost_license_blocks_new_requests_until_recovery() {
     mark_license_active();
     assert!(is_active());
     assert!(ensure_active().is_ok());
+}
+
+#[test]
+fn heartbeat_recovery_attempts_one_checkout() {
+    let mut license = ActiveLicense::new(LicenseCheckout {
+        feature: "PRO".to_owned(),
+        version: "2.0".to_owned(),
+    });
+
+    assert_eq!(
+        license.checkout_for_heartbeat_recovery(),
+        Some(LicenseCheckout {
+            feature: "PRO".to_owned(),
+            version: "2.0".to_owned(),
+        })
+    );
+    assert_eq!(license.checkout_for_heartbeat_recovery(), None);
+}
+
+#[test]
+fn heartbeat_retry_success_does_not_rearm_compensation_checkout() {
+    let checkout = LicenseCheckout {
+        feature: "PRO".to_owned(),
+        version: "2.0".to_owned(),
+    };
+    let license = ActiveLicense {
+        checkout: checkout.clone(),
+        heartbeat_recovery_attempted: true,
+    };
+    *ACTIVE_LICENSE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(license);
+
+    unsafe { super::on_retry_success() };
+
+    let active_license = ACTIVE_LICENSE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    assert_eq!(
+        *active_license,
+        Some(ActiveLicense {
+            checkout,
+            heartbeat_recovery_attempted: true,
+        })
+    );
+}
+
+#[test]
+fn heartbeat_loss_after_shutdown_does_not_attempt_checkout() {
+    let _guard = LICENSE_STATE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    ACTIVE_LICENSE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .take();
+
+    let callback_result = unsafe { super::on_license_lost() };
+
+    assert_eq!(callback_result, 0);
+    assert!(!is_active());
+    assert!(ensure_active().is_err());
 }
 
 #[test]

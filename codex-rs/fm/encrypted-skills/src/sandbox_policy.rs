@@ -50,8 +50,9 @@ pub fn sandbox_applies_binds(
 pub fn ensure_encrypted_skill_sandbox(
     engaged: bool,
     sandbox_requested: bool,
+    allow_sandbox_bypass: bool,
 ) -> Result<(), &'static str> {
-    if engaged && !sandbox_requested && !fm_product_policy::sandbox_policy_bypassed() {
+    if engaged && !sandbox_requested && !allow_sandbox_bypass {
         Err("encrypted skills require an active sandbox; full-access execution is disabled")
     } else {
         Ok(())

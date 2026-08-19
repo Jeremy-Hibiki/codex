@@ -3,10 +3,8 @@
 use anyhow::Context;
 use anyhow::Result;
 use codex_core::exec_env::CODEX_THREAD_ID_ENV_VAR;
-use lmclient_rust_sdk::InitConfig;
-use lmclient_rust_sdk::LM_NOWAIT;
-use lmclient_rust_sdk::LicenseClient;
-use lmclient_rust_sdk::RetryCallback;
+use lmclient_rust_sdk::ffi::*;
+use lmclient_rust_sdk::*;
 use std::ffi::CString;
 use std::ffi::c_int;
 use std::sync::Mutex;
@@ -56,11 +54,42 @@ pub const TEST_FORCE_LOST_ENV_VAR: &str = "FMSH_CODEX_LIC_TEST_FORCE_LOST";
 /// unaffected; request gates only matter after a checkout was lost.
 static LICENSE_STATE: AtomicU8 = AtomicU8::new(LICENSE_STATE_ACTIVE);
 
-/// Feature currently checked out; `None` once the license has been returned.
+/// A feature and version pair that can be checked out from the license server.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) struct LicenseCheckout {
+    pub(crate) feature: String,
+    pub(crate) version: String,
+}
+
+/// License currently checked out; `None` once the license has been returned.
 ///
 /// The signal handler and the [`LicenseGuard`] share this so exactly one
-/// `check_in` happens no matter which path shuts the license down first.
-static ACTIVE_FEATURE: Mutex<Option<String>> = Mutex::new(None);
+/// `check_in` happens no matter which path shuts the license down first. It
+/// also tracks whether the one-shot heartbeat recovery checkout has run.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct ActiveLicense {
+    checkout: LicenseCheckout,
+    heartbeat_recovery_attempted: bool,
+}
+
+impl ActiveLicense {
+    fn new(checkout: LicenseCheckout) -> Self {
+        Self {
+            checkout,
+            heartbeat_recovery_attempted: false,
+        }
+    }
+
+    fn checkout_for_heartbeat_recovery(&mut self) -> Option<LicenseCheckout> {
+        if self.heartbeat_recovery_attempted {
+            return None;
+        }
+        self.heartbeat_recovery_attempted = true;
+        Some(self.checkout.clone())
+    }
+}
+
+static ACTIVE_LICENSE: Mutex<Option<ActiveLicense>> = Mutex::new(None);
 
 /// Returns true while the checked-out license is active.
 ///
@@ -167,10 +196,49 @@ unsafe extern "C" fn on_retry_success() -> c_int {
 
 unsafe extern "C" fn on_license_lost() -> c_int {
     mark_license_lost();
-    tracing::error!(
-        "license lost: heartbeat retries exhausted; new requests are blocked until the license recovers"
-    );
+    if recheckout_after_heartbeat_loss() {
+        mark_license_active();
+        tracing::warn!("license recovered by checkout after heartbeat retries were exhausted");
+    } else {
+        tracing::error!(
+            "license lost: heartbeat retries and recovery checkout exhausted; new requests are blocked"
+        );
+    }
     0
+}
+
+fn recheckout_after_heartbeat_loss() -> bool {
+    let mut active_license = ACTIVE_LICENSE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let Some(checkout) = active_license
+        .as_mut()
+        .and_then(ActiveLicense::checkout_for_heartbeat_recovery)
+    else {
+        return false;
+    };
+    let Ok(feature) = CString::new(checkout.feature) else {
+        return false;
+    };
+    let Ok(version) = CString::new(checkout.version) else {
+        return false;
+    };
+
+    // SAFETY: both strings are valid NUL-terminated C strings, and this uses
+    // the already-initialized global LMCLIENT client rather than constructing
+    // a second client. The active-license mutex serializes this checkout with
+    // process shutdown paths that check the license in.
+    let result = unsafe {
+        lmCheckOutIncr(
+            feature.as_ptr(),
+            version.as_ptr(),
+            /*num_lic*/ 0,
+            LM_NOWAIT,
+            /*lic_type*/ 0,
+            /*on_fail*/ None,
+        )
+    };
+    result == LM_SUCCESS
 }
 
 /// Holds a checked-out license for the lifetime of a Codex session.
@@ -183,14 +251,14 @@ pub struct LicenseGuard {
 
 impl Drop for LicenseGuard {
     fn drop(&mut self) {
-        let feature = ACTIVE_FEATURE
+        let license = ACTIVE_LICENSE
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
-        if let Some(feature) = feature
+        if let Some(license) = license
             && let Some(client) = self.client.as_mut()
         {
-            let _ = client.check_in(&feature);
+            let _ = client.check_in(&license.checkout.feature);
         }
         if let Some(client) = self.client.as_mut() {
             let _ = client.exit();
@@ -204,14 +272,14 @@ impl Drop for LicenseGuard {
 /// license is returned and the client shut down before the process terminates,
 /// without waiting for `Drop`.
 pub fn check_in_now() {
-    let feature = ACTIVE_FEATURE
+    let license = ACTIVE_LICENSE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .take();
-    let Some(feature) = feature else {
+    let Some(license) = license else {
         return;
     };
-    let Ok(feature) = CString::new(feature) else {
+    let Ok(feature) = CString::new(license.checkout.feature) else {
         return;
     };
     // SAFETY: `feature` is a valid NUL-terminated C string for this call, and
@@ -219,8 +287,8 @@ pub fn check_in_now() {
     // `lmExit` is called after `lmCheckIn` to stop the background heartbeat
     // thread, matching the library's recommended shutdown sequence.
     unsafe {
-        lmclient_rust_sdk::ffi::lmCheckIn(feature.as_ptr());
-        lmclient_rust_sdk::ffi::lmExit();
+        lmCheckIn(feature.as_ptr());
+        lmExit();
     }
 }
 
@@ -326,9 +394,13 @@ pub fn verify_at_startup() -> Result<LicenseGuard> {
             )
         })?;
 
-    *ACTIVE_FEATURE
+    *ACTIVE_LICENSE
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(config.feature);
+        .unwrap_or_else(std::sync::PoisonError::into_inner) =
+        Some(ActiveLicense::new(LicenseCheckout {
+            feature: config.feature,
+            version: config.version,
+        }));
     Ok(LicenseGuard {
         client: Some(client),
     })

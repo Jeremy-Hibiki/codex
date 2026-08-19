@@ -775,8 +775,8 @@ impl MessageProcessor {
         let connection_id = connection_request_id.connection_id;
         crate::request_processors::rpc_guard::ensure_plugin_management_allowed(
             &codex_request,
-            self.product_policy.plugin_management_disabled,
-            self.product_policy.marketplace_management_disabled,
+            self.product_policy.allow_managed_plugins_only,
+            self.product_policy.allow_managed_marketplaces_only,
         )?;
         crate::request_processors::rpc_guard::ensure_config_mutation_allowed(&codex_request)?;
         if let ClientRequest::Initialize { request_id, params } = codex_request {

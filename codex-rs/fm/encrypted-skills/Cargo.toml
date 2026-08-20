@@ -37,11 +37,12 @@ zip = { workspace = true, features = ["deflate"] }
 # FMSH_UKEY_CONTAINER (and the hardware) at runtime.
 #
 # Release builds set FMSH_UKEY_SDK_LINK=static FMSH_UKEY_LIBSTDCPP=shared:
-# the SDK archives + vendored libcrypto are embedded and only NEEDED
-# libstdc++.so.6 remains (statically embedding libstdc++ clashes with the
+# the SDK archives + vendored libcrypto are embedded and the remaining NEEDED
+# entries are the standard C/C++ runtime libraries (statically embedding
+# libstdc++ clashes with the
 # libc++abi V8 embeds on the __cxa_* ABI symbols). Target platform is
-# Ubuntu 22.04+ (the glibc floor comes from lmclient v1.3.0's
-# __libc_single_threaded, glibc 2.32).
+# Ubuntu 22.04+ (LMClient itself references __libc_single_threaded, glibc
+# 2.32; tested release binaries require GLIBC_2.34).
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
 fmsh-ukey-core = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "26b8ade02268bf4f8f48538ce0ba8c0fc2a89048" }
 fmsh-ukey-skill = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "26b8ade02268bf4f8f48538ce0ba8c0fc2a89048" }

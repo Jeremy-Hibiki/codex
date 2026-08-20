@@ -7,7 +7,7 @@
 diff --git a/rs/rust_crate.bzl b/rs/rust_crate.bzl
 --- a/rs/rust_crate.bzl
 +++ b/rs/rust_crate.bzl
-@@ -14,6 +14,35 @@
+@@ -14,6 +14,38 @@
          return "@rules_rust//rust/platform:" + triple.replace("-musl", "-gnu").replace("-gnullvm", "-msvc")
      return "@rules_rs//rs/platforms/config:" + triple
  
@@ -28,6 +28,9 @@ diff --git a/rs/rust_crate.bzl b/rs/rust_crate.bzl
 +    duplicate labels in a single attribute, so collapse them before creating
 +    the build-script rule.
 +    """
++
++    if type(labels) == "select":
++        return labels
 +
 +    seen = {}
 +    deduped = []

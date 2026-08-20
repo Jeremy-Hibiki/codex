@@ -18,9 +18,10 @@
 #   release/build-fm-cargo.sh --sdk-link shared   # dynamic SDK .so (legacy)
 #
 # SDK link mode (default: static): the fmsh-ukey SDK archives + vendored
-# libcrypto are embedded; NEEDED keeps only libstdc++.so.6/libcurl.so.4 and
-# the glibc floor stays below 2.33 (Ubuntu 20.04 hosts). The wrapper's stat
-# shim and lmclient symbol dedup are wired automatically.
+# libcrypto are embedded; NEEDED keeps only libstdc++.so.6/libm.so.6,
+# libgcc_s.so.1, and libc.so.6. Ubuntu 22.04 builds require GLIBC_2.34 or
+# newer. The wrapper's stat shim and lmclient symbol dedup are wired
+# automatically.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -153,17 +154,22 @@ find_sdk_lib_dir() {
 # ── Static SDK link mode ───────────────────────────────────────────────────
 # FMSH_UKEY_SDK_LINK=static embeds the SDK archives + vendored libcrypto;
 # libstdc++ stays dynamic (statically embedding it would clash with the
-# libc++abi V8 embeds on the __cxa_* ABI symbols), and the wrapper's stat
-# shim keeps the glibc floor below 2.33 (Ubuntu 20.04 hosts). The FMSH SDKs
-# share their utility layer, so the wrapper must also dedup against
-# lmclient's own copies (FMSH_UKEY_STATIC_DEDUP_AGAINST).
+# libc++abi V8 embeds on the __cxa_* ABI symbols). Ubuntu 22.04 builds require
+# GLIBC_2.34 or newer. The FMSH SDKs share their utility layer, so the wrapper
+# must also dedup against lmclient's own copies
+# (FMSH_UKEY_STATIC_DEDUP_AGAINST).
 
 find_lmclient_lib() {
-    # v1.3.0 ships only lmclient/lib/ubuntu/release/; the v1.2.0 checkout
-    # (centos7/) may still linger in the cargo cache — match the ubuntu path
-    # so the dedup always targets the archive this build actually links.
-    find ~/.cargo/git/checkouts/lmclient-rust-sdk-* \
-        -path '*/lmclient/lib/ubuntu/release/liblmclient.a' 2>/dev/null | head -1
+    # v1.4.0 ships Debug/Release libraries. Keep the v1.3 ubuntu/release path
+    # as a fallback for older checkouts that may linger in the cargo cache.
+    local lmc
+    lmc="$(find ~/.cargo/git/checkouts/lmclient-rust-sdk-* \
+        -path '*/lmclient/lib/Release/liblmclient.a' 2>/dev/null | head -1)"
+    if [[ -z "$lmc" ]]; then
+        lmc="$(find ~/.cargo/git/checkouts/lmclient-rust-sdk-* \
+            -path '*/lmclient/lib/ubuntu/release/liblmclient.a' 2>/dev/null | head -1)"
+    fi
+    printf '%s\n' "$lmc"
 }
 
 static_sdk_env() {

@@ -7,9 +7,9 @@ script's ephemeral sandbox runfiles tree and is invisible to the separate
 rustc compilation action.
 
 The cc_library wrapper adds the system libraries that liblmclient.a
-transitively depends on. lmclient-rust-sdk v1.3.0 ships an Ubuntu build;
-the Cargo path statically links vendored curl/ssl/z instead (Bazel keeps
-the dynamic -lcurl here).
+transitively depends on. lmclient-rust-sdk v1.4.0 ships Debug/Release Ubuntu
+builds; Bazel links the Release build. The Cargo path statically links
+vendored curl/ssl/z instead (Bazel keeps the dynamic -lcurl here).
 
 The hermetic LLVM linker (lld) does not search system library paths by
 default, so we must provide explicit -L flags.  We cover both common layouts:
@@ -21,7 +21,7 @@ load("@rules_cc//cc:defs.bzl", "cc_import", "cc_library")
 
 cc_import(
     name = "lmclient_static",
-    static_library = "lmclient/lib/ubuntu/release/liblmclient.a",
+    static_library = "lmclient/lib/Release/liblmclient.a",
     alwayslink = True,
 )
 

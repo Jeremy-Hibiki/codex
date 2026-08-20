@@ -4,6 +4,7 @@ use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Errors surfaced by the encrypted package pipeline.
 #[derive(Debug, thiserror::Error)]
@@ -72,6 +73,7 @@ pub enum SdkKind {
         software_algorithm: SdkSoftwareAlgorithm,
         software_privkey: Option<PathBuf>,
         key_envelope: String,
+        key_cache_ttl: Duration,
     },
     /// Test-only SDK that decrypts plain ZIP packages (`.zip.enc` is a zip).
     TestZip,
@@ -89,7 +91,10 @@ pub enum SdkKind {
     /// UKey two-phase: one UKey call unwraps a per-skill `key.enc`, then
     /// every package is decrypted in software AES-256-GCM with the in-memory
     /// key (compiled on Linux x86_64 gnu).
-    UKeyTwoPhase { key_envelope: String },
+    UKeyTwoPhase {
+        key_envelope: String,
+        key_cache_ttl: Duration,
+    },
 }
 
 /// Selectable algorithm for the software envelope backend.
@@ -121,6 +126,7 @@ impl AutoSdk {
         software_algorithm: SdkSoftwareAlgorithm,
         software_privkey: Option<&Path>,
         key_envelope: &str,
+        key_cache_ttl: Duration,
     ) -> Self {
         let software = software_privkey.and_then(|privkey| {
             match fmsh::SoftwareSdk::new(software_algorithm, Some(privkey)) {
@@ -141,13 +147,14 @@ impl AutoSdk {
                 None
             }
         };
-        let ukey_two_phase = match fmsh::UkeyTwoPhaseSdk::new(key_envelope.to_string()) {
-            Ok(sdk) => Some(Arc::new(sdk) as Arc<dyn EnvelopeSdk>),
-            Err(error) => {
-                tracing::debug!(error = %error, "ukey-two-phase envelope backend unavailable");
-                None
-            }
-        };
+        let ukey_two_phase =
+            match fmsh::UkeyTwoPhaseSdk::new(key_envelope.to_string(), key_cache_ttl) {
+                Ok(sdk) => Some(Arc::new(sdk) as Arc<dyn EnvelopeSdk>),
+                Err(error) => {
+                    tracing::debug!(error = %error, "ukey-two-phase envelope backend unavailable");
+                    None
+                }
+            };
         Self {
             software,
             ukey,
@@ -191,10 +198,12 @@ pub fn sdk_for(kind: SdkKind) -> Arc<dyn EnvelopeSdk> {
             software_algorithm,
             software_privkey,
             key_envelope,
+            key_cache_ttl,
         } => Arc::new(AutoSdk::new(
             software_algorithm,
             software_privkey.as_deref(),
             &key_envelope,
+            key_cache_ttl,
         )),
         SdkKind::TestZip => Arc::new(TestZipSdk),
         SdkKind::Noop => Arc::new(NoopEnvelopeSdk),
@@ -217,7 +226,10 @@ pub fn sdk_for(kind: SdkKind) -> Arc<dyn EnvelopeSdk> {
             }
         },
         #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
-        SdkKind::UKeyTwoPhase { key_envelope } => match fmsh::UkeyTwoPhaseSdk::new(key_envelope) {
+        SdkKind::UKeyTwoPhase {
+            key_envelope,
+            key_cache_ttl,
+        } => match fmsh::UkeyTwoPhaseSdk::new(key_envelope, key_cache_ttl) {
             Ok(sdk) => Arc::new(sdk),
             Err(error) => {
                 tracing::warn!(error = %error, "ukey-two-phase SDK unavailable; falling back to fail-closed");
@@ -318,6 +330,8 @@ mod fmsh {
     use std::path::Path;
     use std::sync::Arc;
     use std::sync::RwLock;
+    use std::time::Duration;
+    use std::time::Instant;
 
     use fmsh_ukey_core::Cipher;
     use fmsh_ukey_core::SoftwareAlgorithm;
@@ -417,26 +431,35 @@ mod fmsh {
     pub(crate) struct UkeyTwoPhaseSdk {
         key_wrap: Arc<dyn fmsh_ukey_core::KeyWrap>,
         key_envelope: String,
-        ciphers: RwLock<HashMap<Vec<u8>, Arc<UkeyTwoPhaseCipher>>>,
+        ciphers: RwLock<HashMap<Vec<u8>, CachedTwoPhaseCipher>>,
+        key_ttl: Duration,
+    }
+
+    #[derive(Clone)]
+    struct CachedTwoPhaseCipher {
+        cipher: Arc<UkeyTwoPhaseCipher>,
+        loaded_at: Instant,
     }
 
     impl UkeyTwoPhaseSdk {
-        pub(crate) fn new(key_envelope: String) -> Result<Self, EnvelopeError> {
+        pub(crate) fn new(key_envelope: String, key_ttl: Duration) -> Result<Self, EnvelopeError> {
             let key_wrap = Arc::new(
                 UkeyKeyWrap::new(None, None, None)
                     .map_err(|_| EnvelopeError::HardwareKeyRequired)?,
             );
-            Ok(Self::with_key_wrap(key_envelope, key_wrap))
+            Ok(Self::with_key_wrap(key_envelope, key_wrap, key_ttl))
         }
 
         pub(crate) fn with_key_wrap(
             key_envelope: String,
             key_wrap: Arc<dyn fmsh_ukey_core::KeyWrap>,
+            key_ttl: Duration,
         ) -> Self {
             Self {
                 key_wrap,
                 key_envelope,
                 ciphers: RwLock::new(HashMap::new()),
+                key_ttl,
             }
         }
 
@@ -450,13 +473,14 @@ mod fmsh {
             // Content-addressed: two skills pointing at byte-identical key
             // envelopes (shared key material) unwrap exactly once. The wrapped
             // bytes are the cache key, so no extra digest dependency is needed.
-            if let Some(cipher) = self
+            if let Some(cached) = self
                 .ciphers
                 .read()
                 .ok()
                 .and_then(|guard| guard.get(&wrapped).cloned())
+                .filter(|cached| cached.loaded_at.elapsed() < self.key_ttl)
             {
-                return Ok(cipher);
+                return Ok(Arc::clone(&cached.cipher));
             }
             // Slow path: take the write lock and re-check so two concurrent
             // first-loads of the same key envelope unwrap exactly once. The
@@ -467,14 +491,23 @@ mod fmsh {
                 .ciphers
                 .write()
                 .map_err(|_| EnvelopeError::Internal("two-phase cache poisoned".into()))?;
-            if let Some(cipher) = cache.get(&wrapped).cloned() {
-                return Ok(cipher);
+            if let Some(cached) = cache.get(&wrapped)
+                && cached.loaded_at.elapsed() < self.key_ttl
+            {
+                return Ok(Arc::clone(&cached.cipher));
             }
+            cache.remove(&wrapped);
             let cipher = Arc::new(UkeyTwoPhaseCipher::new(Arc::clone(&self.key_wrap)));
             cipher.unwrap_key(&wrapped).map_err(|err| {
                 EnvelopeError::Decrypt(format!("unwrapping key envelope: {err:#}"))
             })?;
-            cache.insert(wrapped, Arc::clone(&cipher));
+            cache.insert(
+                wrapped,
+                CachedTwoPhaseCipher {
+                    cipher: Arc::clone(&cipher),
+                    loaded_at: Instant::now(),
+                },
+            );
             Ok(cipher)
         }
     }
@@ -552,7 +585,12 @@ mod tests {
         }
 
         fn auto_sdk() -> AutoSdk {
-            AutoSdk::new(SdkSoftwareAlgorithm::HpkeX25519Aes256Gcm, None, "key.enc")
+            AutoSdk::new(
+                SdkSoftwareAlgorithm::HpkeX25519Aes256Gcm,
+                None,
+                "key.enc",
+                Duration::from_secs(30),
+            )
         }
 
         #[test]
@@ -673,6 +711,7 @@ mod tests {
             assert!(matches!(
                 sdk_for(SdkKind::UKeyTwoPhase {
                     key_envelope: "key.enc".to_string(),
+                    key_cache_ttl: Duration::from_secs(30),
                 })
                 .decrypt_package(Path::new("/x.zip.enc")),
                 Err(EnvelopeError::SdkUnavailable)
@@ -784,7 +823,11 @@ mod tests {
         let package = tmp.path().join("secret.zip.enc");
         std::fs::write(&package, &encrypted).unwrap();
 
-        let sdk = super::fmsh::UkeyTwoPhaseSdk::with_key_wrap("key.enc".to_string(), wrap);
+        let sdk = super::fmsh::UkeyTwoPhaseSdk::with_key_wrap(
+            "key.enc".to_string(),
+            wrap,
+            Duration::from_secs(30),
+        );
         let entries = sdk.decrypt_package(&package).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].rel_path, PathBuf::from("SKILL.md"));
@@ -850,9 +893,10 @@ mod tests {
         let sdk = super::fmsh::UkeyTwoPhaseSdk::with_key_wrap(
             "key.enc".to_string(),
             Arc::new(CountingKeyWrap(
-                SoftwareKeyWrap(software),
+                SoftwareKeyWrap(Arc::clone(&software)),
                 unwrap_calls.clone(),
             )),
+            Duration::from_secs(30),
         );
 
         // Two skills in different directories share the SAME key.enc bytes.
@@ -884,6 +928,26 @@ mod tests {
             unwrap_calls.load(Ordering::SeqCst),
             1,
             "shared key envelope must be unwrapped exactly once, not once per skill"
+        );
+
+        let expired_sdk = super::fmsh::UkeyTwoPhaseSdk::with_key_wrap(
+            "key.enc".to_string(),
+            Arc::new(CountingKeyWrap(
+                SoftwareKeyWrap(Arc::clone(&software)),
+                unwrap_calls.clone(),
+            )),
+            Duration::ZERO,
+        );
+        expired_sdk
+            .decrypt_package(&skill_a.join("a.zip.enc"))
+            .unwrap();
+        expired_sdk
+            .decrypt_package(&skill_a.join("a.zip.enc"))
+            .unwrap();
+        assert_eq!(
+            unwrap_calls.load(Ordering::SeqCst),
+            3,
+            "an expired key cache entry must be unwrapped again through the key backend"
         );
     }
 

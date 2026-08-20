@@ -617,6 +617,8 @@ pub struct EncryptedSkillsRuntimeConfig {
     pub sdk: codex_config::config_toml::EncryptedSkillsSdkToml,
     /// Two-tier TTL configuration.
     pub ttl: fm_encrypted_skills::registry::TtlConfig,
+    /// Lifetime of an unwrapped UKey two-phase key in memory.
+    pub key_cache_ttl: std::time::Duration,
     /// Audit log path for security events (persistent deployments should
     /// point this at a mounted volume).
     pub audit_path: Option<std::path::PathBuf>,
@@ -635,6 +637,7 @@ impl Default for EncryptedSkillsRuntimeConfig {
         Self {
             sdk: Default::default(),
             ttl: fm_encrypted_skills::registry::TtlConfig::default(),
+            key_cache_ttl: std::time::Duration::from_secs(900),
             audit_path: None,
             software_privkey: None,
             software_algorithm: Default::default(),
@@ -662,6 +665,7 @@ impl EncryptedSkillsRuntimeConfig {
                     software_algorithm: algorithm,
                     software_privkey: self.software_privkey.clone(),
                     key_envelope: self.key_envelope.clone(),
+                    key_cache_ttl: self.key_cache_ttl,
                 }
             }
             codex_config::config_toml::EncryptedSkillsSdkToml::Unavailable => {
@@ -696,6 +700,7 @@ impl EncryptedSkillsRuntimeConfig {
             codex_config::config_toml::EncryptedSkillsSdkToml::UKeyTwoPhase => {
                 fm_encrypted_skills::sdk::SdkKind::UKeyTwoPhase {
                     key_envelope: self.key_envelope.clone(),
+                    key_cache_ttl: self.key_cache_ttl,
                 }
             }
         }
@@ -4117,14 +4122,20 @@ impl Config {
             &cfg.encrypted_skills,
             config_layer_stack.requirements_toml(),
         );
+        let skill_idle_ttl_secs = encrypted_skills_toml.skill_idle_ttl_secs.unwrap_or(600);
         let config = Self {
             encrypted_skills: EncryptedSkillsRuntimeConfig {
                 sdk: encrypted_skills_toml.sdk.unwrap_or_default(),
                 ttl: fm_encrypted_skills::registry::TtlConfig {
                     skill_idle: std::time::Duration::from_secs(
-                        encrypted_skills_toml.skill_idle_ttl_secs.unwrap_or(600),
+                        skill_idle_ttl_secs,
                     ),
                 },
+                key_cache_ttl: std::time::Duration::from_secs(
+                    encrypted_skills_toml
+                        .key_cache_ttl_secs
+                        .unwrap_or_else(|| skill_idle_ttl_secs.saturating_add(300)),
+                ),
                 audit_path: encrypted_skills_toml
                     .audit_path
                     .map(std::path::PathBuf::from),
@@ -4564,6 +4575,9 @@ fn encrypted_skills_toml_with_requirements(
     }
     if let Some(ttl) = requirements.skill_idle_ttl_secs {
         merged.skill_idle_ttl_secs = Some(ttl);
+    }
+    if let Some(ttl) = requirements.key_cache_ttl_secs {
+        merged.key_cache_ttl_secs = Some(ttl);
     }
     if let Some(path) = &requirements.audit_path {
         merged.audit_path = Some(path.clone());

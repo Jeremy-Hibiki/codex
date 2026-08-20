@@ -12144,6 +12144,7 @@ async fn requirements_encrypted_skills_override_user_config_field_by_field() -> 
 [encrypted_skills]
 sdk = "software"
 audit_path = "/var/log/codex/encrypted-skills.log"
+key_cache_ttl_secs = 15
 
 [encrypted_skills.guardrail]
 enabled = true
@@ -12157,6 +12158,7 @@ base_url = "http://192.168.131.51:8080"
 [encrypted_skills]
 sdk = "test_zip"
 skill_idle_ttl_secs = 120
+key_cache_ttl_secs = 45
 "#,
     )
     .await?;
@@ -12187,6 +12189,11 @@ skill_idle_ttl_secs = 120
         std::time::Duration::from_secs(120),
         "unset requirement fields must keep the user config value"
     );
+    assert_eq!(
+        encrypted.key_cache_ttl,
+        std::time::Duration::from_secs(15),
+        "requirements key_cache_ttl_secs must override config.toml"
+    );
     assert!(encrypted.guardrail.enabled);
     assert_eq!(
         encrypted.guardrail.base_url.as_deref(),
@@ -12204,6 +12211,7 @@ fn encrypted_skills_runtime_sdk_defaults_to_auto_detection() {
             software_algorithm: fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::HpkeX25519Aes256Gcm,
             software_privkey: None,
             key_envelope: "key.enc".to_string(),
+            key_cache_ttl: std::time::Duration::from_secs(900),
         },
         "no sdk configured must auto-detect the backend per package"
     );

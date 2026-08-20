@@ -68,6 +68,8 @@ default_permissions = ":workspace"
 # Per-skill idle TTL before decrypted content is unloaded.
 audit_path = "/var/log/codex/encrypted-skills.log"
 skill_idle_ttl_secs = 600
+# Lifetime of an unwrapped UKey two-phase key before it must be unwrapped again.
+key_cache_ttl_secs = 900
 
 [encrypted_skills.guardrail]
 # Check user prompts against the external guardrail service.

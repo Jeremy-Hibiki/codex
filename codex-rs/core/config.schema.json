@@ -1017,6 +1017,12 @@
           "default": {},
           "description": "External guardrail (prompt sanitizer) settings for user prompts."
         },
+        "key_cache_ttl_secs": {
+          "description": "Lifetime of an unwrapped two-phase key in memory. After it expires, the next decryption unwraps the key envelope through UKey again. Defaults to 300 seconds beyond the configured skill idle TTL.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
         "key_envelope": {
           "description": "Per-skill key envelope file name for `sdk = \"ukey-two-phase\"`. The file lives next to the skill package (default `key.enc`).",
           "type": "string"

@@ -201,6 +201,11 @@ pub struct EncryptedSkillsToml {
     /// unloaded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skill_idle_ttl_secs: Option<u64>,
+    /// Lifetime of an unwrapped two-phase key in memory. After it expires,
+    /// the next decryption unwraps the key envelope through UKey again.
+    /// Defaults to 300 seconds beyond the configured skill idle TTL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_cache_ttl_secs: Option<u64>,
     /// Audit log path for encrypted-skill security events. Defaults to the
     /// process temp directory (ephemeral); persistent deployments should set
     /// this to a path on a mounted volume.
@@ -228,6 +233,7 @@ impl EncryptedSkillsToml {
     pub(crate) fn is_empty_for_requirements(&self) -> bool {
         self.sdk.is_none()
             && self.skill_idle_ttl_secs.is_none()
+            && self.key_cache_ttl_secs.is_none()
             && self.audit_path.is_none()
             && self.software_privkey.is_none()
             && self.software_algorithm.is_none()
@@ -1171,6 +1177,7 @@ command = "   "
         let parsed: EncryptedSkillsToml = toml::from_str("").unwrap();
         assert_eq!(parsed.sdk, None);
         assert_eq!(parsed.skill_idle_ttl_secs, None);
+        assert_eq!(parsed.key_cache_ttl_secs, None);
     }
 
     #[test]
@@ -1191,11 +1198,12 @@ command = "   "
     #[test]
     fn encrypted_skills_toml_parses_sdk_and_ttls() {
         let parsed: EncryptedSkillsToml = toml::from_str(
-            "sdk = \"test_zip\"\nskill_idle_ttl_secs = 120\naudit_path = \"/var/log/codex/encrypted-skills.log\"\n",
+            "sdk = \"test_zip\"\nskill_idle_ttl_secs = 120\nkey_cache_ttl_secs = 900\naudit_path = \"/var/log/codex/encrypted-skills.log\"\n",
         )
         .unwrap();
         assert_eq!(parsed.sdk, Some(EncryptedSkillsSdkToml::TestZip));
         assert_eq!(parsed.skill_idle_ttl_secs, Some(120));
+        assert_eq!(parsed.key_cache_ttl_secs, Some(900));
         assert_eq!(
             parsed.audit_path.as_deref(),
             Some("/var/log/codex/encrypted-skills.log")

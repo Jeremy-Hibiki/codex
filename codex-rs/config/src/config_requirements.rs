@@ -2358,6 +2358,7 @@ mod tests {
             encrypted_skills: Some(EncryptedSkillsToml {
                 sdk: Some(EncryptedSkillsSdkToml::Software),
                 skill_idle_ttl_secs: Some(900),
+                key_cache_ttl_secs: None,
                 audit_path: None,
                 software_privkey: None,
                 software_algorithm: None,
@@ -2441,6 +2442,7 @@ mod tests {
                     EncryptedSkillsToml {
                         sdk: Some(EncryptedSkillsSdkToml::Software),
                         skill_idle_ttl_secs: Some(900),
+                        key_cache_ttl_secs: None,
                         audit_path: None,
                         software_privkey: None,
                         software_algorithm: None,

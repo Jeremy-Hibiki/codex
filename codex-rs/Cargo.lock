@@ -2350,6 +2350,7 @@ dependencies = [
  "crossterm",
  "fm-license",
  "fm-product-policy",
+ "fmsh-ukey-sdk-wrapper",
  "http 1.4.0",
  "insta",
  "libc",
@@ -6252,23 +6253,25 @@ dependencies = [
 
 [[package]]
 name = "fmsh-ukey-core"
-version = "0.4.0+sdk.0.3.1"
-source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=26b8ade02268bf4f8f48538ce0ba8c0fc2a89048#26b8ade02268bf4f8f48538ce0ba8c0fc2a89048"
+version = "0.4.0+sdk.0.3.2"
+source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?tag=0.4.0-sdk.0.3.2#5b604afde0e73d65d4bb9462e4a128c41fd3fd65"
 dependencies = [
  "anyhow",
  "fmsh-ukey-sdk-wrapper",
+ "getrandom 0.4.2",
  "hpke",
  "openssl",
  "parking_lot",
  "rand 0.9.3",
+ "rand_core 0.9.5",
  "thiserror 2.0.18",
  "zeroize",
 ]
 
 [[package]]
 name = "fmsh-ukey-sdk-wrapper"
-version = "0.4.0+sdk.0.3.1"
-source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=26b8ade02268bf4f8f48538ce0ba8c0fc2a89048#26b8ade02268bf4f8f48538ce0ba8c0fc2a89048"
+version = "0.4.0+sdk.0.3.2"
+source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?tag=0.4.0-sdk.0.3.2#5b604afde0e73d65d4bb9462e4a128c41fd3fd65"
 dependencies = [
  "openssl",
  "parking_lot",
@@ -6277,8 +6280,8 @@ dependencies = [
 
 [[package]]
 name = "fmsh-ukey-skill"
-version = "0.4.0+sdk.0.3.1"
-source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?rev=26b8ade02268bf4f8f48538ce0ba8c0fc2a89048#26b8ade02268bf4f8f48538ce0ba8c0fc2a89048"
+version = "0.4.0+sdk.0.3.2"
+source = "git+http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git?tag=0.4.0-sdk.0.3.2#5b604afde0e73d65d4bb9462e4a128c41fd3fd65"
 dependencies = [
  "anyhow",
  "fmsh-ukey-core",
@@ -8913,8 +8916,8 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
 name = "lmclient-rust-sdk"
-version = "1.4.0"
-source = "git+http://192.168.131.126:8089/jiangzhengqi/lmclient-rust-sdk.git?tag=v1.4.0#8cdd6552cc9ddba9a98f864a5320aa138475ee1d"
+version = "1.3.2"
+source = "git+http://192.168.131.126:8089/jiangzhengqi/lmclient-rust-sdk.git?tag=v1.3.2#9dfbbaadba5631a1ff2ef54faf55a7c28ab4b5e7"
 dependencies = [
  "clap",
  "curl-sys",

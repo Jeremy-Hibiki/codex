@@ -5,16 +5,16 @@ name = "fm-encrypted-skills"
 version.workspace = true
 
 [lib]
+doctest = false
 name = "fm_encrypted_skills"
 path = "src/lib.rs"
-doctest = false
 
 [lints]
 workspace = true
 
 [dependencies]
-codex-shell-command = { workspace = true }
 codex-protocol = { workspace = true }
+codex-shell-command = { workspace = true }
 libc = { workspace = true }
 rand = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
@@ -44,8 +44,8 @@ zip = { workspace = true, features = ["deflate"] }
 # Ubuntu 22.04+ (LMClient itself references __libc_single_threaded, glibc
 # 2.32; tested release binaries require GLIBC_2.34).
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
-fmsh-ukey-core = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "26b8ade02268bf4f8f48538ce0ba8c0fc2a89048" }
-fmsh-ukey-skill = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", rev = "26b8ade02268bf4f8f48538ce0ba8c0fc2a89048" }
+fmsh-ukey-core = { workspace = true }
+fmsh-ukey-skill = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }

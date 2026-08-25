@@ -8,7 +8,7 @@
 # as a drop-in replacement.
 #
 #   release/build-fm-cargo.sh                       # docker build (default)
-#   release/build-fm-cargo.sh --local               # direct cargo build (release)
+#   release/build-fm-cargo.sh --local               # direct cargo build (dev-release)
 #   release/build-fm-cargo.sh --local --debug       # debug build (no strip, with symbols)
 #   release/build-fm-cargo.sh --appimage            # docker + single-file AppImage
 #   release/build-fm-cargo.sh --ubuntu-version 24.04
@@ -20,8 +20,7 @@
 # SDK link mode (default: static): the fmsh-ukey SDK archives + vendored
 # libcrypto are embedded; NEEDED keeps only libstdc++.so.6/libm.so.6,
 # libgcc_s.so.1, and libc.so.6. Ubuntu 22.04 builds require GLIBC_2.34 or
-# newer. The wrapper's stat shim and lmclient symbol dedup are wired
-# automatically.
+# newer.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -82,6 +81,12 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
+# Local builds optimize iteration speed; Docker/AppImage builds stay on the
+# distributable release profile.
+if [[ "$mode" == "local" && "$profile" == "release" ]]; then
+    profile=dev-release
+fi
+
 # ── Resolve version ────────────────────────────────────────────────────────
 
 if [[ -z "$base_version" ]]; then
@@ -127,15 +132,16 @@ echo "profile: $profile"
 # this automatically; we only need the path for the local-build .so bundling.
 
 find_sdk_lib_dir() {
-    local sdk_dir
+    local sdk_dir=""
     # From cargo checkout: prefer the checkout matching the rev pinned in
     # Cargo.lock (older checkouts of previous revs may linger in ~/.cargo).
-    local locked_rev
-    locked_rev="$(sed -n 's/.*fmsh-ukey-lib.git?rev=\([0-9a-f]*\).*/\1/p' \
+    local locked_source locked_commit
+    locked_source="$(sed -n 's/.*fmsh-ukey-lib.git?\(rev\|tag\)=[^#]*#\([0-9a-f]*\).*/\2/p' \
         "$repo_root/codex-rs/Cargo.lock" | head -1)"
-    if [[ -n "$locked_rev" ]]; then
+    locked_commit="${locked_source:0:7}"
+    if [[ -n "$locked_commit" ]]; then
         sdk_dir="$(find ~/.cargo/git/checkouts/fmsh-ukey-lib-* \
-            -path "*/$locked_rev/vendor/fmsh-ukey-sdk/linux/lib" 2>/dev/null | head -1)"
+            -path "*/$locked_commit/vendor/fmsh-ukey-sdk/linux/lib" 2>/dev/null | head -1)"
     fi
     if [[ -z "$sdk_dir" ]]; then
         # Fallback: any checkout.
@@ -155,35 +161,11 @@ find_sdk_lib_dir() {
 # FMSH_UKEY_SDK_LINK=static embeds the SDK archives + vendored libcrypto;
 # libstdc++ stays dynamic (statically embedding it would clash with the
 # libc++abi V8 embeds on the __cxa_* ABI symbols). Ubuntu 22.04 builds require
-# GLIBC_2.34 or newer. The FMSH SDKs share their utility layer, so the wrapper
-# must also dedup against lmclient's own copies
-# (FMSH_UKEY_STATIC_DEDUP_AGAINST).
-
-find_lmclient_lib() {
-    # v1.4.0 ships Debug/Release libraries. Keep the v1.3 ubuntu/release path
-    # as a fallback for older checkouts that may linger in the cargo cache.
-    local lmc
-    lmc="$(find ~/.cargo/git/checkouts/lmclient-rust-sdk-* \
-        -path '*/lmclient/lib/Release/liblmclient.a' 2>/dev/null | head -1)"
-    if [[ -z "$lmc" ]]; then
-        lmc="$(find ~/.cargo/git/checkouts/lmclient-rust-sdk-* \
-            -path '*/lmclient/lib/ubuntu/release/liblmclient.a' 2>/dev/null | head -1)"
-    fi
-    printf '%s\n' "$lmc"
-}
+# GLIBC_2.34 or newer.
 
 static_sdk_env() {
     export FMSH_UKEY_SDK_LINK=static
     export FMSH_UKEY_LIBSTDCPP=shared
-    local lmc
-    lmc="$(find_lmclient_lib)"
-    if [[ -n "$lmc" ]]; then
-        export FMSH_UKEY_STATIC_DEDUP_AGAINST="$lmc"
-    else
-        echo "  WARNING: liblmclient.a not found in cargo checkouts —" \
-            "static SDK link will fail with duplicate symbols" >&2
-        echo "  (run once without the env to let cargo fetch lmclient-rust-sdk)" >&2
-    fi
 }
 
 # ── Local build ────────────────────────────────────────────────────────────
@@ -192,9 +174,10 @@ build_local() {
     local codex_src="$repo_root/codex-rs"
     local out_dir="$repo_root/dist"
     local bin="$out_dir/codex"
+    local staged_bin
 
-    local cargo_profile_flag="--release"
-    local target_subdir="release"
+    local cargo_profile_flag="--profile dev-release"
+    local target_subdir="dev-release"
     if [[ "$profile" == "debug" ]]; then
         cargo_profile_flag=""
         target_subdir="debug"
@@ -204,7 +187,7 @@ build_local() {
         static_sdk_env
     else
         export FMSH_UKEY_SDK_LINK=shared
-        unset FMSH_UKEY_LIBSTDCPP FMSH_UKEY_STATIC_DEDUP_AGAINST || true
+        unset FMSH_UKEY_LIBSTDCPP || true
     fi
     echo "== cargo build $cargo_profile_flag =="
     (
@@ -214,13 +197,20 @@ build_local() {
 
     mkdir -p "$out_dir/lib"
 
-    cp "$codex_src/target/$target_subdir/codex" "$bin"
-    if [[ "$profile" == "release" ]]; then
+    # Replacing by rename keeps concurrent `mv` safe even when an old dist
+    # binary is still running; Linux otherwise rejects truncating ETXTBSY files.
+    staged_bin="$(mktemp "$out_dir/codex.XXXXXX")"
+    rm "$staged_bin"
+    cp "$codex_src/target/$target_subdir/codex" "$staged_bin"
+    if [[ "$profile" == "dev-release" ]]; then
+        echo "== dev-release build: keeping symbols =="
+    elif [[ "$profile" == "release" ]]; then
         echo "== stripping binary =="
-        strip --strip-debug --strip-unneeded "$bin"
+        strip --strip-debug --strip-unneeded "$staged_bin"
     else
         echo "== debug build: keeping symbols =="
     fi
+    mv -f "$staged_bin" "$bin"
 
     echo "== bundling fmsh-ukey SDK libs =="
     local sdk_lib_dir
@@ -248,7 +238,7 @@ build_local() {
     echo "Build complete:"
     echo "  binary: $bin"
     echo "  libs:   $out_dir/lib/"
-    echo "  version: $(FMSH_CODEX_LIC_FEATURE=x FMSH_CODEX_LIC_VERSION=x LD_LIBRARY_PATH=\"$out_dir/lib\" \"$bin\" --version 2>&1 || echo '(license gate active)')"
+    echo "  version: $(FMSH_CODEX_LIC_FEATURE=x FMSH_CODEX_LIC_VERSION=x LD_LIBRARY_PATH="$out_dir/lib" "$bin" --version 2>&1 || echo '(license gate active)')"
 }
 
 # ── Docker build ───────────────────────────────────────────────────────────

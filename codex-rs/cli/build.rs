@@ -1,3 +1,6 @@
+use std::path::Path;
+use std::path::PathBuf;
+
 fn git(args: &[&str]) -> Option<String> {
     let output = std::process::Command::new("git").args(args).output().ok()?;
     output
@@ -77,10 +80,9 @@ fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         println!("cargo:rustc-link-arg=-ObjC");
     }
-    // The FMSH UKey SDK (linked transitively via fm-encrypted-skills) has
-    // two link modes, selected by the same FMSH_UKEY_SDK_LINK env the
-    // fmsh-ukey-sdk-wrapper build script reads (`links` metadata only
-    // reaches direct dependents, which cli is not):
+    // UKey SDK 0.3.2 no longer propagates Linux link flags through the
+    // wrapper. The CLI links the SDK itself using metadata from its direct
+    // wrapper dependency and selects the mode with FMSH_UKEY_SDK_LINK:
     //
     // - shared (default): the SDK `.so` NEEDs the host's libcrypto.so.3
     //   (SDK 0.3.1), which DT_RUNPATH cannot resolve transitively — mirror
@@ -100,6 +102,12 @@ fn main() {
     {
         println!("cargo:rerun-if-env-changed=FMSH_UKEY_SDK_LINK");
         let sdk_static = std::env::var("FMSH_UKEY_SDK_LINK").as_deref() == Ok("static");
+        let lib_dir = required_env("DEP_FMSH_UKEY_SDK_LIB_DIR");
+        if sdk_static {
+            emit_static_ukey_sdk(&lib_dir);
+        } else {
+            emit_shared_ukey_sdk(&lib_dir);
+        }
         if !sdk_static {
             println!("cargo:rustc-link-arg-bins=-Wl,--no-as-needed");
             println!("cargo:rustc-link-arg-bins=-l:libcrypto.so.3");
@@ -107,4 +115,69 @@ fn main() {
         }
         println!("cargo:rustc-link-arg-bins=-Wl,-rpath,$ORIGIN/lib");
     }
+}
+
+fn emit_shared_ukey_sdk(lib_dir: &str) {
+    println!("cargo:rustc-link-search=native={lib_dir}");
+    println!("cargo:rustc-link-lib=dylib=fmsh_ukey_sdk");
+}
+
+fn emit_static_ukey_sdk(lib_dir: &str) {
+    let archives = [
+        prepare_static_archive(lib_dir, "libfmsh_ukey_sdk.a"),
+        prepare_static_archive(lib_dir, "liblmUtils.a"),
+        prepare_static_archive(lib_dir, "libPLOG.a"),
+    ];
+    for archive in archives {
+        println!("cargo:rustc-link-arg-bins={}", archive.display());
+    }
+
+    println!("cargo:rerun-if-env-changed=FMSH_UKEY_LIBSTDCPP");
+    match std::env::var("FMSH_UKEY_LIBSTDCPP").as_deref() {
+        Ok("static") | Err(_) => {
+            if let Some(dir) = gcc_static_libstdcpp_dir() {
+                println!("cargo:rustc-link-search=native={}", dir.display());
+            }
+            println!("cargo:rustc-link-lib=static=stdc++");
+        }
+        Ok("shared") => println!("cargo:rustc-link-lib=dylib=stdc++"),
+        Ok(other) => {
+            panic!("invalid FMSH_UKEY_LIBSTDCPP={other:?}; expected \"static\" or \"shared\"")
+        }
+    }
+}
+
+fn prepare_static_archive(lib_dir: &str, name: &str) -> PathBuf {
+    let source = Path::new(lib_dir).join(name);
+    assert!(
+        source.is_file(),
+        "{} not found in {lib_dir} (FMSH_UKEY_SDK_LINK=static)",
+        source.display()
+    );
+    let out_dir = PathBuf::from(required_env("OUT_DIR"));
+    let copy = out_dir.join(name);
+    std::fs::copy(&source, &copy).unwrap_or_else(|error| {
+        panic!(
+            "failed to copy {} to {}: {error}",
+            source.display(),
+            copy.display()
+        )
+    });
+    println!("cargo:rerun-if-changed={}", source.display());
+    copy
+}
+
+fn gcc_static_libstdcpp_dir() -> Option<PathBuf> {
+    let output = std::process::Command::new("cc")
+        .arg("-print-file-name=libstdc++.a")
+        .output()
+        .ok()?;
+    let path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    path.is_file()
+        .then(|| path.parent().map(Path::to_path_buf))
+        .flatten()
+}
+
+fn required_env(name: &str) -> String {
+    std::env::var(name).unwrap_or_else(|error| panic!("failed to read {name}: {error}"))
 }

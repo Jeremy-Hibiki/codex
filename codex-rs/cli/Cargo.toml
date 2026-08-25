@@ -100,6 +100,9 @@ windows-sys = { version = "0.52", features = [
     "Win32_System_Console",
 ] }
 
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
+fmsh-ukey-sdk-wrapper = { workspace = true }
+
 [dev-dependencies]
 app_test_support = { workspace = true }
 assert_cmd = { workspace = true }

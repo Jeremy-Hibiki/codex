@@ -30,10 +30,9 @@
 # SDK link mode (default: static since the fm work): FMSH_UKEY_SDK_LINK=static
 # embeds the SDK archives + vendored libcrypto, keeps libstdc++ dynamic
 # (FMSH_UKEY_LIBSTDCPP=shared — statically embedding it would clash with the
-# libc++abi V8 embeds on the __cxa_* ABI symbols), and dedups the symbols
-# lmclient shares with the SDK archives. The tested Ubuntu 22.04 binary
-# requires GLIBC_2.34 or newer. --sdk-link shared restores the legacy dynamic
-# mode, which also requires Ubuntu 22.04+.
+# libc++abi V8 embeds on the __cxa_* ABI symbols). The tested Ubuntu 22.04
+# binary requires GLIBC_2.34 or newer. --sdk-link shared restores the legacy
+# dynamic mode, which also requires Ubuntu 22.04+.
 
 ARG UBUNTU_VERSION=22.04
 ARG FMSH_UKEY_SDK_LINK=static
@@ -140,13 +139,6 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/workspace/codex-rs/target,sharing=locked \
     set -eu; \
     export FMSH_UKEY_SDK_LINK FMSH_UKEY_LIBSTDCPP; \
-    if [ "$FMSH_UKEY_SDK_LINK" = "static" ]; then \
-    cargo fetch; \
-    export FMSH_UKEY_STATIC_DEDUP_AGAINST="$(find /root/.cargo/git/checkouts/lmclient-rust-sdk-* -path '*/lmclient/lib/Release/liblmclient.a' | head -1)"; \
-    echo "dedup against: $FMSH_UKEY_STATIC_DEDUP_AGAINST"; \
-    test -n "$FMSH_UKEY_STATIC_DEDUP_AGAINST" \
-    || { echo "ERROR: liblmclient.a not found after fetch — dedup required for static links" >&2; exit 1; }; \
-    fi; \
     if [ "$CARGO_PROFILE" = "debug" ]; then \
     cargo build -p codex-cli \
     && cp target/debug/codex /codex-codex; \

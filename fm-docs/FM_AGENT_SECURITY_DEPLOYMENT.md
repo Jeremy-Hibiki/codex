@@ -338,7 +338,6 @@ agent 的入口（`codex` / `codex exec` / `codex app-server` / `codex mcp-serve
 |--------------------------------------------|------------|--------------------------------------------------------------------------------------------------------------|
 | `FMSH_UKEY_SDK_LINK`                       | **构建期** | `static`（发布默认）：SDK 归档 + vendored libcrypto 静态链入；`shared`：动态链 SDK `.so`（需 Ubuntu 22.04+） |
 | `FMSH_UKEY_LIBSTDCPP`                      | **构建期** | static 模式下 `shared`（发布默认）：libstdc++ 动态链，避免与 V8 内嵌 libc++abi 的 `__cxa_*` 冲突             |
-| `FMSH_UKEY_STATIC_DEDUP_AGAINST`           | **构建期** | static 模式下指向 `liblmclient.a`，自动去重 lmclient 与 SDK 共享的工具层符号（构建脚本自动设置）             |
 | `FMSH_UKEY_PROVIDER`                       | 运行期     | UKey provider 动态库路径（如 `libgm3000.1.0.so`）                                                            |
 | `FMSH_UKEY_CONTAINER`                      | 运行期     | UKey 容器名                                                                                                  |
 | `FMSH_CODEX_AGENT_SECURITY_SANDBOX_BYPASS` | debug 构建 | 沙箱 debug 后门；release 构建恒忽略                                                                          |

@@ -2,6 +2,7 @@
 members = [
     "fm/encrypted-skills",
     "fm/license",
+    "fm/product-policy",
     "aws-auth",
     "analytics",
     "agent-graph-store",
@@ -141,6 +142,11 @@ edition = "2024"
 license = "Apache-2.0"
 
 [workspace.dependencies]
+lmclient-rust-sdk = { git = "http://192.168.131.126:8089/jiangzhengqi/lmclient-rust-sdk.git", tag = "v1.3.2" }
+fmsh-ukey-core = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", tag = "0.4.0-sdk.0.3.2" }
+fmsh-ukey-sdk-wrapper = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", tag = "0.4.0-sdk.0.3.2" }
+fmsh-ukey-skill = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", tag = "0.4.0-sdk.0.3.2" }
+
 fm-license = { path = "fm/license" }
 fm-encrypted-skills = { path = "fm/encrypted-skills" }
 fm-product-policy = { path = "fm/product-policy" }
@@ -554,6 +560,14 @@ strip = false
 
 # Balance parallel release code generation against binary size.
 codegen-units = 4
+
+[profile.dev-release]
+# Fast local release builds: retain release optimizations, but avoid thin LTO
+# and preserve incremental compilation for iteration.
+inherits = "release"
+lto = false
+incremental = true
+codegen-units = 16
 
 [profile.profiling]
 inherits = "release"

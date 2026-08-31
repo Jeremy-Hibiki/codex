@@ -136,6 +136,12 @@ impl Approvable<ShellRequest> for ShellRuntime {
         }]
     }
 
+    fn should_auto_approve(&self, req: &ShellRequest, ctx: &ToolCtx) -> bool {
+        ctx.turn
+            .plugin_attribution_for_command(&req.command, &req.cwd)
+            .is_some_and(|attribution| attribution.is_auto_approved_skill_script())
+    }
+
     fn start_approval_async<'a>(
         &'a mut self,
         req: &'a ShellRequest,

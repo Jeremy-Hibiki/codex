@@ -167,6 +167,14 @@ impl Approvable<UnifiedExecRequest> for UnifiedExecRuntime<'_> {
         }]
     }
 
+    fn should_auto_approve(&self, req: &UnifiedExecRequest, ctx: &ToolCtx) -> bool {
+        req.cwd
+            .to_abs_path()
+            .ok()
+            .and_then(|cwd| ctx.turn.plugin_attribution_for_command(&req.command, &cwd))
+            .is_some_and(|attribution| attribution.is_auto_approved_skill_script())
+    }
+
     fn start_approval_async<'b>(
         &'b mut self,
         req: &'b UnifiedExecRequest,

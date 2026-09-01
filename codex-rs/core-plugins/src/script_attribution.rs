@@ -19,6 +19,9 @@ use std::collections::HashSet;
 use std::path::Component;
 use std::path::Path;
 
+const FMSH_MARKETPLACE_NAME: &str = "fmsh";
+const FMSH_PLUGIN_NAMES: &[&str] = &["fpga", "fmfpga"];
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TrustedPluginRoot {
     plugin_id: PluginId,
@@ -40,11 +43,26 @@ impl PluginCommandAttribution {
             self.normalized_relative_path.clone(),
         )
     }
+
+    /// Returns whether this is a skill script from the packaged FMSH FPGA plugin.
+    pub fn is_auto_approved_skill_script(&self) -> bool {
+        if !is_auto_approved_plugin(&self.plugin_id) {
+            return false;
+        }
+        let components = self.normalized_relative_path.split('/').collect::<Vec<_>>();
+        matches!(components.as_slice(), ["skills", skill, "scripts", script @ ..]
+            if !skill.is_empty() && !script.is_empty())
+    }
 }
 
-/// Active first-party roots eligible for command attribution.
-/// Trusted means OpenAI-shipped synced code or a server-installed global
-/// remote plugin cache entry, not a local override.
+fn is_auto_approved_plugin(plugin_id: &PluginId) -> bool {
+    plugin_id.marketplace_name == FMSH_MARKETPLACE_NAME
+        && FMSH_PLUGIN_NAMES.contains(&plugin_id.plugin_name.as_str())
+}
+
+/// Active packaged or first-party roots eligible for command attribution.
+/// Trusted means the packaged FMSH FPGA plugin, OpenAI-shipped synced code, or
+/// a server-installed global remote plugin cache entry.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TrustedPluginRoots {
     roots: Vec<TrustedPluginRoot>,
@@ -63,6 +81,9 @@ impl TrustedPluginRoots {
             .filter_map(|plugin| {
                 let plugin_id = PluginId::parse(&plugin.config_name).ok()?;
                 let expected_root = match plugin_id.marketplace_name.as_str() {
+                    _ if is_auto_approved_plugin(&plugin_id) => {
+                        store.active_plugin_root(&plugin_id)?
+                    }
                     REMOTE_GLOBAL_MARKETPLACE_NAME => {
                         let active_version = store.active_plugin_version(&plugin_id)?;
                         if active_version == DEFAULT_PLUGIN_VERSION
@@ -193,7 +214,33 @@ fn script_argument(command: &[String]) -> Option<&str> {
     if let Some(interpreter) = interpreter_name(program) {
         return interpreter_script_argument(&interpreter, args);
     }
+    if let Some(script) = vivado_script_argument(program, args) {
+        return Some(script);
+    }
     is_pathish(program).then_some(program)
+}
+
+fn vivado_script_argument<'a>(program: &str, args: &'a [String]) -> Option<&'a str> {
+    let basename = executable_basename(program)?.to_ascii_lowercase();
+    let basename = basename
+        .strip_suffix(".exe")
+        .or_else(|| basename.strip_suffix(".bat"))
+        .unwrap_or(&basename);
+    if basename != "vivado" {
+        return None;
+    }
+
+    let mut source = None;
+    let mut args = args.iter();
+    while let Some(argument) = args.next() {
+        if argument.eq_ignore_ascii_case("-source") {
+            let script = args.next()?;
+            if script.starts_with('-') || source.replace(script.as_str()).is_some() {
+                return None;
+            }
+        }
+    }
+    source
 }
 
 fn interpreter_name(program: &str) -> Option<String> {
@@ -245,7 +292,7 @@ fn interpreter_script_argument<'a>(interpreter: &str, args: &'a [String]) -> Opt
 fn safe_interpreter_flag(interpreter: &str, flag: &str) -> bool {
     matches!(
         (interpreter, flag),
-        ("python" | "python3", "-u") | ("bash" | "sh" | "zsh", "-e")
+        ("python" | "python3", "-u" | "-B") | ("bash" | "sh" | "zsh", "-e")
     )
 }
 

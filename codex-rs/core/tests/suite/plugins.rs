@@ -1,6 +1,7 @@
 #![cfg(not(target_os = "windows"))]
 #![allow(clippy::unwrap_used)]
 
+use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -40,6 +41,7 @@ use core_test_support::test_codex::turn_permission_fields;
 use core_test_support::wait_for_event;
 use core_test_support::wait_for_event_match;
 use core_test_support::wait_for_mcp_server;
+use core_test_support::zsh_fork::restrictive_workspace_write_profile;
 use tempfile::TempDir;
 use wiremock::MockServer;
 
@@ -53,6 +55,7 @@ const SAMPLE_PLUGIN_MCP_NAMESPACE: &str = "mcp__sample";
 const PLUGIN_APP_SEARCH_CALL_ID: &str = "plugin-app-search";
 const PLUGIN_MCP_SEARCH_CALL_ID: &str = "plugin-mcp-search";
 const REMOTE_PLUGIN_CONFIG_NAME: &str = "sample@openai-curated-remote";
+const FMSH_PLUGIN_CONFIG_NAME: &str = "fpga@fmsh";
 
 fn sample_plugin_root(home: &TempDir) -> std::path::PathBuf {
     home.path().join("plugins/cache/test/sample/local")
@@ -115,6 +118,42 @@ fn write_remote_plugin_script_and_config(home: &TempDir) -> std::path::PathBuf {
     )
     .expect("write remote plugin config");
     script_path.into_path_buf()
+}
+
+fn write_fmsh_plugin_vivado_skill_and_config(
+    home: &TempDir,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    let plugin_id = PluginId::parse(FMSH_PLUGIN_CONFIG_NAME).expect("plugin id");
+    let plugin_root = PluginStore::new(home.path().to_path_buf()).plugin_root(&plugin_id, "1.0.0");
+    let script_path = plugin_root.join("skills/create-project/scripts/create_project.tcl");
+    let vivado_path = home.path().join("bin/vivado");
+    std::fs::create_dir_all(plugin_root.join(".codex-plugin"))
+        .expect("create FMSH plugin manifest dir");
+    std::fs::create_dir_all(script_path.parent().expect("script parent"))
+        .expect("create FMSH plugin skill scripts dir");
+    std::fs::create_dir_all(vivado_path.parent().expect("Vivado parent"))
+        .expect("create fake Vivado bin dir");
+    std::fs::write(
+        plugin_root.join(".codex-plugin/plugin.json"),
+        r#"{"name":"fpga","version":"1.0.0"}"#,
+    )
+    .expect("write FMSH plugin manifest");
+    std::fs::write(&script_path, "create_project ui_demo\n")
+        .expect("write FMSH plugin Vivado script");
+    std::fs::write(&vivado_path, "#!/bin/sh\nexit 0\n").expect("write fake Vivado executable");
+    let mut permissions = std::fs::metadata(&vivado_path)
+        .expect("read fake Vivado metadata")
+        .permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&vivado_path, permissions).expect("make fake Vivado executable");
+    std::fs::write(
+        home.path().join("config.toml"),
+        format!(
+            "[features]\nplugins = true\n\n[plugins.\"{FMSH_PLUGIN_CONFIG_NAME}\"]\nenabled = true\n"
+        ),
+    )
+    .expect("write FMSH plugin config");
+    (script_path.into_path_buf(), vivado_path)
 }
 
 fn write_plugin_skill_plugin(home: &TempDir) -> std::path::PathBuf {
@@ -360,6 +399,116 @@ async fn persisted_remote_plugin_command_attribution_flows_through_turn_context(
     ] {
         assert_eq!(plugin_id, Some(REMOTE_PLUGIN_CONFIG_NAME));
         assert_eq!(script_path, Some("scripts/run.sh"));
+    }
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fmsh_plugin_vivado_source_skips_required_command_approval() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+    skip_if_remote!(
+        Ok(()),
+        "FMSH plugin attribution fixture uses a local Codex home cache"
+    );
+
+    let server = start_mock_server().await;
+    let codex_home = Arc::new(TempDir::new()?);
+    let (script_path, vivado_path) = write_fmsh_plugin_vivado_skill_and_config(codex_home.as_ref());
+    let script_path = script_path.to_string_lossy();
+    let vivado_path = vivado_path.to_string_lossy();
+    let command = shlex::try_join([
+        vivado_path.as_ref(),
+        "-mode",
+        "batch",
+        "-source",
+        script_path.as_ref(),
+    ])?;
+    let call_id = "fmsh-plugin-vivado-source";
+    let arguments = serde_json::to_string(&serde_json::json!({
+        "command": command,
+        "login": false,
+        "sandbox_permissions": "require_escalated",
+        "justification": "run the packaged FMSH FPGA Vivado script",
+    }))?;
+    mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("resp-1"),
+                ev_function_call(call_id, "shell_command", &arguments),
+                ev_completed("resp-1"),
+            ]),
+            sse(vec![
+                ev_response_created("resp-2"),
+                ev_assistant_message("msg-1", "done"),
+                ev_completed("resp-2"),
+            ]),
+        ],
+    )
+    .await;
+
+    let mut builder = test_codex()
+        .with_home(Arc::clone(&codex_home))
+        .with_model("gpt-5.2");
+    let test_codex = builder.build_with_auto_env(&server).await?;
+    let codex = Arc::clone(&test_codex.codex);
+    let cwd = test_codex.config.cwd.clone();
+    let session_model = test_codex.session_configured.model.clone();
+    let (sandbox_policy, permission_profile) =
+        turn_permission_fields(restrictive_workspace_write_profile(), cwd.as_path());
+    codex
+        .submit(Op::UserInput {
+            items: vec![codex_protocol::user_input::UserInput::Text {
+                text: "run the packaged FMSH FPGA Vivado script".into(),
+                text_elements: Vec::new(),
+            }],
+            final_output_json_schema: None,
+            responsesapi_client_metadata: None,
+            additional_context: Default::default(),
+            thread_settings: codex_protocol::protocol::ThreadSettingsOverrides {
+                environments: Some(local_selections(cwd)),
+                approval_policy: Some(AskForApproval::OnRequest),
+                sandbox_policy: Some(sandbox_policy),
+                permission_profile,
+                collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
+                    mode: codex_protocol::config_types::ModeKind::Default,
+                    settings: codex_protocol::config_types::Settings {
+                        model: session_model,
+                        reasoning_effort: None,
+                        developer_instructions: None,
+                    },
+                }),
+                ..Default::default()
+            },
+        })
+        .await?;
+
+    let event = wait_for_event(&codex, |event| match event {
+        EventMsg::ExecApprovalRequest(_) => true,
+        EventMsg::ExecCommandBegin(event) => event.call_id == call_id,
+        _ => false,
+    })
+    .await;
+    let EventMsg::ExecCommandBegin(begin) = event else {
+        panic!("FMSH Vivado script unexpectedly requested command approval");
+    };
+    let end = wait_for_event_match(&codex, |event| match event {
+        EventMsg::ExecCommandEnd(event) if event.call_id == call_id => Some(event.clone()),
+        _ => None,
+    })
+    .await;
+    wait_for_event(&codex, |event| matches!(event, EventMsg::TurnComplete(_))).await;
+
+    for (plugin_id, script_path) in [
+        (begin.plugin_id.as_deref(), begin.script_path.as_deref()),
+        (end.plugin_id.as_deref(), end.script_path.as_deref()),
+    ] {
+        assert_eq!(plugin_id, Some(FMSH_PLUGIN_CONFIG_NAME));
+        assert_eq!(
+            script_path,
+            Some("skills/create-project/scripts/create_project.tcl")
+        );
     }
 
     Ok(())

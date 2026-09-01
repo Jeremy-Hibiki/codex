@@ -211,6 +211,68 @@ fn trusted_roots_require_verified_curated_or_remote_cache() {
 }
 
 #[test]
+fn only_fmsh_fpga_skill_scripts_are_auto_approved() {
+    let temp = TempDir::new().expect("temp dir");
+    let plugin_id = PluginId::parse("fpga@fmsh").expect("plugin id");
+    let root = PluginStore::new(temp.path().to_path_buf()).plugin_root(&plugin_id, "1.0.0");
+    let skill_root = root.join("skills/create-project");
+    let script = skill_root.join("scripts/create_project.py");
+    let vivado_script = skill_root.join("scripts/create_project.tcl");
+    fs::create_dir_all(script.as_path().parent().expect("script parent"))
+        .expect("create skill scripts");
+    fs::write(script.as_path(), "#!/usr/bin/env python3\n").expect("write skill script");
+    fs::write(vivado_script.as_path(), "create_project ui_demo\n")
+        .expect("write Vivado skill script");
+
+    let roots = roots_for(
+        temp.path(),
+        vec![loaded_plugin("fpga@fmsh", root.as_path(), ENABLED)],
+    );
+    let attribution = roots
+        .resolve_attribution(
+            &command(&["python3", "scripts/create_project.py"]),
+            &skill_root,
+        )
+        .expect("attribute packaged FMSH script");
+    assert_eq!(
+        attribution,
+        PluginCommandAttribution {
+            plugin_id: plugin_id.clone(),
+            normalized_relative_path: "skills/create-project/scripts/create_project.py".to_string(),
+        }
+    );
+    assert!(attribution.is_auto_approved_skill_script());
+
+    let vivado_attribution = roots
+        .resolve_attribution(
+            &command(&[
+                "/opt/Xilinx/Vivado/bin/vivado",
+                "-mode",
+                "batch",
+                "-source",
+                "scripts/create_project.tcl",
+            ]),
+            &skill_root,
+        )
+        .expect("attribute packaged FMSH Vivado script");
+    assert_eq!(
+        vivado_attribution,
+        PluginCommandAttribution {
+            plugin_id,
+            normalized_relative_path: "skills/create-project/scripts/create_project.tcl"
+                .to_string(),
+        }
+    );
+    assert!(vivado_attribution.is_auto_approved_skill_script());
+
+    let other_plugin_id = PluginId::parse("other@fmsh").expect("plugin id");
+    let other_root =
+        PluginStore::new(temp.path().to_path_buf()).plugin_root(&other_plugin_id, "1.0.0");
+    fs::create_dir_all(other_root.as_path()).expect("create other plugin root");
+    assert_untrusted(temp.path(), "other@fmsh", other_root.as_path());
+}
+
+#[test]
 fn resolves_local_attribution_for_safe_interpreters_and_wrappers() {
     let (temp, root, script) = script_fixture();
     let roots = roots_for(

@@ -168,6 +168,17 @@ impl ToolOrchestrator {
             default_exec_approval_requirement(approval_policy, &file_system_sandbox_policy)
         });
         match &requirement {
+            ExecApprovalRequirement::Forbidden { reason } => {
+                return Err(ToolError::Rejected(reason.clone()));
+            }
+            _ if tool.should_auto_approve(req, tool_ctx) => {
+                otel.tool_decision(
+                    &otel_tn,
+                    otel_ci,
+                    &ReviewDecision::Approved,
+                    ToolDecisionSource::Config,
+                );
+            }
             ExecApprovalRequirement::Skip { .. } => {
                 if strict_auto_review {
                     let approval_ctx = ApprovalCtx {
@@ -196,9 +207,6 @@ impl ToolOrchestrator {
                         ToolDecisionSource::Config,
                     );
                 }
-            }
-            ExecApprovalRequirement::Forbidden { reason } => {
-                return Err(ToolError::Rejected(reason.clone()));
             }
             ExecApprovalRequirement::NeedsApproval { reason, .. } => {
                 let approval_ctx = ApprovalCtx {
@@ -419,9 +427,10 @@ impl ToolOrchestrator {
 
                 // Strict auto-review approval covers the sandboxed attempt only;
                 // retrying without the sandbox requires a fresh guardian review.
-                let bypass_retry_approval = !strict_auto_review
-                    && tool.should_bypass_approval(approval_policy, already_approved)
-                    && network_approval_context.is_none();
+                let bypass_retry_approval = network_approval_context.is_none()
+                    && (tool.should_auto_approve(req, tool_ctx)
+                        || (!strict_auto_review
+                            && tool.should_bypass_approval(approval_policy, already_approved)));
                 if !bypass_retry_approval {
                     let approval_ctx = ApprovalCtx {
                         session: &tool_ctx.session,

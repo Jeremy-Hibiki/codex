@@ -8,7 +8,7 @@
 # as a drop-in replacement.
 #
 #   release/build-fm-cargo.sh                       # docker build (default)
-#   release/build-fm-cargo.sh --local               # direct cargo build (dev-release)
+#   release/build-fm-cargo.sh --local               # direct cargo build (release)
 #   release/build-fm-cargo.sh --local --debug       # debug build (no strip, with symbols)
 #   release/build-fm-cargo.sh --appimage            # docker + single-file AppImage
 #   release/build-fm-cargo.sh --ubuntu-version 24.04
@@ -84,7 +84,7 @@ done
 # Local builds optimize iteration speed; Docker/AppImage builds stay on the
 # distributable release profile.
 if [[ "$mode" == "local" && "$profile" == "release" ]]; then
-    profile=dev-release
+    profile=release
 fi
 
 # ── Resolve version ────────────────────────────────────────────────────────
@@ -176,8 +176,8 @@ build_local() {
     local bin="$out_dir/codex"
     local staged_bin
 
-    local cargo_profile_flag="--profile dev-release"
-    local target_subdir="dev-release"
+    local cargo_profile_flag="--profile release"
+    local target_subdir="release"
     if [[ "$profile" == "debug" ]]; then
         cargo_profile_flag=""
         target_subdir="debug"
@@ -202,8 +202,8 @@ build_local() {
     staged_bin="$(mktemp "$out_dir/codex.XXXXXX")"
     rm "$staged_bin"
     cp "$codex_src/target/$target_subdir/codex" "$staged_bin"
-    if [[ "$profile" == "dev-release" ]]; then
-        echo "== dev-release build: keeping symbols =="
+    if [[ "$profile" == "release" ]]; then
+        echo "== release build: keeping symbols =="
     elif [[ "$profile" == "release" ]]; then
         echo "== stripping binary =="
         strip --strip-debug --strip-unneeded "$staged_bin"

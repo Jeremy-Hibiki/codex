@@ -15,4 +15,5 @@ serde_json = { workspace = true }
 # Add new Codex surface area to `codex-core-api` instead of depending on
 # additional `codex-*` crates here.
 codex-core-api = { workspace = true }
+debugoff = { workspace = true }
 tracing = { workspace = true }

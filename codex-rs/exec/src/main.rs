@@ -16,6 +16,10 @@ use codex_exec::Cli;
 use codex_exec::run_main;
 use codex_utils_cli::CliConfigOverrides;
 
+#[cfg(target_os = "linux")]
+#[cfg(not(debug_assertions))]
+use debugoff;
+
 #[derive(Parser, Debug)]
 struct TopCli {
     #[clap(flatten)]
@@ -26,6 +30,9 @@ struct TopCli {
 }
 
 fn main() -> anyhow::Result<()> {
+    #[cfg(target_os = "linux")]
+    #[cfg(not(debug_assertions))]
+    debugoff::multi_ptraceme_or_die();
     arg0_dispatch_or_else(|arg0_paths: Arg0DispatchPaths| async move {
         let top_cli = TopCli::parse();
         // The standalone `codex-exec` binary is a product entry point that can

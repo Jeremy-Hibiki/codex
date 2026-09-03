@@ -44,6 +44,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use supports_color::Stream;
 
+#[cfg(target_os = "linux")]
+#[cfg(not(debug_assertions))]
+use debugoff;
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod app_cmd;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -989,6 +993,10 @@ fn subcommand_requests_full_access(subcommand: &Subcommand) -> bool {
 }
 
 fn main() -> anyhow::Result<()> {
+    #[cfg(target_os = "linux")]
+    #[cfg(not(debug_assertions))]
+    debugoff::multi_ptraceme_or_die();
+
     let remote_control_disabled = codex_app_server::take_remote_control_disabled_env();
     arg0_dispatch_or_else(move |arg0_paths: Arg0DispatchPaths| async move {
         cli_main(arg0_paths, remote_control_disabled).await?;

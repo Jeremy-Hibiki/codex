@@ -1,5 +1,9 @@
 use clap::Parser;
 
+#[cfg(target_os = "linux")]
+#[cfg(not(debug_assertions))]
+use debugoff;
+
 #[derive(Debug, Parser)]
 struct Cli {
     /// Transport endpoint: `stdio`, `stdio://`, or `ws://IP:PORT`.
@@ -13,6 +17,10 @@ struct Cli {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
+    #[cfg(target_os = "linux")]
+    #[cfg(not(debug_assertions))]
+    debugoff::multi_ptraceme_or_die();
+
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .with_writer(std::io::stderr)

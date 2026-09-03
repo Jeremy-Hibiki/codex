@@ -1,9 +1,16 @@
+#[cfg(target_os = "linux")]
+#[cfg(not(debug_assertions))]
+use debugoff;
+
 #[cfg(all(target_os = "linux", bwrap_available))]
 fn main() {
     use std::ffi::CStr;
     use std::ffi::CString;
     use std::os::raw::c_char;
     use std::os::unix::ffi::OsStrExt;
+
+    #[cfg(not(debug_assertions))]
+    debugoff::multi_ptraceme_or_die();
 
     unsafe extern "C" {
         fn bwrap_main(argc: libc::c_int, argv: *const *const c_char) -> libc::c_int;
@@ -30,6 +37,9 @@ fn main() {
 
 #[cfg(all(target_os = "linux", not(bwrap_available)))]
 fn main() {
+    #[cfg(not(debug_assertions))]
+    debugoff::multi_ptraceme_or_die();
+
     panic!(
         r#"bubblewrap is not available in this build.
 Notes:

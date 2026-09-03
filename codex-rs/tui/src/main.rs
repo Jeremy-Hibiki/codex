@@ -10,6 +10,10 @@ use codex_utils_cli::CliConfigOverrides;
 use std::io::Write;
 use supports_color::Stream;
 
+#[cfg(target_os = "linux")]
+#[cfg(not(debug_assertions))]
+use debugoff;
+
 fn format_exit_messages(exit_info: AppExitInfo, color_enabled: bool) -> Vec<String> {
     let is_fatal = matches!(&exit_info.exit_reason, ExitReason::Fatal(_));
     let AppExitInfo {
@@ -48,6 +52,10 @@ struct TopCli {
 }
 
 fn main() -> anyhow::Result<()> {
+    #[cfg(target_os = "linux")]
+    #[cfg(not(debug_assertions))]
+    debugoff::multi_ptraceme_or_die();
+
     arg0_dispatch_or_else(|arg0_paths: Arg0DispatchPaths| async move {
         let top_cli = TopCli::parse();
         let mut inner = top_cli.inner;

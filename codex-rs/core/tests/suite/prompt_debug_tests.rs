@@ -20,7 +20,7 @@ const TEST_INSTRUCTIONS: &str = "Global test instructions";
 async fn build_prompt_input_includes_context_and_user_message() -> Result<()> {
     let codex_home = TempDir::new()?;
     let cwd = TempDir::new()?;
-    std::fs::write(codex_home.path().join("AGENTS.md"), TEST_INSTRUCTIONS)?;
+    std::fs::write(codex_home.path().join("GREVO.md"), TEST_INSTRUCTIONS)?;
     let config = ConfigBuilder::default()
         .codex_home(codex_home.path().to_path_buf())
         .harness_overrides(ConfigOverrides {

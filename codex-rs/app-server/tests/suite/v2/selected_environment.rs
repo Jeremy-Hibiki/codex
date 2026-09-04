@@ -99,7 +99,7 @@ async fn thread_start_reports_selected_environment_instruction_source() -> Resul
     let (agents_source, environment_cwd) = {
         let auto_env = app_server.auto_env()?;
         let environment_cwd = auto_env.selection().cwd.clone();
-        let agents_source = environment_cwd.join("AGENTS.md")?;
+        let agents_source = environment_cwd.join("GREVO.md")?;
         auto_env
             .environment()
             .get_filesystem()
@@ -129,10 +129,10 @@ async fn thread_start_reports_selected_environment_instruction_source() -> Resul
     let user_context = response_mock.single_request().message_input_texts("user");
     let instructions = user_context
         .iter()
-        .find(|text| text.starts_with("# AGENTS.md instructions"))
+        .find(|text| text.starts_with("# GREVO.md instructions"))
         .context("selected environment instructions should be model visible")?;
     let expected_instructions = format!(
-        "# AGENTS.md instructions for {}\n\n<INSTRUCTIONS>\n{AGENTS_INSTRUCTIONS}\n</INSTRUCTIONS>",
+        "# GREVO.md instructions for {}\n\n<INSTRUCTIONS>\n{AGENTS_INSTRUCTIONS}\n</INSTRUCTIONS>",
         environment_cwd.inferred_native_path_string()
     );
     assert_eq!(instructions, &expected_instructions);

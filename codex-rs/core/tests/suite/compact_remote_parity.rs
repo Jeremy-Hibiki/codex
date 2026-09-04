@@ -511,8 +511,7 @@ async fn build_harness_inner(
     let mut builder = test_codex()
         .with_auth(settings.auth.build())
         .with_pre_build_hook(|home| {
-            fs::write(home.join("AGENTS.md"), USER_INSTRUCTIONS)
-                .expect("write global instructions");
+            fs::write(home.join("GREVO.md"), USER_INSTRUCTIONS).expect("write global instructions");
         });
     if hooks {
         builder = builder.with_pre_build_hook(write_manual_compact_hooks);

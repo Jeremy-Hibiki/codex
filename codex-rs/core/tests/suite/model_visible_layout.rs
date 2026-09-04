@@ -54,7 +54,10 @@ fn user_instructions_wrapper_count(request: &ResponsesRequest) -> usize {
     request
         .message_input_texts("user")
         .iter()
-        .filter(|text| text.starts_with("# AGENTS.md instructions"))
+        .filter(|text| {
+            text.starts_with("# GREVO.md instructions")
+                || text.starts_with("# AGENTS.md instructions")
+        })
         .count()
 }
 
@@ -289,11 +292,11 @@ async fn snapshot_model_visible_layout_cwd_change_refreshes_agents() -> Result<(
     fs::create_dir_all(&cwd_one)?;
     fs::create_dir_all(&cwd_two)?;
     fs::write(
-        cwd_one.join("AGENTS.md"),
+        cwd_one.join("GREVO.md"),
         "# AGENTS one\n\n<INSTRUCTIONS>\nTurn one agents instructions.\n</INSTRUCTIONS>\n",
     )?;
     fs::write(
-        cwd_two.join("AGENTS.md"),
+        cwd_two.join("GREVO.md"),
         "# AGENTS two\n\n<INSTRUCTIONS>\nTurn two agents instructions.\n</INSTRUCTIONS>\n",
     )?;
     let cwd_one = cwd_one.abs();

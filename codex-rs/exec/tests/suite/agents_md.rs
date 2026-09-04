@@ -6,7 +6,7 @@ use core_test_support::test_codex_exec::test_codex_exec;
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn exec_includes_workspace_agents_md_in_request() -> anyhow::Result<()> {
     let test = test_codex_exec();
-    std::fs::write(test.cwd_path().join("AGENTS.md"), "workspace instructions")?;
+    std::fs::write(test.cwd_path().join("GREVO.md"), "workspace instructions")?;
 
     let server = responses::start_mock_server().await;
     let body = responses::sse(vec![
@@ -27,7 +27,7 @@ async fn exec_includes_workspace_agents_md_in_request() -> anyhow::Result<()> {
         user_messages
             .iter()
             .any(|text| text.contains("workspace instructions")),
-        "request should include workspace AGENTS.md instructions: {user_messages:?}"
+        "request should include workspace GREVO.md instructions: {user_messages:?}"
     );
 
     Ok(())
@@ -36,9 +36,9 @@ async fn exec_includes_workspace_agents_md_in_request() -> anyhow::Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn exec_prefers_workspace_agents_override_md() -> anyhow::Result<()> {
     let test = test_codex_exec();
-    std::fs::write(test.cwd_path().join("AGENTS.md"), "base instructions")?;
+    std::fs::write(test.cwd_path().join("GREVO.md"), "base instructions")?;
     std::fs::write(
-        test.cwd_path().join("AGENTS.override.md"),
+        test.cwd_path().join("GREVO.override.md"),
         "override instructions",
     )?;
 
@@ -61,13 +61,13 @@ async fn exec_prefers_workspace_agents_override_md() -> anyhow::Result<()> {
         user_messages
             .iter()
             .any(|text| text.contains("override instructions")),
-        "request should include AGENTS.override.md instructions: {user_messages:?}"
+        "request should include GREVO.override.md instructions: {user_messages:?}"
     );
     assert!(
         user_messages
             .iter()
             .all(|text| !text.contains("base instructions")),
-        "request should exclude shadowed AGENTS.md instructions: {user_messages:?}"
+        "request should exclude shadowed GREVO.md instructions: {user_messages:?}"
     );
 
     Ok(())

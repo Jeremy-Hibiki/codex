@@ -35,9 +35,9 @@ use toml::Value as TomlValue;
 use tracing::error;
 
 /// Default filename scanned for AGENTS.md instructions.
-pub const DEFAULT_AGENTS_MD_FILENAME: &str = "AGENTS.md";
+pub const DEFAULT_AGENTS_MD_FILENAME: &str = "GREVO.md";
 /// Preferred local override for AGENTS.md instructions.
-pub const LOCAL_AGENTS_MD_FILENAME: &str = "AGENTS.override.md";
+pub const LOCAL_AGENTS_MD_FILENAME: &str = "GREVO.override.md";
 
 /// When both user and project AGENTS.md docs are present, they will be
 /// concatenated with the following separator.

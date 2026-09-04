@@ -168,12 +168,7 @@ fn spawn_agent_tool_v1_keeps_legacy_fork_context_field() {
             .and_then(|schema| schema.encrypted),
         None
     );
-    assert_eq!(
-        properties
-            .get("model")
-            .and_then(|schema| schema.description.as_deref()),
-        Some(SPAWN_AGENT_MODEL_OVERRIDE_DESCRIPTION)
-    );
+    assert!(!properties.contains_key("model"));
     assert_eq!(
         properties
             .get("service_tier")

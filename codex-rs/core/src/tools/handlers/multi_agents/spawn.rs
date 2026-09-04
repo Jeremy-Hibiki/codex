@@ -79,7 +79,7 @@ async fn handle_spawn_agent(
                 receiver_thread_ids: Vec::new(),
                 receiver_agents: Vec::new(),
                 prompt: Some(prompt.clone()),
-                model: Some(args.model.clone().unwrap_or_default()),
+                model: Some(String::new()),
                 reasoning_effort: Some(args.reasoning_effort.clone().unwrap_or_default()),
                 agents_states: Default::default(),
             }),
@@ -97,7 +97,7 @@ async fn handle_spawn_agent(
         &session,
         turn.as_ref(),
         &mut config,
-        args.model.as_deref(),
+        /*requested_model*/ None,
         args.reasoning_effort.clone(),
     )
     .await?;
@@ -167,7 +167,7 @@ async fn handle_spawn_agent(
     let effective_model = agent_snapshot
         .as_ref()
         .map(|snapshot| snapshot.model.clone())
-        .unwrap_or_else(|| args.model.clone().unwrap_or_default());
+        .unwrap_or_default();
     let effective_reasoning_effort = agent_snapshot
         .as_ref()
         .and_then(|snapshot| snapshot.reasoning_effort.clone())
@@ -227,7 +227,6 @@ struct SpawnAgentArgs {
     message: Option<String>,
     items: Option<Vec<UserInput>>,
     agent_type: Option<String>,
-    model: Option<String>,
     reasoning_effort: Option<ReasoningEffort>,
     service_tier: Option<String>,
     #[serde(default)]

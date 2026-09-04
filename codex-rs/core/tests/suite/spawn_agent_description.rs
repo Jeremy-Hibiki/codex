@@ -120,7 +120,7 @@ async fn wait_for_model_available(manager: &SharedModelsManager, slug: &str) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() -> Result<()> {
+async fn spawn_agent_description_explains_configured_models_and_delegation_rules() -> Result<()> {
     let server = start_mock_server().await;
     mount_models_once(
         &server,
@@ -194,33 +194,10 @@ async fn spawn_agent_description_lists_visible_models_and_reasoning_efforts() ->
         spawn_agent_description(&body).expect("spawn_agent description should be present");
 
     assert!(
-        description.contains("- `visible-model`: Fast and capable"),
-        "expected visible model summary in spawn_agent description: {description:?}"
-    );
-    assert!(
-        description
-            .contains("Available model overrides (optional; inherited parent model is preferred):"),
-        "expected model choices to be framed as overrides in spawn_agent description: {description:?}"
-    );
-    assert!(
         description.contains(
-            "Spawned agents inherit your current model by default. Omit `model` to use that preferred default; set `model` only when an explicit override is needed."
+            "The model is determined by the parent configuration, sub-agent defaults, and agent-role configuration."
         ),
-        "expected inherited-model guidance in spawn_agent description: {description:?}"
-    );
-    assert!(
-        description.contains(
-            "Do not set the `model` field unless the user explicitly asks for a different model or there is a clear task-specific reason."
-        ),
-        "expected model override usage guidance in spawn_agent description: {description:?}"
-    );
-    assert!(
-        description.contains("Reasoning efforts: low, medium (default), high."),
-        "expected default reasoning effort in spawn_agent description: {description:?}"
-    );
-    assert!(
-        description.contains("Service tiers: priority."),
-        "expected service tier guidance in spawn_agent description: {description:?}"
+        "expected configured-model guidance in spawn_agent description: {description:?}"
     );
     assert!(
         !description.contains("hidden-model"),

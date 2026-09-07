@@ -881,7 +881,7 @@ async fn resume_includes_initial_messages_and_sends_prior_items() {
     let mut builder = test_codex()
         .with_home(codex_home.clone())
         .with_pre_build_hook(|home| {
-            std::fs::write(home.join("AGENTS.md"), "be nice").expect("write global instructions");
+            std::fs::write(home.join("GREVO.md"), "be nice").expect("write global instructions");
         });
     let test = builder
         .resume(&server, codex_home, session_path.clone())
@@ -963,7 +963,7 @@ async fn resume_includes_initial_messages_and_sends_prior_items() {
         .position(|(role, text)| {
             role == "user"
                 && text.contains("be nice")
-                && text.starts_with("# AGENTS.md instructions")
+                && text.starts_with("# GREVO.md instructions")
         })
         .expect("user instructions");
     let pos_environment = messages
@@ -1778,7 +1778,7 @@ async fn includes_user_instructions_message_in_request() {
     let mut builder = test_codex()
         .with_auth(CodexAuth::from_api_key("Test API Key"))
         .with_pre_build_hook(|home| {
-            std::fs::write(home.join("AGENTS.md"), "be nice").expect("write global instructions");
+            std::fs::write(home.join("GREVO.md"), "be nice").expect("write global instructions");
         });
     let codex = builder
         .build(&server)
@@ -1831,8 +1831,8 @@ async fn includes_user_instructions_message_in_request() {
     assert!(
         user_context_texts
             .iter()
-            .any(|text| text.starts_with("# AGENTS.md instructions")),
-        "expected AGENTS text in contextual user message, got {user_context_texts:?}"
+            .any(|text| text.starts_with("# GREVO.md instructions")),
+        "expected GREVO text in contextual user message, got {user_context_texts:?}"
     );
     let ui_text = user_context_texts
         .iter()
@@ -3078,7 +3078,7 @@ async fn includes_developer_instructions_message_in_request() {
     let mut builder = test_codex()
         .with_auth(CodexAuth::from_api_key("Test API Key"))
         .with_pre_build_hook(|home| {
-            std::fs::write(home.join("AGENTS.md"), "be nice").expect("write global instructions");
+            std::fs::write(home.join("GREVO.md"), "be nice").expect("write global instructions");
         })
         .with_config(|config| {
             config.developer_instructions = Some("be useful".to_string());
@@ -3138,8 +3138,8 @@ async fn includes_developer_instructions_message_in_request() {
     assert!(
         user_context_texts
             .iter()
-            .any(|text| text.starts_with("# AGENTS.md instructions")),
-        "expected AGENTS text in contextual user message, got {user_context_texts:?}"
+            .any(|text| text.starts_with("# GREVO.md instructions")),
+        "expected GREVO text in contextual user message, got {user_context_texts:?}"
     );
     let ui_text = user_context_texts
         .iter()

@@ -37,7 +37,7 @@ use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 
 fn write_global_instructions(home: &Path) {
-    fs::write(home.join("AGENTS.md"), "be consistent and helpful")
+    fs::write(home.join("GREVO.md"), "be consistent and helpful")
         .expect("write global instructions");
 }
 

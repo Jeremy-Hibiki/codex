@@ -426,7 +426,7 @@ async fn thread_resume_running_thread_uses_cached_instruction_sources() -> Resul
     let codex_home = TempDir::new()?;
     mock_responses_config(&server.uri()).write(codex_home.path())?;
     let workspace = TempDir::new()?;
-    let project_agents = workspace.path().join("AGENTS.md");
+    let project_agents = workspace.path().join("GREVO.md");
     std::fs::write(&project_agents, "project instructions")?;
 
     let mut mcp = TestAppServer::builder()

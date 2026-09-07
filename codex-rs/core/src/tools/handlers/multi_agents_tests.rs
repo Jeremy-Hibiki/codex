@@ -435,6 +435,9 @@ async fn spawn_agent_service_tier_override_validates_the_effective_child_model()
 
     {
         let (mut session, turn) = make_session_and_context().await;
+        let turn = turn
+            .with_model("gpt-5.4".to_string(), &session.services.models_manager)
+            .await;
         let manager = thread_manager();
         let root = manager
             .start_thread(StartThreadOptions::new((*turn.config).clone()))
@@ -450,7 +453,6 @@ async fn spawn_agent_service_tier_override_validates_the_effective_child_model()
                 "spawn_agent",
                 function_payload(json!({
                     "message": "inspect this repo",
-                    "model": "gpt-5.4",
                     "service_tier": ServiceTier::Fast.request_value()
                 })),
             ))
@@ -474,6 +476,9 @@ async fn spawn_agent_service_tier_override_validates_the_effective_child_model()
 
     {
         let (session, turn) = make_session_and_context().await;
+        let turn = turn
+            .with_model("gpt-5.4".to_string(), &session.services.models_manager)
+            .await;
         let err = SpawnAgentHandler::default()
             .handle(invocation(
                 Arc::new(session),
@@ -481,7 +486,6 @@ async fn spawn_agent_service_tier_override_validates_the_effective_child_model()
                 "spawn_agent",
                 function_payload(json!({
                     "message": "inspect this repo",
-                    "model": "gpt-5.4",
                     "service_tier": "turbo"
                 })),
             ))
@@ -500,6 +504,9 @@ async fn spawn_agent_service_tier_override_validates_the_effective_child_model()
 
     {
         let (session, turn) = make_session_and_context().await;
+        let turn = turn
+            .with_model("gpt-5.4-mini".to_string(), &session.services.models_manager)
+            .await;
         let err = SpawnAgentHandler::default()
             .handle(invocation(
                 Arc::new(session),
@@ -507,7 +514,6 @@ async fn spawn_agent_service_tier_override_validates_the_effective_child_model()
                 "spawn_agent",
                 function_payload(json!({
                     "message": "inspect this repo",
-                    "model": "gpt-5.4-mini",
                     "service_tier": ServiceTier::Fast.request_value()
                 })),
             ))
@@ -580,6 +586,7 @@ async fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_
             .await;
         let mut config = (*turn.config).clone();
         config.service_tier = Some(ServiceTier::Fast.request_value().to_string());
+        config.agent_default_subagent_model = Some("gpt-5.4-mini".to_string());
         turn.config = Arc::new(config);
         let manager = thread_manager();
         let root = manager
@@ -595,8 +602,7 @@ async fn spawn_agent_service_tier_inheritance_preserves_supported_or_configured_
                 Arc::new(turn),
                 "spawn_agent",
                 function_payload(json!({
-                    "message": "inspect this repo",
-                    "model": "gpt-5.4-mini"
+                    "message": "inspect this repo"
                 })),
             ))
             .await

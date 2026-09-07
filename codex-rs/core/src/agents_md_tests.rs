@@ -364,7 +364,7 @@ fn foreign_agents_md_uses_environment_native_paths() {
             r"C:\codex runtime",
         )
     };
-    let source_path = cwd.join("AGENTS.md").expect("AGENTS.md URI");
+    let source_path = cwd.join("GREVO.md").expect("AGENTS.md URI");
     let loaded = LoadedAgentsMd {
         user_instructions: None,
         entries: vec![InstructionEntry {
@@ -380,7 +380,7 @@ fn foreign_agents_md_uses_environment_native_paths() {
     assert_eq!(
         loaded.contextual_user_fragment().render(),
         format!(
-            "# AGENTS.md instructions for {rendered_cwd}
+            "# GREVO.md instructions for {rendered_cwd}
 
 <INSTRUCTIONS>
 remote instructions
@@ -394,10 +394,8 @@ remote instructions
 fn multi_environment_agents_md_renders_mixed_path_conventions() {
     let posix_cwd = PathUri::parse("file:///srv/project").expect("POSIX cwd URI");
     let windows_cwd = PathUri::parse("file:///C:/workspace").expect("Windows cwd URI");
-    let posix_source = posix_cwd.join("AGENTS.md").expect("POSIX AGENTS.md URI");
-    let windows_source = windows_cwd
-        .join("AGENTS.md")
-        .expect("Windows AGENTS.md URI");
+    let posix_source = posix_cwd.join("GREVO.md").expect("POSIX AGENTS.md URI");
+    let windows_source = windows_cwd.join("GREVO.md").expect("Windows AGENTS.md URI");
     let loaded = LoadedAgentsMd {
         user_instructions: None,
         entries: vec![
@@ -422,7 +420,7 @@ fn multi_environment_agents_md_renders_mixed_path_conventions() {
 
     assert_eq!(
         loaded.contextual_user_fragment().render(),
-        r#"# AGENTS.md instructions
+        r#"# GREVO.md instructions
 
 <INSTRUCTIONS>
 for `posix` with root /srv/project
@@ -578,7 +576,7 @@ fn loaded_instructions_with_only_empty_or_whitespace_entries_are_empty() {
 #[tokio::test]
 async fn doc_smaller_than_limit_is_returned() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    fs::write(tmp.path().join("AGENTS.md"), "hello world").unwrap();
+    fs::write(tmp.path().join("GREVO.md"), "hello world").unwrap();
 
     let res =
         get_user_instructions(&make_config(&tmp, /*limit*/ 4096, /*instructions*/ None).await)
@@ -594,7 +592,7 @@ async fn doc_smaller_than_limit_is_returned() {
 #[tokio::test]
 async fn project_doc_invalid_utf8_uses_lossy_text() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let path = tmp.path().join("AGENTS.md");
+    let path = tmp.path().join("GREVO.md");
     fs::write(&path, b"project\xFF doc").unwrap();
 
     let config = make_config(&tmp, /*limit*/ 4096, /*instructions*/ None).await;
@@ -610,7 +608,7 @@ async fn doc_larger_than_limit_is_truncated() {
     let tmp = tempfile::tempdir().expect("tempdir");
 
     let huge = "A".repeat(LIMIT * 2); // 2 KiB
-    fs::write(tmp.path().join("AGENTS.md"), &huge).unwrap();
+    fs::write(tmp.path().join("GREVO.md"), &huge).unwrap();
 
     let res = get_user_instructions(&make_config(&tmp, LIMIT, /*instructions*/ None).await)
         .await
@@ -624,10 +622,10 @@ async fn doc_larger_than_limit_is_truncated() {
 async fn total_byte_limit_truncates_later_project_docs() {
     let repo = tempfile::tempdir().expect("tempdir");
     fs::write(repo.path().join(".git"), "").unwrap();
-    fs::write(repo.path().join("AGENTS.md"), "root").unwrap();
+    fs::write(repo.path().join("GREVO.md"), "root").unwrap();
     let nested = repo.path().join("nested");
     fs::create_dir(&nested).unwrap();
-    fs::write(nested.join("AGENTS.md"), "abcdef").unwrap();
+    fs::write(nested.join("GREVO.md"), "abcdef").unwrap();
 
     let mut config = make_config(&repo, /*limit*/ 7, /*instructions*/ None).await;
     config.cwd = nested.abs();
@@ -639,13 +637,13 @@ async fn total_byte_limit_truncates_later_project_docs() {
             InstructionEntry {
                 contents: "root".to_string(),
                 provenance: project_provenance(
-                    repo.path().join("AGENTS.md").abs(),
+                    repo.path().join("GREVO.md").abs(),
                     config.cwd.clone(),
                 ),
             },
             InstructionEntry {
                 contents: "abc".to_string(),
-                provenance: project_provenance(config.cwd.join("AGENTS.md"), config.cwd.clone()),
+                provenance: project_provenance(config.cwd.join("GREVO.md"), config.cwd.clone()),
             },
         ],
     };
@@ -676,10 +674,10 @@ async fn read_agents_md_propagates_metadata_errors() {
 #[tokio::test]
 async fn read_agents_md_propagates_read_errors() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    fs::write(tmp.path().join("AGENTS.md"), "project doc").unwrap();
+    fs::write(tmp.path().join("GREVO.md"), "project doc").unwrap();
     let config = make_config(&tmp, /*limit*/ 4096, /*instructions*/ None).await;
     let fs = FailingFileSystem {
-        path: config.cwd.join("AGENTS.md"),
+        path: config.cwd.join("GREVO.md"),
         failure: InjectedFailure::Read(io::ErrorKind::PermissionDenied),
         metadata_calls: Arc::default(),
     };
@@ -695,10 +693,10 @@ async fn read_agents_md_propagates_read_errors() {
 #[tokio::test]
 async fn read_agents_md_ignores_files_removed_after_discovery() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    fs::write(tmp.path().join("AGENTS.md"), "project doc").unwrap();
+    fs::write(tmp.path().join("GREVO.md"), "project doc").unwrap();
     let config = make_config(&tmp, /*limit*/ 4096, /*instructions*/ None).await;
     let fs = FailingFileSystem {
-        path: config.cwd.join("AGENTS.md"),
+        path: config.cwd.join("GREVO.md"),
         failure: InjectedFailure::Read(io::ErrorKind::NotFound),
         metadata_calls: Arc::default(),
     };
@@ -715,7 +713,7 @@ async fn read_agents_md_ignores_files_removed_after_discovery() {
 async fn marker_search_does_not_wait_for_a_higher_ancestor() {
     let tmp = tempfile::tempdir().expect("tempdir");
     fs::write(tmp.path().join(".git"), "").unwrap();
-    fs::write(tmp.path().join("AGENTS.md"), "project doc").unwrap();
+    fs::write(tmp.path().join("GREVO.md"), "project doc").unwrap();
     let nested = tmp.path().join("nested");
     fs::create_dir(&nested).unwrap();
 
@@ -755,10 +753,10 @@ async fn project_root_marker_search_limits_concurrent_probes_and_preserves_order
     const CONCURRENCY_LIMIT: usize = 256;
 
     let tmp = tempfile::tempdir().expect("tempdir");
-    fs::write(tmp.path().join("AGENTS.md"), "project doc").unwrap();
+    fs::write(tmp.path().join("GREVO.md"), "project doc").unwrap();
     let nested = tmp.path().join("nested");
     fs::create_dir_all(&nested).unwrap();
-    fs::write(nested.join("AGENTS.md"), "nested project doc").unwrap();
+    fs::write(nested.join("GREVO.md"), "nested project doc").unwrap();
 
     let markers = (0..=CONCURRENCY_LIMIT)
         .map(|index| format!(".project-root-{index}"))
@@ -861,7 +859,7 @@ async fn agents_md_search_starts_all_directory_probes() {
 
     let tmp = tempfile::tempdir().expect("tempdir");
     fs::write(tmp.path().join(".git"), "").unwrap();
-    fs::write(tmp.path().join("AGENTS.md"), "project doc").unwrap();
+    fs::write(tmp.path().join("GREVO.md"), "project doc").unwrap();
     let mut nested = tmp.path().to_path_buf();
     for depth in 0..NESTING_DEPTH {
         nested.push(format!("nested-{depth}"));
@@ -942,10 +940,10 @@ async fn agents_md_search_starts_all_directory_probes() {
 #[tokio::test]
 async fn empty_project_root_markers_only_probe_cwd_candidates() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    fs::write(tmp.path().join("AGENTS.md"), "parent doc").unwrap();
+    fs::write(tmp.path().join("GREVO.md"), "parent doc").unwrap();
     let nested = tmp.path().join("nested");
     fs::create_dir(&nested).unwrap();
-    fs::write(nested.join("AGENTS.md"), "cwd doc").unwrap();
+    fs::write(nested.join("GREVO.md"), "cwd doc").unwrap();
 
     let mut config = make_config_with_project_root_markers(
         &tmp,
@@ -994,7 +992,7 @@ async fn finds_doc_in_repo_root() {
     .unwrap();
 
     // Put the doc at the repo root.
-    fs::write(repo.path().join("AGENTS.md"), "root level doc").unwrap();
+    fs::write(repo.path().join("GREVO.md"), "root level doc").unwrap();
 
     // Now create a nested working directory: repo/workspace/crate_a
     let nested = repo.path().join("workspace/crate_a");
@@ -1012,7 +1010,7 @@ async fn finds_doc_in_repo_root() {
 #[tokio::test]
 async fn zero_byte_limit_disables_docs() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    fs::write(tmp.path().join("AGENTS.md"), "something").unwrap();
+    fs::write(tmp.path().join("GREVO.md"), "something").unwrap();
 
     let res =
         get_user_instructions(&make_config(&tmp, /*limit*/ 0, /*instructions*/ None).await).await;
@@ -1027,7 +1025,7 @@ async fn zero_byte_limit_disables_docs() {
 #[tokio::test]
 async fn merges_existing_instructions_with_agents_md() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    fs::write(tmp.path().join("AGENTS.md"), "proj doc").unwrap();
+    fs::write(tmp.path().join("GREVO.md"), "proj doc").unwrap();
 
     const INSTRUCTIONS: &str = "base instructions";
 
@@ -1045,11 +1043,11 @@ async fn multiple_environment_docs_use_labeled_layout_and_preserve_source_order(
     let primary = tempfile::tempdir().expect("primary tempdir");
     let secondary = tempfile::tempdir().expect("secondary tempdir");
     fs::create_dir(primary.path().join(".git")).unwrap();
-    fs::write(primary.path().join("AGENTS.md"), "primary root doc").unwrap();
+    fs::write(primary.path().join("GREVO.md"), "primary root doc").unwrap();
     let primary_nested = primary.path().join("nested");
     fs::create_dir(&primary_nested).unwrap();
-    fs::write(primary_nested.join("AGENTS.md"), "primary nested doc").unwrap();
-    fs::write(secondary.path().join("AGENTS.md"), "secondary doc").unwrap();
+    fs::write(primary_nested.join("GREVO.md"), "primary nested doc").unwrap();
+    fs::write(secondary.path().join("GREVO.md"), "secondary doc").unwrap();
     let mut config = make_config(&primary, /*limit*/ 4096, Some("global instructions")).await;
     config.cwd = primary_nested.abs();
     let environments = resolved_local_environments([
@@ -1080,7 +1078,7 @@ secondary doc"#,
     assert_eq!(loaded.environment_labeled_text(), inner);
     assert_eq!(loaded.text(), inner);
     let expected_fragment = format!(
-        r#"# AGENTS.md instructions
+        r#"# GREVO.md instructions
 
 <INSTRUCTIONS>
 {inner}
@@ -1100,9 +1098,9 @@ secondary doc"#,
                     .expect("global instructions")
                     .source,
             ),
-            PathUri::from_abs_path(&primary.path().join("AGENTS.md").abs()),
-            PathUri::from_abs_path(&primary_nested.join("AGENTS.md").abs()),
-            PathUri::from_abs_path(&secondary.path().join("AGENTS.md").abs()),
+            PathUri::from_abs_path(&primary.path().join("GREVO.md").abs()),
+            PathUri::from_abs_path(&primary_nested.join("GREVO.md").abs()),
+            PathUri::from_abs_path(&secondary.path().join("GREVO.md").abs()),
         ]
     );
 }
@@ -1111,7 +1109,7 @@ secondary doc"#,
 async fn secondary_only_project_doc_uses_single_contributor_layout() {
     let primary = tempfile::tempdir().expect("primary tempdir");
     let secondary = tempfile::tempdir().expect("secondary tempdir");
-    fs::write(secondary.path().join("AGENTS.md"), "secondary doc").unwrap();
+    fs::write(secondary.path().join("GREVO.md"), "secondary doc").unwrap();
     let config = make_config(&primary, /*limit*/ 4096, Some("global instructions")).await;
     let environments = resolved_local_environments([
         ("primary", config.cwd.clone()),
@@ -1127,7 +1125,7 @@ async fn secondary_only_project_doc_uses_single_contributor_layout() {
     assert_eq!(loaded.legacy_text(), inner);
     assert_eq!(loaded.text(), inner);
     let expected_fragment = format!(
-        "# AGENTS.md instructions for {}\n\n<INSTRUCTIONS>\n{inner}\n</INSTRUCTIONS>",
+        "# GREVO.md instructions for {}\n\n<INSTRUCTIONS>\n{inner}\n</INSTRUCTIONS>",
         secondary.path().display()
     );
     assert_eq!(
@@ -1140,7 +1138,7 @@ async fn secondary_only_project_doc_uses_single_contributor_layout() {
 async fn primary_only_project_doc_preserves_legacy_layout_with_multiple_bound_environments() {
     let primary = tempfile::tempdir().expect("primary tempdir");
     let secondary = tempfile::tempdir().expect("secondary tempdir");
-    fs::write(primary.path().join("AGENTS.md"), "primary doc").unwrap();
+    fs::write(primary.path().join("GREVO.md"), "primary doc").unwrap();
     let config = make_config(&primary, /*limit*/ 4096, Some("global instructions")).await;
     let environments = resolved_local_environments([
         ("primary", config.cwd.clone()),
@@ -1156,7 +1154,7 @@ async fn primary_only_project_doc_preserves_legacy_layout_with_multiple_bound_en
     assert_eq!(loaded.legacy_text(), inner);
     assert_eq!(loaded.text(), inner);
     let expected_fragment = format!(
-        "# AGENTS.md instructions for {}\n\n<INSTRUCTIONS>\n{inner}\n</INSTRUCTIONS>",
+        "# GREVO.md instructions for {}\n\n<INSTRUCTIONS>\n{inner}\n</INSTRUCTIONS>",
         primary.path().display()
     );
     assert_eq!(
@@ -1169,8 +1167,8 @@ async fn primary_only_project_doc_preserves_legacy_layout_with_multiple_bound_en
 async fn project_doc_byte_limit_is_applied_independently_per_environment() {
     let primary = tempfile::tempdir().expect("primary tempdir");
     let secondary = tempfile::tempdir().expect("secondary tempdir");
-    fs::write(primary.path().join("AGENTS.md"), "ABCDE").unwrap();
-    fs::write(secondary.path().join("AGENTS.md"), "VWXYZ").unwrap();
+    fs::write(primary.path().join("GREVO.md"), "ABCDE").unwrap();
+    fs::write(secondary.path().join("GREVO.md"), "VWXYZ").unwrap();
     let config = make_config(&primary, /*limit*/ 3, /*instructions*/ None).await;
     let environments = resolved_local_environments([
         ("primary", config.cwd.clone()),
@@ -1201,8 +1199,8 @@ async fn multiple_environments_can_exceed_single_environment_project_doc_limit()
     let secondary = tempfile::tempdir().expect("secondary tempdir");
     let primary_doc = "P".repeat(LIMIT);
     let secondary_doc = "S".repeat(LIMIT);
-    fs::write(primary.path().join("AGENTS.md"), &primary_doc).unwrap();
-    fs::write(secondary.path().join("AGENTS.md"), &secondary_doc).unwrap();
+    fs::write(primary.path().join("GREVO.md"), &primary_doc).unwrap();
+    fs::write(secondary.path().join("GREVO.md"), &secondary_doc).unwrap();
     let config = make_config(&primary, LIMIT, /*instructions*/ None).await;
     let environments = resolved_local_environments([
         ("primary", config.cwd.clone()),
@@ -1233,8 +1231,8 @@ async fn multiple_environments_can_exceed_single_environment_project_doc_limit()
 async fn secondary_environment_invalid_utf8_does_not_suppress_other_docs() {
     let primary = tempfile::tempdir().expect("primary tempdir");
     let secondary = tempfile::tempdir().expect("secondary tempdir");
-    fs::write(primary.path().join("AGENTS.md"), "primary doc").unwrap();
-    fs::write(secondary.path().join("AGENTS.md"), b"secondary\xFFdoc").unwrap();
+    fs::write(primary.path().join("GREVO.md"), "primary doc").unwrap();
+    fs::write(secondary.path().join("GREVO.md"), b"secondary\xFFdoc").unwrap();
     let config = make_config(&primary, /*limit*/ 4096, /*instructions*/ None).await;
     let environments = resolved_local_environments([
         ("primary", config.cwd.clone()),
@@ -1280,19 +1278,19 @@ async fn concatenates_root_and_cwd_docs() {
     .unwrap();
 
     // Repo root doc.
-    fs::write(repo.path().join("AGENTS.md"), "root doc").unwrap();
+    fs::write(repo.path().join("GREVO.md"), "root doc").unwrap();
 
     // Nested working directory with its own doc.
     let nested = repo.path().join("workspace/crate_a");
     std::fs::create_dir_all(&nested).unwrap();
-    fs::write(nested.join("AGENTS.md"), "crate doc").unwrap();
+    fs::write(nested.join("GREVO.md"), "crate doc").unwrap();
 
     let mut cfg = make_config(&repo, /*limit*/ 4096, /*instructions*/ None).await;
     cfg.cwd = nested.abs();
 
     let loaded = load_agents_md(&cfg).await.expect("doc expected");
-    let root_agents = repo.path().join("AGENTS.md").abs();
-    let crate_agents = cfg.cwd.join("AGENTS.md");
+    let root_agents = repo.path().join("GREVO.md").abs();
+    let crate_agents = cfg.cwd.join("GREVO.md");
     let expected = LoadedAgentsMd {
         user_instructions: None,
         entries: vec![
@@ -1322,11 +1320,11 @@ async fn concatenates_root_and_cwd_docs() {
 async fn project_root_markers_are_honored_for_agents_discovery() {
     let root = tempfile::tempdir().expect("tempdir");
     fs::write(root.path().join(".codex-root"), "").unwrap();
-    fs::write(root.path().join("AGENTS.md"), "parent doc").unwrap();
+    fs::write(root.path().join("GREVO.md"), "parent doc").unwrap();
 
     let nested = root.path().join("dir1");
     fs::create_dir_all(nested.join(".git")).unwrap();
-    fs::write(nested.join("AGENTS.md"), "child doc").unwrap();
+    fs::write(nested.join("GREVO.md"), "child doc").unwrap();
 
     let mut cfg = make_config_with_project_root_markers(
         &root,
@@ -1338,8 +1336,8 @@ async fn project_root_markers_are_honored_for_agents_discovery() {
     cfg.cwd = nested.abs();
 
     let discovery = agents_md_paths(&cfg).await.expect("discover paths");
-    let expected_parent = root.path().join("AGENTS.md").abs();
-    let expected_child = cfg.cwd.join("AGENTS.md");
+    let expected_parent = root.path().join("GREVO.md").abs();
+    let expected_child = cfg.cwd.join("GREVO.md");
     assert_eq!(discovery.len(), 2);
     assert_eq!(discovery[0], PathUri::from_abs_path(&expected_parent));
     assert_eq!(discovery[1], PathUri::from_abs_path(&expected_child));
@@ -1352,10 +1350,10 @@ async fn project_root_markers_are_honored_for_agents_discovery() {
 async fn project_layers_do_not_override_project_root_markers() {
     let root = tempfile::tempdir().expect("tempdir");
     fs::write(root.path().join(".git"), "").unwrap();
-    fs::write(root.path().join("AGENTS.md"), "root doc").unwrap();
+    fs::write(root.path().join("GREVO.md"), "root doc").unwrap();
     let nested = root.path().join("nested");
     fs::create_dir(&nested).unwrap();
-    fs::write(nested.join("AGENTS.md"), "nested doc").unwrap();
+    fs::write(nested.join("GREVO.md"), "nested doc").unwrap();
 
     let mut config = make_config(&root, /*limit*/ 4096, /*instructions*/ None).await;
     config.cwd = nested.abs();
@@ -1387,8 +1385,8 @@ async fn project_layers_do_not_override_project_root_markers() {
     assert_eq!(
         discovery,
         vec![
-            PathUri::from_abs_path(&root.path().join("AGENTS.md").abs()),
-            PathUri::from_abs_path(&config.cwd.join("AGENTS.md")),
+            PathUri::from_abs_path(&root.path().join("GREVO.md").abs()),
+            PathUri::from_abs_path(&config.cwd.join("GREVO.md")),
         ]
     );
 }
@@ -1398,7 +1396,7 @@ async fn agents_md_paths_preserve_symlinked_cwd() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let target = tmp.path().join("target");
     fs::create_dir(&target).unwrap();
-    fs::write(target.join("AGENTS.md"), "project doc").unwrap();
+    fs::write(target.join("GREVO.md"), "project doc").unwrap();
 
     let linked_cwd = tmp.path().join("linked");
     create_directory_symlink(&target, &linked_cwd);
@@ -1409,7 +1407,7 @@ async fn agents_md_paths_preserve_symlinked_cwd() {
     let discovery = agents_md_paths(&cfg).await.expect("discover paths");
     assert_eq!(
         discovery,
-        vec![PathUri::from_abs_path(&cfg.cwd.join("AGENTS.md"))]
+        vec![PathUri::from_abs_path(&cfg.cwd.join("GREVO.md"))]
     );
 
     let res = get_user_instructions(&cfg).await.expect("doc expected");
@@ -1419,7 +1417,7 @@ async fn agents_md_paths_preserve_symlinked_cwd() {
 #[tokio::test]
 async fn instruction_sources_include_global_before_agents_md_docs() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    fs::write(tmp.path().join("AGENTS.md"), "project doc").unwrap();
+    fs::write(tmp.path().join("GREVO.md"), "project doc").unwrap();
 
     let cfg = make_config(&tmp, /*limit*/ 4096, Some("global doc")).await;
     let global_agents = cfg.codex_home.join(DEFAULT_AGENTS_MD_FILENAME);
@@ -1427,7 +1425,7 @@ async fn instruction_sources_include_global_before_agents_md_docs() {
     fs::write(&global_agents, "global doc").unwrap();
 
     let loaded = load_agents_md(&cfg).await.expect("instructions expected");
-    let project_agents = cfg.cwd.join("AGENTS.md");
+    let project_agents = cfg.cwd.join("GREVO.md");
 
     let expected = LoadedAgentsMd {
         user_instructions: Some(UserInstructions {
@@ -1501,7 +1499,7 @@ async fn uses_configured_fallback_when_agents_missing() {
 #[tokio::test]
 async fn agents_md_preferred_over_fallbacks() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    fs::write(tmp.path().join("AGENTS.md"), "primary").unwrap();
+    fs::write(tmp.path().join("GREVO.md"), "primary").unwrap();
     fs::write(tmp.path().join("EXAMPLE.md"), "secondary").unwrap();
 
     let cfg = make_config_with_fallback(
@@ -1529,7 +1527,7 @@ async fn agents_md_preferred_over_fallbacks() {
 #[tokio::test]
 async fn agents_md_directory_is_ignored() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    fs::create_dir(tmp.path().join("AGENTS.md")).unwrap();
+    fs::create_dir(tmp.path().join("GREVO.md")).unwrap();
 
     let cfg = make_config(&tmp, /*limit*/ 4096, /*instructions*/ None).await;
 
@@ -1547,7 +1545,7 @@ async fn agents_md_special_file_is_ignored() {
     use std::os::unix::ffi::OsStrExt;
 
     let tmp = tempfile::tempdir().expect("tempdir");
-    let path = tmp.path().join("AGENTS.md");
+    let path = tmp.path().join("GREVO.md");
     let c_path = CString::new(path.as_os_str().as_bytes()).expect("path without nul");
     // SAFETY: `c_path` is a valid, nul-terminated path and `mkfifo` does not
     // retain the pointer after the call.
@@ -1587,7 +1585,7 @@ async fn override_directory_falls_back_to_agents_md_file() {
 #[tokio::test]
 async fn skills_are_not_appended_to_agents_md() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    fs::write(tmp.path().join("AGENTS.md"), "base doc").unwrap();
+    fs::write(tmp.path().join("GREVO.md"), "base doc").unwrap();
 
     let cfg = make_config(&tmp, /*limit*/ 4096, /*instructions*/ None).await;
     create_skill(
@@ -1617,7 +1615,7 @@ async fn apps_feature_does_not_emit_user_instructions_by_itself() {
 #[tokio::test]
 async fn apps_feature_does_not_append_to_agents_md_user_instructions() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    fs::write(tmp.path().join("AGENTS.md"), "base doc").unwrap();
+    fs::write(tmp.path().join("GREVO.md"), "base doc").unwrap();
 
     let mut cfg = make_config(&tmp, /*limit*/ 4096, /*instructions*/ None).await;
     cfg.features

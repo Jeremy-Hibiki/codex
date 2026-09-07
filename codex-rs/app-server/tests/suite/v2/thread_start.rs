@@ -672,10 +672,10 @@ async fn thread_start_response_includes_loaded_instruction_sources() -> Result<(
     let server = create_mock_responses_server_repeating_assistant("Done").await;
     let codex_home = TempDir::new()?;
     create_config_toml_without_approval_policy(codex_home.path(), &server.uri())?;
-    let global_agents_path = codex_home.path().join("AGENTS.md");
+    let global_agents_path = codex_home.path().join("GREVO.md");
     std::fs::write(&global_agents_path, "global instructions")?;
     let workspace = TempDir::new()?;
-    let project_agents_path = workspace.path().join("AGENTS.md");
+    let project_agents_path = workspace.path().join("GREVO.md");
     std::fs::write(&project_agents_path, "project instructions")?;
 
     let mut mcp = TestAppServer::builder()
@@ -718,10 +718,10 @@ async fn thread_start_response_excludes_empty_project_instruction_source() -> Re
     let server = create_mock_responses_server_repeating_assistant("Done").await;
     let codex_home = TempDir::new()?;
     create_config_toml_without_approval_policy(codex_home.path(), &server.uri())?;
-    let global_agents_path = codex_home.path().join("AGENTS.md");
+    let global_agents_path = codex_home.path().join("GREVO.md");
     std::fs::write(&global_agents_path, "global instructions")?;
     let workspace = TempDir::new()?;
-    let project_agents_path = workspace.path().join("AGENTS.md");
+    let project_agents_path = workspace.path().join("GREVO.md");
     std::fs::write(project_agents_path, "")?;
 
     let mut mcp = TestAppServer::builder()
@@ -761,10 +761,10 @@ async fn thread_start_without_selected_environment_includes_only_global_instruct
     let server = create_mock_responses_server_repeating_assistant("Done").await;
     let codex_home = TempDir::new()?;
     create_config_toml_without_approval_policy(codex_home.path(), &server.uri())?;
-    let global_agents_path = codex_home.path().join("AGENTS.md");
+    let global_agents_path = codex_home.path().join("GREVO.md");
     std::fs::write(&global_agents_path, "global instructions")?;
     let workspace = TempDir::new()?;
-    std::fs::write(workspace.path().join("AGENTS.md"), "project instructions")?;
+    std::fs::write(workspace.path().join("GREVO.md"), "project instructions")?;
 
     let mut mcp = TestAppServer::builder()
         .with_codex_home(codex_home.path())

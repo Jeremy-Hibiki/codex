@@ -16,10 +16,14 @@ fn detects_environment_context_fragment() {
 }
 
 #[test]
-fn detects_agents_instructions_fragment() {
+fn detects_grevo_and_legacy_agents_instructions_fragments() {
     for text in [
+        "# GREVO.md instructions for /tmp\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>",
+        "# GREVO.md instructions\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>",
         "# AGENTS.md instructions for /tmp\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>",
         "# AGENTS.md instructions\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>",
+        "  # grevo.MD INSTRUCTIONS for /tmp\n\n<INSTRUCTIONS>\nbody\n</instructions>  ",
+        "  # agents.MD INSTRUCTIONS for /tmp\n\n<INSTRUCTIONS>\nbody\n</instructions>  ",
     ] {
         assert!(is_contextual_user_fragment(&ContentItem::InputText {
             text: text.to_string(),
@@ -28,26 +32,26 @@ fn detects_agents_instructions_fragment() {
 }
 
 #[test]
-fn renders_agents_instructions_with_legacy_directory_header() {
+fn renders_grevo_instructions_with_directory_header() {
     assert_eq!(
         UserInstructions {
             directory: Some("/tmp".to_string()),
             text: "body".to_string(),
         }
         .render(),
-        "# AGENTS.md instructions for /tmp\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>"
+        "# GREVO.md instructions for /tmp\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>"
     );
 }
 
 #[test]
-fn renders_agents_instructions_without_directory_header() {
+fn renders_grevo_instructions_without_directory_header() {
     assert_eq!(
         UserInstructions {
             directory: None,
             text: "body".to_string(),
         }
         .render(),
-        "# AGENTS.md instructions\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>"
+        "# GREVO.md instructions\n\n<INSTRUCTIONS>\nbody\n</INSTRUCTIONS>"
     );
 }
 

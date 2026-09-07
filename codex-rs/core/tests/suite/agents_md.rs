@@ -37,8 +37,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 
-const GLOBAL_AGENTS_FILENAME: &str = "AGENTS.md";
-const GLOBAL_AGENTS_OVERRIDE_FILENAME: &str = "AGENTS.override.md";
+const GLOBAL_AGENTS_FILENAME: &str = "GREVO.md";
+const GLOBAL_AGENTS_OVERRIDE_FILENAME: &str = "GREVO.override.md";
 const GLOBAL_INSTRUCTIONS: &str = "global instructions";
 const NEW_GLOBAL_INSTRUCTIONS: &str = "new global instructions";
 const NEW_PROJECT_INSTRUCTIONS: &str = "new project instructions";
@@ -66,7 +66,7 @@ async fn agents_instructions(mut builder: TestCodexBuilder) -> Result<String> {
     request
         .message_input_texts("user")
         .into_iter()
-        .find(|text| text.starts_with("# AGENTS.md instructions"))
+        .find(|text| text.starts_with("# GREVO.md instructions"))
         .ok_or_else(|| anyhow::anyhow!("instructions message not found"))
 }
 
@@ -80,8 +80,9 @@ fn write_global_file(
     Ok(path.abs())
 }
 
-fn remove_agents_md_world_state_section(rollout_path: &Path) -> Result<()> {
-    let rollout = std::fs::read_to_string(rollout_path)?;
+fn rewrite_rollout_as_legacy_agents_md(rollout_path: &Path) -> Result<()> {
+    let rollout = std::fs::read_to_string(rollout_path)?
+        .replace("# GREVO.md instructions", "# AGENTS.md instructions");
     let mut removed_section = false;
     let retained = rollout
         .lines()
@@ -100,7 +101,7 @@ fn remove_agents_md_world_state_section(rollout_path: &Path) -> Result<()> {
         .join("\n");
     anyhow::ensure!(
         removed_section,
-        "rollout did not contain a persisted AGENTS.md WorldState section"
+        "rollout did not contain a persisted agents_md WorldState section"
     );
     std::fs::write(rollout_path, format!("{retained}\n"))?;
     Ok(())
@@ -110,17 +111,20 @@ fn instruction_fragments(request: &responses::ResponsesRequest) -> Vec<String> {
     request
         .message_input_texts("user")
         .into_iter()
-        .filter(|text| text.starts_with("# AGENTS.md instructions"))
+        .filter(|text| {
+            text.starts_with("# GREVO.md instructions")
+                || text.starts_with("# AGENTS.md instructions")
+        })
         .collect()
 }
 
 fn expected_instruction_fragment(cwd: &AbsolutePathBuf, contents: &str) -> String {
     let cwd = PathUri::from_abs_path(cwd).inferred_native_path_string();
-    format!("# AGENTS.md instructions for {cwd}\n\n<INSTRUCTIONS>\n{contents}\n</INSTRUCTIONS>")
+    format!("# GREVO.md instructions for {cwd}\n\n<INSTRUCTIONS>\n{contents}\n</INSTRUCTIONS>")
 }
 
 fn expected_provider_only_instruction_fragment(contents: &str) -> String {
-    format!("# AGENTS.md instructions\n\n<INSTRUCTIONS>\n{contents}\n</INSTRUCTIONS>")
+    format!("# GREVO.md instructions\n\n<INSTRUCTIONS>\n{contents}\n</INSTRUCTIONS>")
 }
 
 fn assert_instruction_replacement_once(
@@ -187,8 +191,8 @@ fn request_body_contains(request: &wiremock::Request, text: &str) -> bool {
 async fn agents_override_is_preferred_over_agents_md() -> Result<()> {
     let instructions =
         agents_instructions(test_codex().with_workspace_setup(|cwd, fs| async move {
-            let agents_md = cwd.join("AGENTS.md");
-            let override_md = cwd.join("AGENTS.override.md");
+            let agents_md = cwd.join("GREVO.md");
+            let override_md = cwd.join("GREVO.override.md");
             let agents_md_uri = PathUri::from_host_native_path(&agents_md)?;
             let override_md_uri = PathUri::from_host_native_path(&override_md)?;
             fs.write_file(&agents_md_uri, b"base doc".to_vec(), /*sandbox*/ None)
@@ -205,11 +209,11 @@ async fn agents_override_is_preferred_over_agents_md() -> Result<()> {
 
     assert!(
         instructions.contains("override doc"),
-        "expected AGENTS.override.md contents: {instructions}"
+        "expected GREVO.override.md contents: {instructions}"
     );
     assert!(
         !instructions.contains("base doc"),
-        "expected AGENTS.md to be ignored when override exists: {instructions}"
+        "expected GREVO.md to be ignored when override exists: {instructions}"
     );
 
     Ok(())
@@ -220,11 +224,11 @@ async fn configured_fallback_is_used_when_agents_candidate_is_directory() -> Res
     let instructions = agents_instructions(
         test_codex()
             .with_config(|config| {
-                config.project_doc_fallback_filenames = vec!["WORKFLOW.md".to_string()];
+                config.project_doc_fallback_filenames = vec!["AGENTS.md".to_string()];
             })
             .with_workspace_setup(|cwd, fs| async move {
-                let agents_dir = cwd.join("AGENTS.md");
-                let fallback = cwd.join("WORKFLOW.md");
+                let agents_dir = cwd.join("GREVO.md");
+                let fallback = cwd.join("AGENTS.md");
                 let agents_dir_uri = PathUri::from_host_native_path(&agents_dir)?;
                 let fallback_uri = PathUri::from_host_native_path(&fallback)?;
                 fs.create_directory(
@@ -265,9 +269,9 @@ async fn agents_docs_are_concatenated_from_project_root_to_cwd() -> Result<()> {
                     .parent()
                     .and_then(|parent| parent.parent())
                     .expect("nested workspace should have a project root ancestor");
-                let root_agents = root.join("AGENTS.md");
+                let root_agents = root.join("GREVO.md");
                 let git_marker = root.join(".git");
-                let nested_agents = nested.join("AGENTS.md");
+                let nested_agents = nested.join("GREVO.md");
                 let nested_uri = PathUri::from_host_native_path(&nested)?;
                 let root_agents_uri = PathUri::from_host_native_path(&root_agents)?;
                 let git_marker_uri = PathUri::from_host_native_path(&git_marker)?;
@@ -357,12 +361,12 @@ async fn symlinked_cwd_uses_logical_parent_for_agents_discovery() -> Result<()> 
 
             std::fs::create_dir_all(logical_root.as_path())?;
             std::fs::write(logical_root.join(".git"), "")?;
-            std::fs::write(logical_root.join("AGENTS.md"), "logical parent doc")?;
+            std::fs::write(logical_root.join("GREVO.md"), "logical parent doc")?;
 
             std::fs::create_dir_all(physical_workspace.as_path())?;
             std::fs::write(physical_root.join(".git"), "")?;
-            std::fs::write(physical_root.join("AGENTS.md"), "physical parent doc")?;
-            std::fs::write(physical_workspace.join("AGENTS.md"), "workspace doc")?;
+            std::fs::write(physical_root.join("GREVO.md"), "physical parent doc")?;
+            std::fs::write(physical_workspace.join("GREVO.md"), "workspace doc")?;
 
             create_directory_symlink(physical_workspace.as_path(), cwd.as_path());
             Ok(())
@@ -377,8 +381,8 @@ async fn symlinked_cwd_uses_logical_parent_for_agents_discovery() -> Result<()> 
     assert_eq!(
         test.codex.instruction_sources().await,
         vec![
-            PathUri::from_abs_path(&logical_root.join("AGENTS.md")),
-            PathUri::from_abs_path(&test.config.cwd.join("AGENTS.md"))
+            PathUri::from_abs_path(&logical_root.join("GREVO.md")),
+            PathUri::from_abs_path(&test.config.cwd.join("GREVO.md"))
         ]
     );
 
@@ -387,7 +391,7 @@ async fn symlinked_cwd_uses_logical_parent_for_agents_discovery() -> Result<()> 
         .single_request()
         .message_input_texts("user")
         .into_iter()
-        .find(|text| text.starts_with("# AGENTS.md instructions"))
+        .find(|text| text.starts_with("# GREVO.md instructions"))
         .expect("instructions message");
     assert!(instructions.contains("logical parent doc"));
     assert!(instructions.contains("workspace doc"));
@@ -405,13 +409,13 @@ async fn selected_environment_sources_match_model_visible_instructions() -> Resu
     )
     .await;
     let home = Arc::new(TempDir::new()?);
-    let global_agents = home.path().join("AGENTS.md");
+    let global_agents = home.path().join("GREVO.md");
     std::fs::write(&global_agents, "global doc")?;
 
     let mut builder = test_codex()
         .with_home(home)
         .with_workspace_setup(|cwd, fs| async move {
-            let agents_md_uri = PathUri::from_host_native_path(cwd.join("AGENTS.md"))?;
+            let agents_md_uri = PathUri::from_host_native_path(cwd.join("GREVO.md"))?;
             fs.write_file(
                 &agents_md_uri,
                 b"project doc".to_vec(),
@@ -421,7 +425,7 @@ async fn selected_environment_sources_match_model_visible_instructions() -> Resu
             Ok::<(), anyhow::Error>(())
         });
     let test = builder.build_with_auto_env(&server).await?;
-    let project_agents = test.config.cwd.join("AGENTS.md");
+    let project_agents = test.config.cwd.join("GREVO.md");
     let global_agents = global_agents.abs();
 
     assert_eq!(
@@ -437,7 +441,7 @@ async fn selected_environment_sources_match_model_visible_instructions() -> Resu
         .single_request()
         .message_input_texts("user")
         .into_iter()
-        .find(|text| text.starts_with("# AGENTS.md instructions"))
+        .find(|text| text.starts_with("# GREVO.md instructions"))
         .expect("instructions message");
     assert!(instructions.contains("global doc\n\n--- project-doc ---\n\nproject doc"));
 
@@ -545,7 +549,7 @@ async fn fresh_thread_composes_global_before_project_and_reports_sources() -> Re
     let mut builder = test_codex()
         .with_home(Arc::clone(&home))
         .with_workspace_setup(|cwd, fs| async move {
-            let agents_md_uri = PathUri::from_host_native_path(cwd.join("AGENTS.md"))?;
+            let agents_md_uri = PathUri::from_host_native_path(cwd.join("GREVO.md"))?;
             fs.write_file(
                 &agents_md_uri,
                 PROJECT_INSTRUCTIONS.as_bytes().to_vec(),
@@ -732,7 +736,7 @@ async fn multi_environment_thread_loads_every_project_and_keeps_creation_snapsho
         local_root.path().display(),
     );
     let expected =
-        format!("# AGENTS.md instructions\n\n<INSTRUCTIONS>\n{contents}\n</INSTRUCTIONS>");
+        format!("# GREVO.md instructions\n\n<INSTRUCTIONS>\n{contents}\n</INSTRUCTIONS>");
     let requests = response_mock.requests();
     assert_eq!(requests.len(), 2);
     assert_single_instruction_fragment(&requests[0], &expected);
@@ -835,8 +839,8 @@ async fn cold_resume_invalidates_deleted_legacy_agents_md_once() -> Result<()> {
     })
     .await;
 
-    // Simulate a rollout written before AGENTS.md had a persisted WorldState section.
-    remove_agents_md_world_state_section(&rollout_path)?;
+    // Simulate a rollout written before the GREVO marker and persisted WorldState section.
+    rewrite_rollout_as_legacy_agents_md(&rollout_path)?;
 
     std::fs::remove_file(old_source.as_path())?;
     let mut resume_builder = test_codex().with_home(Arc::clone(&home));
@@ -858,21 +862,30 @@ async fn cold_resume_invalidates_deleted_legacy_agents_md_once() -> Result<()> {
     assert_eq!(requests.len(), 3);
     let initial_input = requests[0].input();
     let resumed_input = requests[1].input();
+    let resumed_prefix = resumed_input
+        .get(..initial_input.len())
+        .expect("resumed input should contain the original structured input prefix");
+    let legacy_initial_input = serde_json::to_string(&initial_input)?
+        .replace("# GREVO.md instructions", "# AGENTS.md instructions");
     assert_eq!(
-        resumed_input.get(..initial_input.len()),
-        Some(initial_input.as_slice()),
-        "cold resume should replay the original structured input prefix"
+        serde_json::to_string(resumed_prefix)?,
+        legacy_initial_input,
+        "cold resume should replay the legacy structured input prefix verbatim"
     );
     let initial = expected_provider_only_instruction_fragment(OLD_GLOBAL_INSTRUCTIONS);
+    let legacy_initial = initial.replace("# GREVO.md instructions", "# AGENTS.md instructions");
     let removal = expected_provider_only_instruction_fragment(
         "The previously provided AGENTS.md instructions no longer apply.",
     );
-    assert_eq!(instruction_fragments(&requests[0]), vec![initial.clone()]);
+    assert_eq!(instruction_fragments(&requests[0]), vec![initial]);
     assert_eq!(
         instruction_fragments(&requests[1]),
-        vec![initial.clone(), removal.clone()]
+        vec![legacy_initial.clone(), removal.clone()]
     );
-    assert_eq!(instruction_fragments(&requests[2]), vec![initial, removal]);
+    assert_eq!(
+        instruction_fragments(&requests[2]),
+        vec![legacy_initial, removal]
+    );
 
     Ok(())
 }

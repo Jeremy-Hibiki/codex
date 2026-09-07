@@ -86,8 +86,8 @@ const DUMMY_CALL_ID: &str = "call-multi-auto";
 const FUNCTION_CALL_LIMIT_MSG: &str = "function call limit push";
 const POST_AUTO_USER_MSG: &str = "post auto follow-up";
 const PRETURN_CONTEXT_DIFF_CWD: &str = "/tmp/PRETURN_CONTEXT_DIFF_CWD";
-const GLOBAL_AGENTS_FILENAME: &str = "AGENTS.md";
-const GLOBAL_AGENTS_OVERRIDE_FILENAME: &str = "AGENTS.override.md";
+const GLOBAL_AGENTS_FILENAME: &str = "GREVO.md";
+const GLOBAL_AGENTS_OVERRIDE_FILENAME: &str = "GREVO.override.md";
 const NEW_GLOBAL_INSTRUCTIONS: &str = "new global instructions";
 const OLD_GLOBAL_INSTRUCTIONS: &str = "old global instructions";
 const REMOTE_V2_SUMMARY: &str = "global-instructions-remote-v2-summary";
@@ -315,7 +315,10 @@ fn instruction_fragments(request: &responses::ResponsesRequest) -> Vec<String> {
     request
         .message_input_texts("user")
         .into_iter()
-        .filter(|text| text.starts_with("# AGENTS.md instructions"))
+        .filter(|text| {
+            text.starts_with("# GREVO.md instructions")
+                || text.starts_with("# AGENTS.md instructions")
+        })
         .collect()
 }
 
@@ -329,13 +332,16 @@ fn instruction_fragments_in_items(items: &[Value]) -> Vec<String> {
         .filter_map(|item| item.get("content").and_then(Value::as_array))
         .flatten()
         .filter_map(|span| span.get("text").and_then(Value::as_str))
-        .filter(|text| text.starts_with("# AGENTS.md instructions"))
+        .filter(|text| {
+            text.starts_with("# GREVO.md instructions")
+                || text.starts_with("# AGENTS.md instructions")
+        })
         .map(str::to_string)
         .collect()
 }
 
 fn expected_instruction_fragment(contents: &str) -> String {
-    format!("# AGENTS.md instructions\n\n<INSTRUCTIONS>\n{contents}\n</INSTRUCTIONS>")
+    format!("# GREVO.md instructions\n\n<INSTRUCTIONS>\n{contents}\n</INSTRUCTIONS>")
 }
 
 fn assert_single_instruction_fragment(request: &responses::ResponsesRequest, expected: &str) {
@@ -1210,7 +1216,7 @@ async fn multiple_auto_compact_per_task_runs_after_token_limit_hit() {
                 !item
                     .get("text")
                     .and_then(|text| text.as_str())
-                    .is_some_and(|text| text.starts_with("# AGENTS.md instructions"))
+                    .is_some_and(|text| text.starts_with("# GREVO.md instructions"))
             })
             .cloned()
             .collect::<Vec<_>>();

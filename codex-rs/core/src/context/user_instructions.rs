@@ -16,7 +16,24 @@ impl ContextualUserFragment for UserInstructions {
     }
 
     fn type_markers() -> (&'static str, &'static str) {
-        ("# AGENTS.md instructions", "</INSTRUCTIONS>")
+        ("# GREVO.md instructions", "</INSTRUCTIONS>")
+    }
+
+    fn matches_text(text: &str) -> bool {
+        let trimmed = text.trim_start();
+        let starts_with_supported_marker = [Self::type_markers().0, "# AGENTS.md instructions"]
+            .iter()
+            .any(|marker| {
+                trimmed
+                    .get(..marker.len())
+                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(marker))
+            });
+        let trimmed = trimmed.trim_end();
+        let end_marker = Self::type_markers().1;
+        let ends_with_marker = trimmed
+            .get(trimmed.len().saturating_sub(end_marker.len())..)
+            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(end_marker));
+        starts_with_supported_marker && ends_with_marker
     }
 
     fn body(&self) -> String {

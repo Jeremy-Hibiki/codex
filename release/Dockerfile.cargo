@@ -136,6 +136,7 @@ ENV FM_BUILD_SUFFIX=${FM_BUILD_SUFFIX}
 # Build. CARGO_PROFILE=release (default) uses --release + strip; =debug
 # builds without optimization and keeps symbols for profiling/debugging.
 RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
+    --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     --mount=type=cache,target=/workspace/codex-rs/target,sharing=locked \
     set -eu; \
     export FMSH_UKEY_SDK_LINK FMSH_UKEY_LIBSTDCPP; \
@@ -154,7 +155,8 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
 # additionally bundles libfmsh_ukey_sdk.so.0 (its libcrypto.so.3 comes from
 # the host: Ubuntu 22.04 ships libssl3).
 ARG FMSH_UKEY_SDK_LINK
-RUN mkdir -p /codex/lib \
+RUN --mount=type=cache,target=/root/.cargo/git,sharing=locked \
+    mkdir -p /codex/lib \
     && cp /codex-codex /codex/codex \
     && SDK_LIB="$(find /root/.cargo/git/checkouts/fmsh-ukey-lib-* -path '*/vendor/fmsh-ukey-sdk/linux/lib' | head -1)" \
     && if [ "$FMSH_UKEY_SDK_LINK" != "static" ]; then \

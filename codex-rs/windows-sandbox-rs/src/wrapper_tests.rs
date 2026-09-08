@@ -8,12 +8,12 @@ use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use pretty_assertions::assert_eq;
 
-use super::CODEX_HOME_FLAG;
 use super::CODEX_WINDOWS_SANDBOX_ARG1;
 use super::COMMAND_CWD_FLAG;
 use super::DENY_READ_PATHS_JSON_FLAG;
 use super::DENY_WRITE_PATHS_JSON_FLAG;
 use super::ENV_JSON_FLAG;
+use super::GREVO_HOME_FLAG;
 use super::NETWORK_PROXY_RESTRICTING_SID_FLAG;
 use super::PERMISSION_PROFILE_FLAG;
 use super::PRESERVE_PROXY_SETTINGS_FLAG;
@@ -74,7 +74,7 @@ fn windows_wrapper_args_round_trip() {
     );
 
     assert_eq!(args[0], CODEX_WINDOWS_SANDBOX_ARG1);
-    assert!(args.contains(&CODEX_HOME_FLAG.to_string()));
+    assert!(args.contains(&GREVO_HOME_FLAG.to_string()));
     assert!(args.contains(&COMMAND_CWD_FLAG.to_string()));
     assert!(args.contains(&WORKSPACE_ROOT_FLAG.to_string()));
     assert!(args.contains(&PERMISSION_PROFILE_FLAG.to_string()));

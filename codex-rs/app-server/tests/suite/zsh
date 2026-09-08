@@ -1,7 +1,7 @@
 #!/usr/bin/env dotslash
 
 // This is the patched zsh fork corresponding to
-// `codex-rs/shell-escalation/patches/zsh-exec-wrapper.patch`.
+// `grevo-rs/shell-escalation/patches/zsh-exec-wrapper.patch`.
 // Fetching the prebuilt version via DotSlash makes it easier to write
 // integration tests that exercise the zsh fork behavior in app-server tests.
 //

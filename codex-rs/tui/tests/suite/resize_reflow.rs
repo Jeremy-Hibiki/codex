@@ -55,7 +55,7 @@ async fn tmux_split_preserves_fresh_session_composer_row_after_resize_reflow() -
             .arg(&session_name)
             .arg("--")
             .arg("env")
-            .arg(format!("CODEX_HOME={}", codex_home.path().display()))
+            .arg(format!("GREVO_HOME={}", codex_home.path().display()))
             .arg("OPENAI_API_KEY=dummy")
             .arg(codex)
             .arg("-c")
@@ -222,7 +222,7 @@ async fn tmux_width_resize_restore_keeps_visible_content_anchored() -> Result<()
             .arg(&session_name)
             .arg("--")
             .arg("env")
-            .arg(format!("CODEX_HOME={}", codex_home.path().display()))
+            .arg(format!("GREVO_HOME={}", codex_home.path().display()))
             .arg("OPENAI_API_KEY=dummy")
             .arg(codex)
             .arg("-c")
@@ -479,7 +479,7 @@ async fn run_repeated_resize_smoke() -> Result<()> {
             .arg(&session_name)
             .arg("--")
             .arg("env")
-            .arg(format!("CODEX_HOME={}", codex_home.path().display()))
+            .arg(format!("GREVO_HOME={}", codex_home.path().display()))
             .arg("OPENAI_API_KEY=dummy")
             .arg(codex)
             .arg("-c")
@@ -586,7 +586,7 @@ impl Drop for TmuxSession {
 }
 
 fn codex_binary(repo_root: &Path) -> Result<PathBuf> {
-    if let Ok(path) = codex_utils_cargo_bin::cargo_bin("codex") {
+    if let Ok(path) = codex_utils_cargo_bin::cargo_bin("grevo") {
         return Ok(path);
     }
 

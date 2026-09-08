@@ -8,8 +8,8 @@ use serde_json::json;
 use tempfile::TempDir;
 
 fn codex_command(codex_home: &Path) -> Result<assert_cmd::Command> {
-    let mut cmd = assert_cmd::Command::new(codex_utils_cargo_bin::cargo_bin("codex")?);
-    cmd.env("CODEX_HOME", codex_home);
+    let mut cmd = assert_cmd::Command::new(codex_utils_cargo_bin::cargo_bin("grevo")?);
+    cmd.env("GREVO_HOME", codex_home);
     // Debug/test-only bypass so the suite does not need a live FMSH license
     // server; release binaries never honor this.
     cmd.env("FMSH_CODEX_LIC_TEST_BYPASS", "1");
@@ -110,7 +110,7 @@ fn agents_reject_inputs_that_cannot_be_applied() -> Result<()> {
 #[test]
 fn app_server_emits_json_info_events() -> Result<()> {
     let codex_home = TempDir::new()?;
-    let event = app_server_json_shutdown_event("codex", &["app-server"], codex_home.path())?;
+    let event = app_server_json_shutdown_event("grevo", &["app-server"], codex_home.path())?;
 
     assert_eq!(
         event,

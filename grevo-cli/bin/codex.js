@@ -89,7 +89,7 @@ function findCodexExecutable() {
     vendorRoot,
     targetTriple,
     "bin",
-    process.platform === "win32" ? "codex.exe" : "codex",
+    process.platform === "win32" ? "grevo.exe" : "grevo",
   );
   if (existsSync(codexExecutable)) {
     return codexExecutable;
@@ -124,7 +124,7 @@ function isPnpmOwnedCodexInstall(nodeModulesDir) {
 
   try {
     return (
-      realpathSync(path.join(nodeModulesDir, "@openai", "codex")) ===
+      realpathSync(path.join(nodeModulesDir, "@openai", "grevo")) ===
       codexPackageRoot
     );
   } catch {

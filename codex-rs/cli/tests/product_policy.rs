@@ -7,8 +7,8 @@ const SANDBOX_BYPASS_ERROR: &str =
     "sandbox bypass is disabled by product policy; use a sandboxed permission profile";
 
 fn codex_command(codex_home: &Path) -> Result<assert_cmd::Command> {
-    let mut cmd = assert_cmd::Command::new(codex_utils_cargo_bin::cargo_bin("codex")?);
-    cmd.env("CODEX_HOME", codex_home);
+    let mut cmd = assert_cmd::Command::new(codex_utils_cargo_bin::cargo_bin("grevo")?);
+    cmd.env("GREVO_HOME", codex_home);
     cmd.env("HOME", codex_home);
     std::fs::write(
         codex_home.join("config.toml"),

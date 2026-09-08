@@ -742,7 +742,7 @@ impl StatusHistoryCell {
         let mut lines: Vec<Line<'static>> = Vec::new();
         lines.push(Line::from(vec![
             Span::from(format!("{}>_ ", FieldFormatter::INDENT)).dim(),
-            Span::from("OpenAI Codex").bold(),
+            Span::from("Grevo").bold(),
             Span::from(" ").dim(),
             Span::from(format!("(v{CODEX_CLI_VERSION})")).dim(),
         ]));
@@ -759,9 +759,7 @@ impl StatusHistoryCell {
                 (None, Some(plan)) => plan.clone(),
                 (None, None) => "ChatGPT".to_string(),
             },
-            StatusAccountDisplay::ApiKey => {
-                "API key configured (run codex login to use ChatGPT)".to_string()
-            }
+            StatusAccountDisplay::ApiKey => "API key configured (run grevo login)".to_string(),
         });
 
         let mut labels: Vec<String> = vec!["Model", "Directory", "Permissions", "Agents.md"]

@@ -33,8 +33,10 @@ use super::network;
 const MAX_VERSION_RESPONSE_BYTES: usize = 1024 * 1024;
 
 const VERSION_FILE_NAME: &str = "version.json";
-const GITHUB_LATEST_RELEASE_URL: &str = "https://api.github.com/repos/openai/codex/releases/latest";
-const HOMEBREW_CASK_API_URL: &str = "https://formulae.brew.sh/api/cask/codex.json";
+// Grevo has no upstream release channel yet; an empty URL fails the check
+// gracefully instead of reporting OpenAI releases.
+const GITHUB_LATEST_RELEASE_URL: &str = "";
+const HOMEBREW_CASK_API_URL: &str = "";
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 const DESKTOP_UPDATE_URL: &str = "https://persistent.oaistatic.com/codex-app-prod/appcast-x64.xml";
 #[cfg(all(target_os = "macos", not(target_arch = "x86_64")))]

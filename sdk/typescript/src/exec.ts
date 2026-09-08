@@ -4,7 +4,7 @@ import path from "node:path";
 import readline from "node:readline";
 import { createRequire } from "node:module";
 
-import type { CodexConfigObject, CodexConfigValue } from "./codexOptions";
+import type { CodexConfigObject, CodexConfigValue } from "./grevoOptions";
 import { SandboxMode, ModelReasoningEffort, ApprovalMode, WebSearchMode } from "./threadOptions";
 
 export type CodexExecArgs = {

@@ -1,4 +1,4 @@
-//! FMSH LicenseManager integration used to verify the Codex license at startup.
+//! FMSH LicenseManager integration used to verify the Grevo license at startup.
 
 use anyhow::Context;
 use anyhow::Result;
@@ -32,13 +32,13 @@ const LICENSE_STATE_LOST: u8 = 1;
 
 /// Message returned by [`ensure_active`] when the license is unavailable.
 pub const LICENSE_UNAVAILABLE_MESSAGE: &str =
-    "Codex license is unavailable; new requests are blocked until the license recovers";
+    "Grevo license is unavailable; new requests are blocked until the license recovers";
 
 /// Environment variable that bypasses FMSH license verification.
 ///
 /// This is a product-level skip switch honored in every build mode, including
 /// release builds. It lets environments without access to the FMSH
-/// LicenseService run Codex without a checkout. Integration tests that spawn
+/// LicenseService run Grevo without a checkout. Integration tests that spawn
 /// gated binaries also set it so the repo test suite does not require a live
 /// FMSH license server.
 pub const TEST_BYPASS_ENV_VAR: &str = "FMSH_CODEX_LIC_TEST_BYPASS";
@@ -152,7 +152,7 @@ pub(crate) struct LicenseEnv<'a> {
 }
 
 /// Resolve license settings from the environment; `feature` and `version`
-/// are required, `display_name` defaults to `"Codex"`, and `host_name`
+/// are required, `display_name` defaults to `"Grevo"`, and `host_name`
 /// defaults to `None` (the LMCLIENT SDK default).
 pub(crate) fn resolve_config(env: LicenseEnv<'_>) -> Result<LicenseConfig> {
     let feature = env
@@ -170,7 +170,7 @@ pub(crate) fn resolve_config(env: LicenseEnv<'_>) -> Result<LicenseConfig> {
     let display_name = env
         .display_name
         .filter(|value| !value.is_empty())
-        .unwrap_or("Codex");
+        .unwrap_or("Grevo");
     let host_name = env
         .host_name
         .filter(|value| !value.is_empty())
@@ -241,7 +241,7 @@ fn recheckout_after_heartbeat_loss() -> bool {
     result == LM_SUCCESS
 }
 
-/// Holds a checked-out license for the lifetime of a Codex session.
+/// Holds a checked-out license for the lifetime of a Grevo session.
 ///
 /// The license is returned on drop; `lmExit` in the C library also releases
 /// outstanding licenses as a fallback.
@@ -347,13 +347,13 @@ pub fn init_entry() -> Result<LicenseGuard> {
 /// The bypass is a product-level skip switch, not a debug-only test hook, so
 /// release builds honor the same environment variable.
 ///
-/// Processes spawned from inside a Codex session inherit `CODEX_THREAD_ID`
-/// and skip the checkout, so a Codex session that starts another Codex does
+/// Processes spawned from inside a Grevo session inherit `CODEX_THREAD_ID`
+/// and skip the checkout, so a Grevo session that starts another Grevo does
 /// not consume a second license seat.
 ///
 /// The LMCLIENT SDK reads `FMSH_LIC_SERVER` internally (`<port>@<host>`).
 /// This function reads `FMSH_CODEX_LIC_FEATURE` and `FMSH_CODEX_LIC_VERSION`
-/// (both required), `FMSH_CODEX_LIC_DISPLAY_NAME` (defaults to `"Codex"`)
+/// (both required), `FMSH_CODEX_LIC_DISPLAY_NAME` (defaults to `"Grevo"`)
 /// and `FMSH_CODEX_LIC_HOSTNAME` (defaults to the LMCLIENT SDK default).
 pub fn verify_at_startup() -> Result<LicenseGuard> {
     if std::env::var_os(CODEX_THREAD_ID_ENV_VAR).is_some() {

@@ -1,5 +1,9 @@
 analysis
 
+# local agent/dev tooling directories
+.codex/
+.omp/
+
 # deps
 # Node.js dependencies
 node_modules
@@ -78,7 +82,7 @@ personal/
 .DS_Store
 Thumbs.db
 Icon?
-.Spotlight-V100/
+.Spotlight-V1/
 
 # Unwanted package managers
 .yarn/

@@ -15,7 +15,7 @@ impl TestCodexExecBuilder {
                 .expect("should find binary for codex-exec"),
         );
         cmd.current_dir(self.cwd.path())
-            .env("CODEX_HOME", self.home.path())
+            .env("GREVO_HOME", self.home.path())
             .env("CODEX_SQLITE_HOME", self.home.path())
             .env(CODEX_API_KEY_ENV_VAR, "dummy")
             // Debug/test-only bypass so the suite does not need a live FMSH

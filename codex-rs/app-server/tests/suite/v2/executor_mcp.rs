@@ -668,11 +668,11 @@ async fn selected_executor_plugin_exposes_its_mcps_only_to_that_thread() -> Resu
         &oauth_credentials_path,
         serde_json::to_vec(&json!({"host": host_oauth_credential.clone()}))?,
     )?;
-    let mut executor = Command::new(codex_utils_cargo_bin::cargo_bin("codex")?)
+    let mut executor = Command::new(codex_utils_cargo_bin::cargo_bin("grevo")?)
         .args(["exec-server", "--listen", "ws://127.0.0.1:0"])
         .stdout(Stdio::piped())
         .kill_on_drop(true)
-        .env("CODEX_HOME", executor_home.path())
+        .env("GREVO_HOME", executor_home.path())
         .env(EXECUTOR_ENV_NAME, EXECUTOR_ENV_VALUE)
         .env(EXECUTOR_HTTP_AUTH_ENV_NAME, EXECUTOR_HTTP_AUTH_ENV_VALUE)
         .env("HTTP_PROXY", format!("http://{http_addr}"))

@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { Codex } from "../src/codex";
-import type { CodexConfigObject } from "../src/codexOptions";
+import type { CodexConfigObject } from "../src/grevoOptions";
 
 export const codexExecPath =
   process.env.CODEX_EXEC_PATH ??

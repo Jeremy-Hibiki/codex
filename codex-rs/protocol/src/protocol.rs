@@ -5081,7 +5081,7 @@ mod tests {
         let expected_docs_public =
             AbsolutePathBuf::from_absolute_path(canonical_cwd.join("docs/public"))
                 .expect("canonical docs/public");
-        let expected_dot_codex = AbsolutePathBuf::from_absolute_path(canonical_cwd.join(".codex"))
+        let expected_dot_grevo = AbsolutePathBuf::from_absolute_path(canonical_cwd.join(".codex"))
             .expect("canonical .codex");
         let policy = FileSystemSandboxPolicy::restricted(vec![
             FileSystemSandboxEntry {
@@ -5110,7 +5110,7 @@ mod tests {
                 (
                     canonical_cwd,
                     vec![
-                        expected_dot_codex.to_path_buf(),
+                        expected_dot_grevo.to_path_buf(),
                         expected_docs.to_path_buf()
                     ],
                 ),

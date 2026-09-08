@@ -7,7 +7,7 @@ Run from `<reporoot>/codex-rs`.
 
 ```bash
 # 1) Build debug codex binary
-cargo build -p codex-cli --bin codex
+cargo build -p codex-cli --bin grevo
 
 # 2) Start websocket app-server in background
 cargo run -p codex-app-server-test-client -- \
@@ -34,7 +34,7 @@ testing.
 export CODEX_HOME="$(mktemp -d)"
 printf 'cli_auth_credentials_store = "file"\n' > "$CODEX_HOME/config.toml"
 
-cargo build -p codex-cli --bin codex
+cargo build -p codex-cli --bin grevo
 cargo run -p codex-app-server-test-client -- \
   --codex-bin ./target/debug/codex \
   test-login \
@@ -72,7 +72,7 @@ retries ephemeral turns while the installed remote bundle finishes syncing.
 
 ```bash
 # Build a debug Codex binary; analytics capture is unavailable in release builds.
-cargo build -p codex-cli --bin codex
+cargo build -p codex-cli --bin grevo
 
 cargo run -p codex-app-server-test-client -- \
   --codex-bin ./target/debug/codex \

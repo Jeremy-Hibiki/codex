@@ -102,9 +102,11 @@ impl ExecServerHarness {
         command.stdout(Stdio::piped());
         command.stderr(Stdio::inherit());
         command.kill_on_drop(true);
-        if !command.as_std().get_envs().any(|(key, value)| {
-            value.is_some() && (key == "GREVO_HOME" || key == "CODEX_HOME")
-        }) {
+        if !command
+            .as_std()
+            .get_envs()
+            .any(|(key, value)| value.is_some() && (key == "GREVO_HOME" || key == "CODEX_HOME"))
+        {
             command.env("GREVO_HOME", codex_home.path());
         }
         let mut child = command.spawn()?;

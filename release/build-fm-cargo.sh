@@ -173,7 +173,7 @@ static_sdk_env() {
 build_local() {
     local codex_src="$repo_root/codex-rs"
     local out_dir="$repo_root/dist"
-    local bin="$out_dir/codex"
+    local bin="$out_dir/grevo"
     local staged_bin
 
     local cargo_profile_flag="--profile release"
@@ -244,7 +244,7 @@ build_local() {
 # ── Docker build ───────────────────────────────────────────────────────────
 
 build_docker() {
-    local tag="${tag_arg:-codex:${version}-ubuntu-${ubuntu_version}}"
+    local tag="${tag_arg:-grevo:${version}-ubuntu-${ubuntu_version}}"
 
     echo "== docker build =="
     DOCKER_BUILDKIT=1 docker build -t ${tag} \
@@ -270,7 +270,7 @@ build_docker() {
     echo ""
     echo "Extract binary:"
     echo "  id=\$(docker create $tag)"
-    echo "  docker cp \"\$id:/usr/local/bin/codex\" ./codex"
+    echo "  docker cp \"\$id:/usr/local/bin/grevo\" ./grevo"
     echo "  docker cp \"\$id:/usr/local/bin/lib\" ./lib"
     echo "  docker rm \"\$id\""
 }
@@ -288,7 +288,7 @@ trap cleanup_appimage EXIT
 build_appimage() {
     local tag="$1"
     local version="$2"
-    local out="$repo_root/codex-${version}-x86_64.AppImage"
+    local out="$repo_root/grevo-${version}-x86_64.AppImage"
 
     echo "== docker build (appimage stage) =="
     DOCKER_BUILDKIT=1 docker build \
@@ -308,12 +308,12 @@ build_appimage() {
     local stage="$repo_root/dist/appimage-stage"
     mkdir -p "$stage/app/usr/bin" "$stage/app/usr/lib"
 
-    docker cp "$FM_APPIMAGE_CONTAINER:/usr/local/bin/codex" "$stage/app/usr/bin/codex"
+    docker cp "$FM_APPIMAGE_CONTAINER:/usr/local/bin/grevo" "$stage/app/usr/bin/grevo"
     docker cp "$FM_APPIMAGE_CONTAINER:/usr/local/bin/lib/." "$stage/app/usr/lib/"
 
     # Collect closure libs (skip glibc) for a portable AppImage.
     docker --log-level=none run --rm --entrypoint bash codex-appimage-tmp \
-        'ldd /usr/local/bin/codex \
+        'ldd /usr/local/bin/grevo \
          | awk -F"=> " "/=> \// {print \$2}" \
          | awk "{print \$1}" | sort -u \
          | while read -r lib; do
@@ -331,9 +331,9 @@ build_appimage() {
 SELF="$(readlink -f "$0")"
 APPDIR="${SELF%/*}"
 export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/bin/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-exec "$APPDIR/usr/bin/codex" "$@"
+exec "$APPDIR/usr/bin/grevo" "$@"
 RUNEOF
-    chmod +x "$stage/app/AppRun" "$stage/app/usr/bin/codex"
+    chmod +x "$stage/app/AppRun" "$stage/app/usr/bin/grevo"
 
     # Download AppImage tooling through proxy if needed.
     local gh_proxy="${ghfast_top_proxy:-https://ghfast.top/github.com}"

@@ -6,15 +6,15 @@
 #     --build-arg HTTPS_PROXY="$HTTPS_PROXY" \
 #     --build-arg NO_PROXY="$NO_PROXY" \
 #     --build-arg UBUNTU_VERSION=22.04 \
-#     -t codex:ubuntu-22.04 -f release/Dockerfile .
+#     -t grevo:ubuntu-22.04 -f release/Dockerfile .
 #
 # Ubuntu 20.04 is not supported: the fmsh-ukey SDK 0.3.1 shared library
 # needs GLIBC_2.34 and the host's libcrypto.so.3 (libssl3), so the minimum
 # base image is Ubuntu 22.04. Override with e.g. --build-arg UBUNTU_VERSION=24.04.
 #
 # Extract the binary:
-#   id=$(docker create codex:ubuntu-22.04)
-#   docker cp "$id:/usr/local/bin/codex" ./codex
+#   id=$(docker create grevo:ubuntu-22.04)
+#   docker cp "$id:/usr/local/bin/grevo" ./grevo
 #   docker rm "$id"
 #
 # Bazel disk/repo caches are persisted across builds via BuildKit cache
@@ -85,11 +85,11 @@ RUN --mount=type=cache,target=/root/.cache/bazel-disk-cache,sharing=locked \
     --mount=type=cache,target=/root/.cache/bazelisk,sharing=locked \
     python3 release/bazel-registry-proxy.py 8765 > /tmp/proxy.log 2>&1 & \
     sleep 1 && \
-    bazel build --action_env=FM_BUILD_SUFFIX //codex-rs/cli:codex --nobuild \
-    && bazel build --action_env=FM_BUILD_SUFFIX //codex-rs/cli:codex \
+    bazel build --action_env=FM_BUILD_SUFFIX //codex-rs/cli:grevo --nobuild \
+    && bazel build --action_env=FM_BUILD_SUFFIX //codex-rs/cli:grevo \
     && mkdir -p /codex/lib \
-    && cp bazel-bin/codex-rs/cli/codex /codex/codex \
-    && strip /codex/codex \
+    && cp bazel-bin/codex-rs/cli/grevo /codex/grevo \
+    && strip /codex/grevo \
     # Bundle the fmsh-ukey SDK shared libraries next to the binary. The
     # executable's RUNPATH includes $ORIGIN/lib, so the runtime image only
     # needs these files copied to /usr/local/bin/lib. The SDK's NEEDED
@@ -126,11 +126,11 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|
     && apt-get update && apt-get install -y --no-install-recommends \
         curl ca-certificates libcurl4 libssl3 libstdc++6 libzstd1
 
-COPY --from=builder /codex/codex /app/usr/bin/codex
+COPY --from=builder /codex/grevo /app/usr/bin/grevo
 COPY --from=builder /codex/lib /app/usr/bin/lib/
 
 RUN mkdir -p /app/usr/lib /work \
-    && ldd /app/usr/bin/codex \
+    && ldd /app/usr/bin/grevo \
         | awk -F'=> ' '/=> \// {print $2}' \
         | awk '{print $1}' | sort -u \
         | while read -r lib; do \
@@ -148,10 +148,10 @@ RUN cat > /app/AppRun <<'EOF'
 SELF="$(readlink -f "$0")"
 APPDIR="${SELF%/*}"
 export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/bin/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-exec "$APPDIR/usr/bin/codex" "$@"
+exec "$APPDIR/usr/bin/grevo" "$@"
 EOF
 
-RUN chmod +x /app/AppRun /app/usr/bin/codex \
+RUN chmod +x /app/AppRun /app/usr/bin/grevo \
     && curl -fsSL "https://ghfast.top/github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" \
         -o /work/appimagetool \
     && chmod +x /work/appimagetool \
@@ -159,11 +159,11 @@ RUN chmod +x /app/AppRun /app/usr/bin/codex \
         -o /work/runtime \
     && cd /work \
     && APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool --appimage-extract >/dev/null \
-    && ./squashfs-root/usr/bin/mksquashfs /app /work/codex.squashfs \
+    && ./squashfs-root/usr/bin/mksquashfs /app /work/grevo.squashfs \
         -comp zstd -b 131072 -noappend >/dev/null \
-    && cp /work/runtime "/codex-${FM_BASE_VERSION}-${FM_BUILD_SUFFIX}-x86_64.AppImage" \
-    && cat /work/codex.squashfs >> "/codex-${FM_BASE_VERSION}-${FM_BUILD_SUFFIX}-x86_64.AppImage" \
-    && chmod +x "/codex-${FM_BASE_VERSION}-${FM_BUILD_SUFFIX}-x86_64.AppImage"
+    && cp /work/runtime "/grevo-${FM_BASE_VERSION}-${FM_BUILD_SUFFIX}-x86_64.AppImage" \
+    && cat /work/grevo.squashfs >> "/grevo-${FM_BASE_VERSION}-${FM_BUILD_SUFFIX}-x86_64.AppImage" \
+    && chmod +x "/grevo-${FM_BASE_VERSION}-${FM_BUILD_SUFFIX}-x86_64.AppImage"
 
 # ── runtime stage ─────────────────────────────────────────────────────────
 FROM ubuntu:${UBUNTU_VERSION}
@@ -179,8 +179,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get update && apt-get install -y --no-install-recommends \
         libcurl4 libssl3 libstdc++6 libzstd1
 
-COPY --from=builder /codex/codex /usr/local/bin/codex
+COPY --from=builder /codex/grevo /usr/local/bin/grevo
 COPY --from=builder /codex/lib /usr/local/bin/lib
-RUN chmod +x /usr/local/bin/codex
+RUN chmod +x /usr/local/bin/grevo
 
-ENTRYPOINT ["codex"]
+ENTRYPOINT ["grevo"]

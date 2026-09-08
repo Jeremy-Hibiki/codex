@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Build the FMSH (fm) Codex CLI with the `fm.rNNN-HHHHHHHH` version scheme.
+# Build the FMSH (fm) Grevo CLI with the `fm.rNNN-HHHHHHHH` version scheme.
 #
 # The suffix is derived from `git describe --tags --match 'rust-v[0-9]*'`
 # (same logic as codex-rs/cli/build.rs), then handed to Bazel through the
-# FM_BUILD_SUFFIX action env so the embedded `codex --version` matches the
+# FM_BUILD_SUFFIX action env so the embedded `grevo --version` matches the
 # image tag even though the Bazel action sandbox has no git metadata.
 #
 # Usage:
@@ -13,7 +13,7 @@
 #   release/build-fm.sh --appimage               # docker build + single-file AppImage
 #   release/build-fm.sh --ubuntu-version 24.04   # base image override
 #   release/build-fm.sh --suffix fm.r37-456e4457 # explicit suffix
-#   release/build-fm.sh --tag codex:custom       # explicit image tag
+#   release/build-fm.sh --tag grevo:custom       # explicit image tag
 #   release/build-fm.sh --base-version 0.146.0   # explicit base version
 set -euo pipefail
 
@@ -115,10 +115,10 @@ trap cleanup_appimage EXIT
 build_appimage() {
     local tag="$1"
     local version="$2"
-    local out="$repo_root/codex-${version}-x86_64.AppImage"
+    local out="$repo_root/grevo-${version}-x86_64.AppImage"
     echo "== copying AppImage out of the appimage stage =="
     FM_APPIMAGE_CONTAINER="$(docker create "$tag")"
-    docker cp "$FM_APPIMAGE_CONTAINER:/codex-${version}-x86_64.AppImage" "$out"
+    docker cp "$FM_APPIMAGE_CONTAINER:/grevo-${version}-x86_64.AppImage" "$out"
 
     echo "== verifying =="
     if "$out" --version 2>/dev/null; then
@@ -133,11 +133,11 @@ build_appimage() {
 }
 
 if [[ "$mode" == local ]]; then
-    bazel build --action_env=FM_BUILD_SUFFIX="$suffix" //codex-rs/cli:codex
-    bazel-bin/codex-rs/cli/codex --version
+    bazel build --action_env=FM_BUILD_SUFFIX="$suffix" //codex-rs/cli:grevo
+    bazel-bin/codex-rs/cli/grevo --version
 elif [[ "$mode" == docker || "$mode" == appimage ]]; then
     if [[ "$mode" == appimage ]]; then
-        image_tag="codex-appimage:${version}"
+        image_tag="grevo-appimage:${version}"
         DOCKER_BUILDKIT=1 docker build \
             --build-arg HTTP_PROXY="${HTTP_PROXY:-}" \
             --build-arg HTTPS_PROXY="${HTTPS_PROXY:-}" \
@@ -150,7 +150,7 @@ elif [[ "$mode" == docker || "$mode" == appimage ]]; then
             -f release/Dockerfile .
         build_appimage "$image_tag" "$version"
     else
-        tag="${tag_arg:-codex:v${base_version}-${suffix}-ubuntu-${ubuntu_version}}"
+    tag="${tag_arg:-grevo:v${base_version}-${suffix}-ubuntu-${ubuntu_version}}"
         DOCKER_BUILDKIT=1 docker build \
             --build-arg HTTP_PROXY="${HTTP_PROXY:-}" \
             --build-arg HTTPS_PROXY="${HTTPS_PROXY:-}" \

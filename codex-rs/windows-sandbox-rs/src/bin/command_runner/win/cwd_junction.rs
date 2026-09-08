@@ -15,10 +15,13 @@ fn junction_name_for_path(path: &Path) -> String {
 }
 
 fn junction_root_for_userprofile(userprofile: &str) -> PathBuf {
-    PathBuf::from(userprofile)
-        .join(".codex")
-        .join(".sandbox")
-        .join("cwd")
+    let userprofile = PathBuf::from(userprofile);
+    let grevo_root = userprofile.join(".grevo");
+    if grevo_root.is_dir() {
+        grevo_root.join(".sandbox").join("cwd")
+    } else {
+        userprofile.join(".codex").join(".sandbox").join("cwd")
+    }
 }
 
 pub fn create_cwd_junction(requested_cwd: &Path, log_dir: Option<&Path>) -> Option<PathBuf> {

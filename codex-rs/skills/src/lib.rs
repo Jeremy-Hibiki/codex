@@ -57,7 +57,8 @@ const SYSTEM_SKILLS_DIR: Dir = include_dir::include_dir!("$CARGO_MANIFEST_DIR/sr
 
 const SYSTEM_SKILLS_DIR_NAME: &str = ".system";
 const SKILLS_DIR_NAME: &str = "skills";
-const SYSTEM_SKILLS_MARKER_FILENAME: &str = ".codex-system-skills.marker";
+const SYSTEM_SKILLS_MARKER_FILENAME: &str = ".grevo-system-skills.marker";
+const LEGACY_SYSTEM_SKILLS_MARKER_FILENAME: &str = ".codex-system-skills.marker";
 const SYSTEM_SKILLS_MARKER_SALT: &str = "v1";
 
 /// Returns the on-disk cache location for embedded system skills from an absolute GREVO_HOME.
@@ -84,9 +85,11 @@ pub fn install_system_skills(codex_home: &AbsolutePathBuf) -> Result<(), SystemS
 
     let marker_path = dest_system.join(SYSTEM_SKILLS_MARKER_FILENAME);
     let expected_fingerprint = embedded_system_skills_fingerprint();
-    if dest_system.as_path().is_dir()
-        && read_marker(&marker_path).is_ok_and(|marker| marker == expected_fingerprint)
-    {
+    let legacy_marker_path = dest_system.join(LEGACY_SYSTEM_SKILLS_MARKER_FILENAME);
+    let marker_matches = [&marker_path, &legacy_marker_path]
+        .into_iter()
+        .any(|path| read_marker(path).is_ok_and(|marker| marker == expected_fingerprint));
+    if dest_system.as_path().is_dir() && marker_matches {
         return Ok(());
     }
 

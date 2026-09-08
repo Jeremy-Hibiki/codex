@@ -141,10 +141,10 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     set -eu; \
     export FMSH_UKEY_SDK_LINK FMSH_UKEY_LIBSTDCPP; \
     if [ "$CARGO_PROFILE" = "debug" ]; then \
-    cargo build -p grevo-cli \
+    cargo build -p codex-cli --bin grevo \
     && cp target/debug/grevo /codex-grevo; \
     else \
-    cargo build --release -p grevo-cli \
+    cargo build --release -p codex-cli --bin grevo \
     && strip target/release/grevo \
     && cp target/release/grevo /codex-grevo; \
     fi

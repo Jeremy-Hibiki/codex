@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rewrite a local plugin version to a single Codex cachebuster suffix."""
+"""Rewrite a local plugin version to a single Grevo cachebuster suffix."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     plugin_root = Path(args.plugin_path).expanduser().resolve()
-    manifest_path = plugin_root / ".codex-plugin" / "plugin.json"
+    manifest_path = plugin_root / ".grevo-plugin" / "plugin.json"
     manifest = load_manifest(manifest_path)
 
     plugin_name = manifest.get("name")

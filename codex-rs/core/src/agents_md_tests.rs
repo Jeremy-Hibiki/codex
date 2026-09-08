@@ -1607,6 +1607,26 @@ async fn agents_md_preferred_over_fallbacks() {
     );
 }
 
+/// Pre-rename AGENTS.md remains discoverable, but GREVO.md wins when both exist.
+#[tokio::test]
+async fn legacy_agents_md_is_fallback_for_grevo_md() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    fs::write(tmp.path().join(LEGACY_AGENTS_MD_FILENAME), "legacy").unwrap();
+
+    let cfg = make_config(&tmp, /*limit*/ 4096, /*instructions*/ None).await;
+    let loaded = get_user_instructions(&cfg)
+        .await
+        .expect("legacy doc expected");
+    assert_eq!(loaded, "legacy");
+
+    fs::write(tmp.path().join(DEFAULT_AGENTS_MD_FILENAME), "current").unwrap();
+    let cfg = make_config(&tmp, /*limit*/ 4096, /*instructions*/ None).await;
+    let loaded = get_user_instructions(&cfg)
+        .await
+        .expect("current doc expected");
+    assert_eq!(loaded, "current");
+}
+
 #[tokio::test]
 async fn agents_md_directory_is_ignored() {
     let tmp = tempfile::tempdir().expect("tempdir");

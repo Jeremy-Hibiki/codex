@@ -26,7 +26,7 @@ use crate::protocol::WritableRoot;
 
 const PROTECTED_METADATA_GIT_PATH_NAME: &str = ".git";
 const PROTECTED_METADATA_AGENTS_PATH_NAME: &str = ".agents";
-const PROTECTED_METADATA_GREVO_PATH_NAME: &str = ".codex";
+const PROTECTED_METADATA_GREVO_PATH_NAME: &str = ".grevo";
 // Legacy project metadata directory, still protected for pre-rename repos.
 const PROTECTED_METADATA_CODEX_PATH_NAME: &str = ".codex";
 
@@ -833,7 +833,7 @@ impl FileSystemSandboxPolicy {
 
         append_default_read_only_project_root_subpath_if_no_explicit_rule(&mut entries, ".git");
         append_default_read_only_project_root_subpath_if_no_explicit_rule(&mut entries, ".agents");
-        append_default_read_only_project_root_subpath_if_no_explicit_rule(&mut entries, ".codex");
+        append_default_read_only_project_root_subpath_if_no_explicit_rule(&mut entries, ".grevo");
         append_default_read_only_project_root_subpath_if_no_explicit_rule(&mut entries, ".codex");
         for writable_root in writable_roots {
             for protected_path in default_read_only_subpaths_for_writable_root(
@@ -3058,7 +3058,7 @@ mod tests {
             cwd.path().canonicalize().expect("canonicalize cwd"),
         )
         .expect("absolute canonical root");
-        let expected_dot_grevo = expected_root.join(".codex");
+        let expected_dot_grevo = expected_root.join(".grevo");
         let expected_dot_codex = expected_root.join(".codex");
 
         let policy = FileSystemSandboxPolicy::restricted(vec![FileSystemSandboxEntry {
@@ -3216,7 +3216,7 @@ mod tests {
                 ),
                 FileSystemSandboxEntry::skip_missing_path(
                     FileSystemPath::Special {
-                        value: FileSystemSpecialPath::project_roots(Some(".codex".into())),
+                        value: FileSystemSpecialPath::project_roots(Some(".grevo".into())),
                     },
                     FileSystemAccessMode::Read,
                 ),
@@ -3306,7 +3306,7 @@ mod tests {
         let cwd = TempDir::new().expect("tempdir");
         let dot_git_config = cwd.path().join(".git").join("config");
         let dot_agents_config = cwd.path().join(".agents").join("config");
-        let dot_grevo_config = cwd.path().join(".codex").join("config.toml");
+        let dot_grevo_config = cwd.path().join(".grevo").join("config.toml");
         let dot_codex_config = cwd.path().join(".codex").join("config.toml");
         let root = AbsolutePathBuf::from_absolute_path(cwd.path()).expect("absolute cwd");
         let file_system_policy =
@@ -3327,7 +3327,7 @@ mod tests {
             vec![
                 ".git".to_string(),
                 ".agents".to_string(),
-                ".codex".to_string(),
+                ".grevo".to_string(),
                 ".codex".to_string(),
             ]
         );

@@ -1,6 +1,6 @@
-//! AGENTS.md discovery and user instruction assembly.
+//! GREVO.md discovery and user instruction assembly.
 //!
-//! Project-level documentation is primarily stored in files named `AGENTS.md`.
+//! Project-level documentation is primarily stored in files named `GREVO.md`.
 //! Additional fallback filenames can be configured via `project_doc_fallback_filenames`.
 //! We include the concatenation of all files found along the path from the
 //! project root to the current working directory as follows:
@@ -10,7 +10,7 @@
 //!     When `project_root_markers` is unset, the default marker list is used
 //!     (`.git`). If no marker is found, only the current working directory is
 //!     considered. An empty marker list disables parent traversal.
-//! 2.  Collect every `AGENTS.md` found from the project root down to the
+//! 2.  Collect every `GREVO.md` found from the project root down to the
 //!     current working directory (inclusive) and concatenate their contents in
 //!     that order.
 //! 3.  We do **not** walk past the project root.
@@ -37,9 +37,13 @@ use toml::Value as TomlValue;
 use tracing::error;
 
 /// Default filename scanned for AGENTS.md instructions.
-pub const DEFAULT_AGENTS_MD_FILENAME: &str = "AGENTS.md";
-/// Preferred local override for AGENTS.md instructions.
-pub const LOCAL_AGENTS_MD_FILENAME: &str = "AGENTS.override.md";
+pub const DEFAULT_AGENTS_MD_FILENAME: &str = "GREVO.md";
+/// Preferred local override for Grevo instructions.
+pub const LOCAL_AGENTS_MD_FILENAME: &str = "GREVO.override.md";
+/// Legacy instruction filenames are read for pre-rename projects, but never
+/// take precedence over the Grevo names.
+pub const LEGACY_AGENTS_MD_FILENAME: &str = "AGENTS.md";
+pub const LEGACY_LOCAL_AGENTS_MD_FILENAME: &str = "AGENTS.override.md";
 
 /// When both user and project AGENTS.md docs are present, they will be
 /// concatenated with the following separator.
@@ -94,14 +98,14 @@ pub(crate) async fn load_project_instructions(
             Err(error) if sandbox.is_none() => {
                 error!(
                     environment_id = turn_environment.selection.environment_id,
-                    "error trying to find AGENTS.md docs: {error:#}"
+                    "error trying to find GREVO.md docs: {error:#}"
                 );
             }
             Err(error) => {
                 return Err(io::Error::new(
                     error.kind(),
                     format!(
-                        "failed to load AGENTS.md instructions for environment `{}`: {error}",
+                        "failed to load GREVO.md instructions for environment `{}`: {error}",
                         turn_environment.selection.environment_id
                     ),
                 ));
@@ -112,7 +116,7 @@ pub(crate) async fn load_project_instructions(
     Ok((!loaded.is_empty()).then_some(loaded))
 }
 
-/// Attempt to locate and load AGENTS.md documentation.
+/// Attempt to locate and load GREVO.md documentation.
 ///
 /// On success returns `Ok(Some(loaded))` where `loaded` contains every
 /// discovered doc. If no documentation file is found the function returns
@@ -182,7 +186,7 @@ async fn read_agents_md(
     }
 }
 
-/// Discovers AGENTS.md files from the project root to the current working
+/// Discovers GREVO.md files from the project root to the current working
 /// directory, inclusive. Symlinks are allowed.
 async fn agents_md_paths(
     config: &Config,
@@ -265,9 +269,11 @@ async fn agents_md_paths(
 }
 
 fn candidate_filenames(config: &Config) -> Vec<&str> {
-    let mut names: Vec<&str> = Vec::with_capacity(2 + config.project_doc_fallback_filenames.len());
+    let mut names: Vec<&str> = Vec::with_capacity(4 + config.project_doc_fallback_filenames.len());
     names.push(LOCAL_AGENTS_MD_FILENAME);
     names.push(DEFAULT_AGENTS_MD_FILENAME);
+    names.push(LEGACY_LOCAL_AGENTS_MD_FILENAME);
+    names.push(LEGACY_AGENTS_MD_FILENAME);
     for candidate in &config.project_doc_fallback_filenames {
         let candidate = candidate.as_str();
         if candidate.is_empty() {
@@ -280,7 +286,7 @@ fn candidate_filenames(config: &Config) -> Vec<&str> {
     names
 }
 
-/// Model-visible instructions loaded from AGENTS.md files and internal
+/// Model-visible instructions loaded from GREVO.md files and internal
 /// guidance.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LoadedAgentsMd {
@@ -292,7 +298,7 @@ pub struct LoadedAgentsMd {
 }
 
 impl LoadedAgentsMd {
-    /// Creates loaded instructions containing one user-level AGENTS.md entry.
+    /// Creates loaded instructions containing one user-level GREVO.md entry.
     pub fn new_user(contents: String, path: AbsolutePathBuf) -> Self {
         if contents.trim().is_empty() {
             return Self::default();
@@ -395,7 +401,7 @@ impl LoadedAgentsMd {
                     if has_previous {
                         output.push_str("\n\n");
                     }
-                    // One environment can contribute several hierarchical AGENTS.md files from
+                    // One environment can contribute several hierarchical GREVO.md files from
                     // its project root through its cwd. Label that environment once for the
                     // complete group rather than repeating the label before every file.
                     let environment = (environment_id.as_str(), cwd);
@@ -437,7 +443,7 @@ impl LoadedAgentsMd {
         }
     }
 
-    /// Returns the AGENTS.md files that supplied instruction entries.
+    /// Returns the GREVO.md files that supplied instruction entries.
     pub fn sources(&self) -> impl Iterator<Item = PathUri> + '_ {
         self.user_instructions
             .iter()
@@ -487,9 +493,9 @@ struct InstructionEntry {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum InstructionProvenance {
-    /// Workspace instructions discovered from project AGENTS.md files.
+    /// Workspace instructions discovered from project GREVO.md files.
     Project {
-        /// Exact AGENTS.md file, distinct from the environment's selected cwd.
+        /// Exact GREVO.md file, distinct from the environment's selected cwd.
         source_path: PathUri,
         environment_id: String,
         cwd: PathUri,

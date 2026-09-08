@@ -13,9 +13,10 @@ RELEASES_ASSET_TIMEOUT=300
 release_source="github"
 
 BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"
-BIN_PATH="$BIN_DIR/codex"
+BIN_PATH="$BIN_DIR/grevo"
+LEGACY_BIN_PATH="$BIN_DIR/codex"
 CODE_MODE_HOST_BIN_PATH="$BIN_DIR/codex-code-mode-host"
-GREVO_HOME_DIR="${GREVO_HOME:-$HOME/.codex}"
+GREVO_HOME_DIR="${GREVO_HOME:-${CODEX_HOME:-$HOME/.grevo}}"
 STANDALONE_ROOT="$GREVO_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
 CURRENT_LINK="$STANDALONE_ROOT/current"
@@ -63,7 +64,7 @@ validate_version() {
   fi
 
   if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-alpha(\.[0-9]+){0,2}|-beta(\.[0-9]+)?)?$'; then
-    echo "Invalid Codex release version: $version. Expected latest or x.y.z[-alpha[.N[.M]]|-beta[.N]]." >&2
+      echo "Invalid Grevo release version: $version. Expected latest or x.y.z[-alpha[.N[.M]]|-beta[.N]]." >&2
     return 1
   fi
 }
@@ -742,6 +743,7 @@ cleanup_stale_install_artifacts() {
   find "$STANDALONE_ROOT" -mindepth 1 -maxdepth 1 -name '.current.*' -exec rm -f {} +
 
   if [ -d "$BIN_DIR" ]; then
+    find "$BIN_DIR" -mindepth 1 -maxdepth 1 -name '.grevo.*' -exec rm -f {} +
     find "$BIN_DIR" -mindepth 1 -maxdepth 1 -name '.codex.*' -exec rm -f {} +
   fi
 }
@@ -777,7 +779,19 @@ version_from_binary() {
 }
 
 current_installed_version() {
+  version="$(version_from_binary "$CURRENT_LINK/bin/grevo" || true)"
+  if [ -n "$version" ]; then
+    printf '%s\n' "$version"
+    return 0
+  fi
+
   version="$(version_from_binary "$CURRENT_LINK/bin/codex" || true)"
+  if [ -n "$version" ]; then
+    printf '%s\n' "$version"
+    return 0
+  fi
+
+  version="$(version_from_binary "$CURRENT_LINK/grevo" || true)"
   if [ -n "$version" ]; then
     printf '%s\n' "$version"
     return 0
@@ -793,13 +807,13 @@ current_installed_version() {
 }
 
 resolve_existing_codex() {
-  command -v codex 2>/dev/null || true
+  command -v grevo 2>/dev/null || command -v codex 2>/dev/null || true
 }
 
 classify_existing_codex() {
   existing_path="$1"
 
-  if [ -z "$existing_path" ] || [ "$existing_path" = "$BIN_PATH" ]; then
+  if [ -z "$existing_path" ] || [ "$existing_path" = "$BIN_PATH" ] || [ "$existing_path" = "$LEGACY_BIN_PATH" ]; then
     return 1
   fi
 
@@ -863,13 +877,13 @@ prompt_yes_no() {
 print_launch_instructions() {
   case "$path_action" in
     added)
-      step "Current terminal: export PATH=\"$BIN_DIR:\$PATH\" && codex"
-      step "Future terminals: open a new terminal and run: codex"
+      step "Current terminal: export PATH=\"$BIN_DIR:\$PATH\" && grevo"
+      step "Future terminals: open a new terminal and run: grevo"
       step "PATH was added to $path_profile"
       ;;
     updated)
-      step "Current terminal: export PATH=\"$BIN_DIR:\$PATH\" && codex"
-      step "Future terminals: open a new terminal and run: codex"
+      step "Current terminal: export PATH=\"$BIN_DIR:\$PATH\" && grevo"
+      step "Future terminals: open a new terminal and run: grevo"
       step "PATH was updated in $path_profile"
       ;;
     configured)
@@ -878,15 +892,15 @@ print_launch_instructions() {
       step "PATH is already configured in $path_profile"
       ;;
     *)
-      step "Current terminal: codex"
-      step "Future terminals: open a new terminal and run: codex"
+      step "Current terminal: grevo"
+      step "Future terminals: open a new terminal and run: grevo"
       ;;
   esac
 }
 
 maybe_launch_codex_now() {
   if prompt_yes_no "Start Codex now?"; then
-    step "Launching Codex"
+    step "Launching Grevo"
     "$BIN_PATH"
   fi
 }
@@ -1018,7 +1032,8 @@ release_dir_is_complete() {
       ;;
   esac
 
-  installed_version="$(version_from_binary "$release_dir/bin/codex" || version_from_binary "$release_dir/codex" || true)"
+  installed_version="$(version_from_binary "$release_dir/bin/grevo" || version_from_binary "$release_dir/bin/codex" ||
+    version_from_binary "$release_dir/grevo" || version_from_binary "$release_dir/codex" || true)"
   [ "$installed_version" = "$expected_version" ]
 }
 
@@ -1032,20 +1047,40 @@ update_current_link() {
 release_codex_relative_path() {
   release_dir="$1"
 
-  if [ -x "$release_dir/bin/codex" ]; then
+  if [ -x "$release_dir/bin/grevo" ]; then
+    printf 'bin/grevo\n'
+  elif [ -x "$release_dir/bin/codex" ]; then
     printf 'bin/codex\n'
+  elif [ -x "$release_dir/grevo" ]; then
+    printf 'grevo\n'
   else
     printf 'codex\n'
+  fi
+}
+
+release_legacy_codex_relative_path() {
+  release_dir="$1"
+
+  if [ -x "$release_dir/bin/codex" ]; then
+    printf 'bin/codex\n'
+  elif [ -x "$release_dir/codex" ]; then
+    printf 'codex\n'
+  else
+    release_codex_relative_path "$release_dir"
   fi
 }
 
 update_visible_command() {
   release_dir="$1"
   mkdir -p "$BIN_DIR"
-  tmp_link="$BIN_DIR/.codex.$$"
-  codex_relative_path="$(release_codex_relative_path "$release_dir")"
+  tmp_link="$BIN_DIR/.grevo.$$"
+  grevo_relative_path="$(release_codex_relative_path "$release_dir")"
 
-  replace_path_with_symlink "$BIN_PATH" "$CURRENT_LINK/$codex_relative_path" "$tmp_link"
+  replace_path_with_symlink "$BIN_PATH" "$CURRENT_LINK/$grevo_relative_path" "$tmp_link"
+
+  codex_relative_path="$(release_legacy_codex_relative_path "$release_dir")"
+  tmp_link="$BIN_DIR/.codex.$$"
+  replace_path_with_symlink "$LEGACY_BIN_PATH" "$CURRENT_LINK/$codex_relative_path" "$tmp_link"
 
   if [ "$os" = "darwin" ] && [ -x "$release_dir/bin/codex-code-mode-host" ]; then
     replace_path_with_symlink \
@@ -1130,11 +1165,11 @@ release_dir="$RELEASES_DIR/$release_name"
 current_version="$(current_installed_version)"
 
 if [ -n "$current_version" ] && [ "$current_version" != "$resolved_version" ]; then
-  step "Updating Codex CLI from $current_version to $resolved_version"
+      step "Updating Grevo CLI from $current_version to $resolved_version"
 elif [ -n "$current_version" ]; then
-  step "Updating Codex CLI"
+      step "Updating Grevo CLI"
 else
-  step "Installing Codex CLI"
+      step "Installing Grevo CLI"
 fi
 step "Detected platform: $platform_label"
 step "Resolved version: $resolved_version"
@@ -1161,7 +1196,7 @@ if ! release_dir_is_complete "$release_dir" "$resolved_version" "$vendor_target"
   archive_path="$tmp_dir/$asset"
   checksum_path="$tmp_dir/$checksum_asset"
 
-  step "Downloading Codex CLI"
+  step "Downloading Grevo CLI"
   if [ "$install_layout" = "package" ]; then
     checksum_digest="$(release_asset_digest "$checksum_asset")"
     download_file_with_fallback "$checksum_url" "$checksum_fallback_url" "$checksum_path" "$checksum_digest" "$checksum_asset" "$asset"
@@ -1179,7 +1214,7 @@ if ! release_dir_is_complete "$release_dir" "$resolved_version" "$vendor_target"
   fi
 fi
 if ! release_dir_is_complete "$release_dir" "$resolved_version" "$vendor_target" "$install_layout"; then
-  echo "Installed Codex command did not report expected version $resolved_version." >&2
+  echo "Installed Grevo command did not report expected version $resolved_version." >&2
   exit 1
 fi
 update_current_link "$release_dir"
@@ -1205,5 +1240,5 @@ case "$path_action" in
     ;;
 esac
 
-printf 'Codex CLI %s installed successfully.\n' "$resolved_version"
+printf 'Grevo CLI %s installed successfully.\n' "$resolved_version"
 maybe_launch_codex_now

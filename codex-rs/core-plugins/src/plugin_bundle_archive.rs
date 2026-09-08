@@ -60,12 +60,13 @@ pub(crate) fn pack_plugin_bundle_tar_gz(
             reason: "expected a plugin directory".to_string(),
         });
     }
-    if !plugin_path.join(".codex-plugin/plugin.json").is_file()
+    if !plugin_path.join(".grevo-plugin/plugin.json").is_file()
+        && !plugin_path.join(".codex-plugin/plugin.json").is_file()
         && load_plugin_manifest(plugin_path).is_none()
     {
         return Err(PluginBundlePackError::InvalidPluginPath {
             path: plugin_path.to_path_buf(),
-            reason: "missing .codex-plugin/plugin.json or valid Agent Plugin manifest".to_string(),
+            reason: "missing .grevo-plugin/plugin.json or valid Agent Plugin manifest".to_string(),
         });
     }
 

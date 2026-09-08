@@ -19,7 +19,9 @@ use std::path::PathBuf;
 use toml::Value as TomlValue;
 
 #[cfg(unix)]
-const CODEX_MANAGED_CONFIG_SYSTEM_PATH: &str = "/etc/codex/managed_config.toml";
+const CODEX_MANAGED_CONFIG_SYSTEM_PATH: &str = "/etc/grevo/managed_config.toml";
+#[cfg(unix)]
+const LEGACY_CODEX_MANAGED_CONFIG_SYSTEM_PATH: &str = "/etc/codex/managed_config.toml";
 
 #[derive(Debug, Clone)]
 pub(super) struct MangedConfigFromFile {
@@ -223,7 +225,12 @@ pub(super) fn managed_config_default_path(codex_home: &Path) -> PathBuf {
     #[cfg(unix)]
     {
         let _ = codex_home;
-        PathBuf::from(CODEX_MANAGED_CONFIG_SYSTEM_PATH)
+        let path = PathBuf::from(CODEX_MANAGED_CONFIG_SYSTEM_PATH);
+        if path.is_file() {
+            path
+        } else {
+            PathBuf::from(LEGACY_CODEX_MANAGED_CONFIG_SYSTEM_PATH)
+        }
     }
 
     #[cfg(not(unix))]

@@ -522,7 +522,7 @@ fn plugin_manifest_for_source(
             .ok_or_else(|| PluginStoreError::Invalid("missing or invalid plugin.json".to_string())),
         InstallManifest::Fallback(contents) => parse_plugin_manifest(
             source_path,
-            &source_path.join(".codex-plugin/plugin.json"),
+            &source_path.join(".grevo-plugin/plugin.json"),
             contents,
         )
         .map_err(|err| PluginStoreError::Invalid(format!("failed to parse plugin.json: {err}"))),
@@ -657,7 +657,7 @@ fn replace_plugin_root_atomically(
     if let InstallManifest::Fallback(contents) = manifest {
         // Inject the generated manifest into Store's existing atomic copy so install does not
         // mutate the original source or require a second staging directory.
-        let manifest_path = staged_version_root.join(".codex-plugin/plugin.json");
+        let manifest_path = staged_version_root.join(".grevo-plugin/plugin.json");
         let Some(manifest_parent) = manifest_path.parent() else {
             return Err(PluginStoreError::Invalid(
                 "plugin manifest path has no parent".to_string(),

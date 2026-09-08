@@ -3,7 +3,7 @@
 //! This module mirrors the semantics used by the macOS Seatbelt sandbox:
 //! - the filesystem is read-only by default,
 //! - explicit writable roots are layered on top, and
-//! - sensitive subpaths such as `.git`, `.agents`, and `.codex` remain
+//! - sensitive subpaths such as `.git`, `.agents`, `.grevo`, and `.codex` remain
 //!   read-only even when their parent root is writable.
 //!
 //! The overall Linux sandbox is composed of:
@@ -419,15 +419,15 @@ fn create_filesystem_args(
                 };
                 // Automatic repo-metadata read masks are skipped here so the
                 // metadata handling below can apply the root-scoped
-                // protection consistently for `.git`, `.agents`, and `.codex`.
+                // protection consistently for protected metadata names.
                 // User-authored `read` rules for other subpaths and `none`
                 // rules should keep their normal bwrap behavior, which can mask
                 // the first missing component to prevent creation under writable
                 // roots.
                 let project_subpath = Path::new(subpath);
-                if project_subpath != Path::new(".git")
-                    && project_subpath != Path::new(".agents")
-                    && project_subpath != Path::new(".codex")
+                if !project_subpath
+                    .file_name()
+                    .is_some_and(is_protected_metadata_name)
                 {
                     return None;
                 }

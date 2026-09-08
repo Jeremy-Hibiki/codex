@@ -63,8 +63,8 @@ def build_plugin_json(
         "skills": "./skills/",
         "interface": {
             "displayName": display_name,
-            "shortDescription": f"Use {display_name} in Codex.",
-            "longDescription": f"{display_name} adds a local Codex plugin scaffold.",
+            "shortDescription": f"Use {display_name} in Grevo.",
+            "longDescription": f"{display_name} adds a local Grevo plugin scaffold.",
             "developerName": "Local developer",
             "category": DEFAULT_CATEGORY,
             "capabilities": [],
@@ -313,7 +313,7 @@ def main() -> None:
     plugin_root = Path(args.path).expanduser().resolve() / plugin_name
     plugin_root.mkdir(parents=True, exist_ok=True)
 
-    plugin_json_path = plugin_root / ".codex-plugin" / "plugin.json"
+    plugin_json_path = plugin_root / ".grevo-plugin" / "plugin.json"
     write_json(
         plugin_json_path,
         build_plugin_json(

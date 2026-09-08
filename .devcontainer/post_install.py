@@ -22,7 +22,7 @@ def fix_directory_ownership() -> None:
     gid = os.getgid()
 
     paths = [
-        Path.home() / ".codex",
+        Path.home() / ".grevo",
         Path.home() / ".config" / "gh",
         Path.home() / ".cargo",
         Path.home() / ".rustup",
@@ -60,6 +60,7 @@ def setup_git_config() -> None:
 
     gitignore_global.write_text(
         """# Codex
+.grevo/
 .codex/
 
 # Rust

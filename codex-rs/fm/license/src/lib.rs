@@ -105,7 +105,8 @@ fn warn_stub_once() {
 mod stub_tests {
     use std::sync::atomic::Ordering;
 
-    use super::{STUB_WARNING_EMITTED, warn_stub_once};
+    use super::STUB_WARNING_EMITTED;
+    use super::warn_stub_once;
 
     #[test]
     fn stub_warning_latches_after_first_call() {

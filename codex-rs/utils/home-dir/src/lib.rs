@@ -2,8 +2,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use dirs::home_dir;
 use std::path::PathBuf;
 
-/// Environment variable that overrides the Grevo home directory. Takes
-/// precedence over the legacy `GREVO_HOME`.
+/// Environment variable that overrides the Grevo home directory.
 pub const GREVO_HOME_ENV_VAR: &str = "GREVO_HOME";
 
 /// Legacy environment variable still honored as an override for the home
@@ -12,7 +11,7 @@ pub const LEGACY_CODEX_HOME_ENV_VAR: &str = "CODEX_HOME";
 
 /// Returns the path to the Grevo configuration directory, which can be
 /// specified by the `GREVO_HOME` environment variable (the legacy
-/// `GREVO_HOME` is still honored). If neither is set, defaults to `~/.codex`.
+/// `CODEX_HOME` is still honored). If neither is set, defaults to `~/.grevo`.
 ///
 /// - If an override is set, the value must exist and be a directory. The
 ///   value will be canonicalized and this function will Err otherwise.
@@ -75,7 +74,7 @@ fn find_codex_home_from_env(codex_home_env: Option<&str>) -> std::io::Result<Abs
                     "Could not find home directory",
                 )
             })?;
-            p.push(".codex");
+            p.push(".grevo");
             AbsolutePathBuf::from_absolute_path(p)
         }
     }
@@ -146,7 +145,7 @@ mod tests {
         let resolved =
             find_codex_home_from_env(/*codex_home_env*/ None).expect("default GREVO_HOME");
         let mut expected = home_dir().expect("home dir");
-        expected.push(".codex");
+        expected.push(".grevo");
         let expected = AbsolutePathBuf::from_absolute_path(expected).expect("absolute home");
         assert_eq!(resolved, expected);
     }

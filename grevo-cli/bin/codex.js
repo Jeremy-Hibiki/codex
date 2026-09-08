@@ -105,7 +105,7 @@ function findCodexExecutable() {
           ? "vp install -g @openai/codex@latest"
           : "npm install -g @openai/codex@latest";
   throw new Error(
-    `Missing optional dependency ${platformPackage}. Reinstall Codex: ${updateCommand}`,
+    `Missing optional dependency ${platformPackage}. Reinstall Grevo: ${updateCommand}`,
   );
 }
 

@@ -14,10 +14,10 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use owo_colors::OwoColorize;
 
 #[derive(Debug, Parser)]
-#[command(name = "codex-state-logs")]
-#[command(about = "Tail Codex logs from the dedicated logs SQLite DB with simple filters")]
+#[command(name = "grevo-state-logs")]
+#[command(about = "Tail Grevo logs from the dedicated logs SQLite DB with simple filters")]
 struct Args {
-    /// Path to GREVO_HOME. Defaults to $GREVO_HOME or ~/.codex.
+    /// Path to GREVO_HOME. Defaults to $GREVO_HOME or ~/.grevo.
     #[arg(long, env = "GREVO_HOME")]
     codex_home: Option<PathBuf>,
 
@@ -403,14 +403,14 @@ mod tests {
 
     #[test]
     fn log_level_rejects_aliases_and_unknown_values() {
-        assert!(Args::try_parse_from(["codex-state-logs", "--level", "warning"]).is_err());
-        assert!(Args::try_parse_from(["codex-state-logs", "--level", "err"]).is_err());
-        assert!(Args::try_parse_from(["codex-state-logs", "--level", "warn,error"]).is_err());
+        assert!(Args::try_parse_from(["grevo-state-logs", "--level", "warning"]).is_err());
+        assert!(Args::try_parse_from(["grevo-state-logs", "--level", "err"]).is_err());
+        assert!(Args::try_parse_from(["grevo-state-logs", "--level", "warn,error"]).is_err());
     }
 
     #[test]
     fn log_level_accepts_canonical_values_case_insensitively() {
-        let args = Args::try_parse_from(["codex-state-logs", "--level", "WARN"])
+        let args = Args::try_parse_from(["grevo-state-logs", "--level", "WARN"])
             .expect("parse uppercase log level");
 
         assert_eq!(args.level, Some(LogLevelThreshold::Warn));
@@ -425,7 +425,7 @@ mod tests {
         let sqlite_home = tempfile::tempdir().expect("create SQLite home");
         let db_path = sqlite_home.path().join("logs_2.sqlite");
         let args = Args::try_parse_from([
-            OsString::from("codex-state-logs"),
+            OsString::from("grevo-state-logs"),
             OsString::from("--codex-home"),
             codex_home.path().as_os_str().to_owned(),
             OsString::from("--db"),
@@ -452,7 +452,7 @@ mod tests {
         db_path.extend_from_slice(b"/non-utf8-\xff/logs_2.sqlite");
         let db_path = PathBuf::from(OsString::from_vec(db_path));
         let args = Args::try_parse_from([
-            OsString::from("codex-state-logs"),
+            OsString::from("grevo-state-logs"),
             OsString::from("--db"),
             db_path.as_os_str().to_owned(),
         ])

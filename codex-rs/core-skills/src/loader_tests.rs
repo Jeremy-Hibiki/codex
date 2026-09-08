@@ -1365,7 +1365,7 @@ async fn does_not_loop_on_symlink_cycle_for_user_scope() {
     let codex_home = tempfile::tempdir().expect("tempdir");
 
     // Create a cycle:
-    //   $CODEX_HOME/skills/cycle/loop -> $CODEX_HOME/skills/cycle
+    //   $GREVO_HOME/skills/cycle/loop -> $GREVO_HOME/skills/cycle
     let cycle_dir = codex_home.path().join("skills/cycle");
     fs::create_dir_all(&cycle_dir).unwrap();
     symlink_dir(&cycle_dir, &cycle_dir.join("loop"));

@@ -17,8 +17,8 @@ use owo_colors::OwoColorize;
 #[command(name = "codex-state-logs")]
 #[command(about = "Tail Codex logs from the dedicated logs SQLite DB with simple filters")]
 struct Args {
-    /// Path to CODEX_HOME. Defaults to $CODEX_HOME or ~/.codex.
-    #[arg(long, env = "CODEX_HOME")]
+    /// Path to GREVO_HOME. Defaults to $GREVO_HOME or ~/.codex.
+    #[arg(long, env = "GREVO_HOME")]
     codex_home: Option<PathBuf>,
 
     /// Direct path to the logs SQLite database. Overrides --codex-home.
@@ -147,6 +147,13 @@ fn resolve_db_path(args: &Args) -> anyhow::Result<PathBuf> {
 }
 
 fn default_codex_home() -> PathBuf {
+    for key in ["GREVO_HOME", "GREVO_HOME"] {
+        if let Ok(value) = std::env::var(key) {
+            if !value.is_empty() {
+                return PathBuf::from(value);
+            }
+        }
+    }
     if let Some(home) = home_dir() {
         return home.join(".codex");
     }

@@ -1,4 +1,4 @@
-import { CodexOptions } from "./codexOptions";
+import { CodexOptions } from "./grevoOptions";
 import { CodexExec } from "./exec";
 import { Thread } from "./thread";
 import { ThreadOptions } from "./threadOptions";

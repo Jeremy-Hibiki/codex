@@ -497,7 +497,7 @@ pub(super) async fn spawn_websocket_server_with_args(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
-        .env("CODEX_HOME", codex_home)
+        .env("GREVO_HOME", codex_home)
         .env("RUST_LOG", "warn")
         .env("FMSH_CODEX_LIC_TEST_BYPASS", "1");
     let mut process = cmd
@@ -634,7 +634,7 @@ async fn run_websocket_server_to_completion_with_args(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
-        .env("CODEX_HOME", codex_home)
+        .env("GREVO_HOME", codex_home)
         .env("RUST_LOG", "warn")
         .env("FMSH_CODEX_LIC_TEST_BYPASS", "1");
     timeout(DEFAULT_READ_TIMEOUT, cmd.output())

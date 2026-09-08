@@ -11,16 +11,16 @@ python := if os_family() == "windows" { "python" } else { "python3" }
 help:
     just -l
 
-# `codex`
-alias c := codex
-codex *args:
-    cargo run --bin codex -- {args}
+# `grevo`
+alias c := grevo
+grevo *args:
+    cargo run --bin grevo -- {args}
 
-# `codex exec`
+# `grevo exec`
 exec *args:
-    cargo run --bin codex -- exec {args}
+    cargo run --bin grevo -- exec {args}
 
-# Start `codex exec-server` and run codex-tui.
+# Start `grevo exec-server` and run codex-tui.
 [no-cd]
 [positional-arguments]
 [unix]
@@ -38,7 +38,7 @@ code-mode-host *args:
 # Build the CLI and run the app-server test client
 app-server-test-client *args:
     cargo build -p codex-cli
-    cargo run -p codex-app-server-test-client -- --codex-bin ./target/debug/codex {args}
+    cargo run -p codex-app-server-test-client -- --codex-bin ./target/debug/grevo {args}
 
 # Format the justfile, Rust, Bazel/Starlark, Python SDK code, and Python scripts.
 fmt:
@@ -117,12 +117,12 @@ bench-e2e-smoke:
 # the command in the current working directory.
 [no-cd]
 [unix]
-bazel-codex *args:
-    bazel run //codex-rs/cli:codex --run_under="cd $PWD &&" -- "$@"
+bazel-grevo *args:
+    bazel run //codex-rs/cli:grevo --run_under="cd $PWD &&" -- "$@"
 
 [windows]
-bazel-codex *args:
-    bazel run //codex-rs/cli:codex --run_under='cd /d "{{ invocation_directory_native() }}" &&' -- @($args | Select-Object -Skip 1)
+bazel-grevo *args:
+    bazel run //codex-rs/cli:grevo --run_under='cd /d "{{ invocation_directory_native() }}" &&' -- @($args | Select-Object -Skip 1)
 
 # Build and run the standalone code-mode host from source using Bazel.
 [no-cd]

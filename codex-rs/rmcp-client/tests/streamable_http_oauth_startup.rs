@@ -121,12 +121,12 @@ async fn refreshes_expired_persisted_token_before_initialize() -> anyhow::Result
     let codex_home = TempDir::new()?;
     let server_url = format!("{}/mcp", server.uri());
 
-    // Credential storage resolves CODEX_HOME from the process environment.
+    // Credential storage resolves GREVO_HOME from the process environment.
     // Run the client half of the test in an ignored helper test so it can use
     // an isolated home without mutating the parent test runner's environment.
     let status = Command::new(std::env::current_exe()?)
         .args(["oauth_startup_child", "--exact", "--ignored", "--nocapture"])
-        .env("CODEX_HOME", codex_home.path())
+        .env("GREVO_HOME", codex_home.path())
         .env(CHILD_SERVER_URL_ENV, server_url)
         .status()
         .await?;
@@ -146,7 +146,7 @@ async fn reports_auth_status_for_persisted_credentials() -> anyhow::Result<()> {
             "--ignored",
             "--nocapture",
         ])
-        .env("CODEX_HOME", codex_home.path())
+        .env("GREVO_HOME", codex_home.path())
         .status()
         .await?;
 
@@ -178,7 +178,7 @@ async fn identifies_expired_unrefreshable_token_startup_error() -> anyhow::Resul
             "--ignored",
             "--nocapture",
         ])
-        .env("CODEX_HOME", codex_home.path())
+        .env("GREVO_HOME", codex_home.path())
         .env(CHILD_SERVER_URL_ENV, format!("{}/mcp", server.uri()))
         .status()
         .await?;

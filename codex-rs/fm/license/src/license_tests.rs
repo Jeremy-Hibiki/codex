@@ -43,7 +43,7 @@ fn all_values_are_resolved_from_env() {
 }
 
 #[test]
-fn display_name_defaults_to_codex_when_missing_or_empty() {
+fn display_name_defaults_to_grevo_when_missing_or_empty() {
     for display_name in [None, Some("")] {
         let config = resolve_config(LicenseEnv {
             feature: Some("PRO"),
@@ -52,7 +52,7 @@ fn display_name_defaults_to_codex_when_missing_or_empty() {
             ..LicenseEnv::default()
         })
         .unwrap();
-        assert_eq!(config.display_name, "Codex");
+        assert_eq!(config.display_name, "Grevo");
     }
 }
 

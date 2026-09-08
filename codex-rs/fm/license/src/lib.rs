@@ -1,11 +1,11 @@
-//! Startup license verification for Codex.
+//! Startup license verification for Grevo.
 //!
 //! On Linux x86_64 with glibc this crate checks out a license from the FMSH
-//! LicenseService before Codex starts and holds it for the lifetime of the
+//! LicenseService before Grevo starts and holds it for the lifetime of the
 //! process. Everywhere else the crate compiles to an empty stub because the
 //! underlying LMCLIENT SDK only ships a CentOS 7 / x86_64 static library.
 //!
-//! If the license heartbeat exhausts its retries at runtime, Codex tries one
+//! If the license heartbeat exhausts its retries at runtime, Grevo tries one
 //! fresh checkout on the existing license client. This handles a license
 //! server whose in-memory authorization state was reset. If that checkout
 //! also fails, the process stays alive in a "license lost" state: surfaces
@@ -15,13 +15,13 @@
 //!
 //! Verification is enforced in every build mode unless the product-level skip
 //! switch `FMSH_CODEX_LIC_TEST_BYPASS` is set (release builds honor it too).
-//! A Codex process spawned from inside another Codex session (detected on
+//! A Grevo process spawned from inside another Grevo session (detected on
 //! Linux via the inherited `CODEX_THREAD_ID` shell-tool marker) skips the
 //! checkout so nested sessions do not consume extra license seats.
 //! The LMCLIENT SDK reads `FMSH_LIC_SERVER` internally (`<port>@<host>`).
 //! `FMSH_CODEX_LIC_FEATURE` and `FMSH_CODEX_LIC_VERSION` must be set
 //! explicitly. `FMSH_CODEX_LIC_DISPLAY_NAME` is optional and defaults to
-//! `"Codex"`; `FMSH_CODEX_LIC_HOSTNAME` is optional and defaults to the
+//! `"Grevo"`; `FMSH_CODEX_LIC_HOSTNAME` is optional and defaults to the
 //! LMCLIENT SDK default client host name.
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
@@ -53,7 +53,7 @@ pub use license::verify_at_startup;
 // that cannot check out licenses.
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
 pub const LICENSE_UNAVAILABLE_MESSAGE: &str =
-    "Codex license is unavailable; new requests are blocked until the license recovers";
+    "Grevo license is unavailable; new requests are blocked until the license recovers";
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
 pub const TEST_BYPASS_ENV_VAR: &str = "FMSH_CODEX_LIC_TEST_BYPASS";
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]

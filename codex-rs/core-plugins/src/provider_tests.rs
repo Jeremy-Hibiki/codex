@@ -236,6 +236,9 @@ async fn plugin_root_resolution_uses_supplied_executor_file_system() {
             .expect("valid expected descriptor")
         )
     );
+    let codex_manifest_path = plugin_root
+        .join(".codex-plugin/plugin.json")
+        .expect("codex manifest URI");
     assert_eq!(
         *file_system
             .calls
@@ -243,6 +246,7 @@ async fn plugin_root_resolution_uses_supplied_executor_file_system() {
             .unwrap_or_else(std::sync::PoisonError::into_inner),
         vec![
             FileSystemCall::Metadata(plugin_root),
+            FileSystemCall::Metadata(codex_manifest_path),
             FileSystemCall::Metadata(manifest_path.clone()),
             FileSystemCall::Read(manifest_path),
         ]
@@ -281,6 +285,9 @@ async fn plugin_root_resolution_accepts_foreign_executor_file_uri() {
             .expect("valid expected descriptor")
         )
     );
+    let codex_manifest_path = plugin_root
+        .join(".codex-plugin/plugin.json")
+        .expect("codex manifest URI");
     assert_eq!(
         *file_system
             .calls
@@ -288,6 +295,7 @@ async fn plugin_root_resolution_accepts_foreign_executor_file_uri() {
             .unwrap_or_else(std::sync::PoisonError::into_inner),
         vec![
             FileSystemCall::Metadata(plugin_root),
+            FileSystemCall::Metadata(codex_manifest_path),
             FileSystemCall::Metadata(manifest_path.clone()),
             FileSystemCall::Read(manifest_path),
         ]

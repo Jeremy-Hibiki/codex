@@ -11,11 +11,11 @@
 #     --build-arg HTTPS_PROXY="$HTTPS_PROXY" \
 #     --build-arg NO_PROXY="$NO_PROXY" \
 #     --build-arg UBUNTU_VERSION=22.04 \
-#     -t codex:ubuntu-22.04 -f release/Dockerfile.cargo .
+#     -t grevo:ubuntu-22.04 -f release/Dockerfile.cargo .
 #
 # Extract the binary:
-#   id=$(docker create codex:ubuntu-22.04)
-#   docker cp "$id:/usr/local/bin/codex" ./codex
+#   id=$(docker create grevo:ubuntu-22.04)
+#   docker cp "$id:/usr/local/bin/grevo" ./grevo
 #   docker rm "$id"
 #
 # Why Cargo instead of Bazel?
@@ -141,12 +141,12 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     set -eu; \
     export FMSH_UKEY_SDK_LINK FMSH_UKEY_LIBSTDCPP; \
     if [ "$CARGO_PROFILE" = "debug" ]; then \
-    cargo build -p codex-cli \
-    && cp target/debug/codex /codex-codex; \
+    cargo build -p grevo-cli \
+    && cp target/debug/grevo /codex-grevo; \
     else \
-    cargo build --release -p codex-cli \
-    && strip target/release/codex \
-    && cp target/release/codex /codex-codex; \
+    cargo build --release -p grevo-cli \
+    && strip target/release/grevo \
+    && cp target/release/grevo /codex-grevo; \
     fi
 
 # ── bundle runtime libs ───────────────────────────────────────────────────
@@ -157,7 +157,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
 ARG FMSH_UKEY_SDK_LINK
 RUN --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     mkdir -p /codex/lib \
-    && cp /codex-codex /codex/codex \
+    && cp /codex-grevo /codex/grevo \
     && SDK_LIB="$(find /root/.cargo/git/checkouts/fmsh-ukey-lib-* -path '*/vendor/fmsh-ukey-sdk/linux/lib' | head -1)" \
     && if [ "$FMSH_UKEY_SDK_LINK" != "static" ]; then \
     cp -fL "$SDK_LIB"/libfmsh_ukey_sdk.so.0 /codex/lib/; \
@@ -180,8 +180,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     libstdc++6 ca-certificates \
     $( [ "$FMSH_UKEY_SDK_LINK" = "static" ] || echo libssl3 )
 
-COPY --from=builder /codex/codex /usr/local/bin/codex
+COPY --from=builder /codex/grevo /usr/local/bin/grevo
 COPY --from=builder /codex/lib /usr/local/bin/lib
-RUN chmod +x /usr/local/bin/codex
+RUN chmod +x /usr/local/bin/grevo
 
-ENTRYPOINT ["codex"]
+ENTRYPOINT ["grevo"]

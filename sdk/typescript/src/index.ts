@@ -28,7 +28,7 @@ export type { RunResult, RunStreamedResult, Input, UserInput } from "./thread";
 
 export { Codex } from "./codex";
 
-export type { CodexOptions } from "./codexOptions";
+export type { CodexOptions } from "./grevoOptions";
 
 export type {
   ThreadOptions,

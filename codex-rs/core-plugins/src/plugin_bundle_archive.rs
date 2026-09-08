@@ -59,10 +59,10 @@ pub(crate) fn pack_plugin_bundle_tar_gz(
             reason: "expected a plugin directory".to_string(),
         });
     }
-    if !plugin_path.join(".codex-plugin/plugin.json").is_file() {
+    if !has_plugin_manifest(plugin_path) {
         return Err(PluginBundlePackError::InvalidPluginPath {
             path: plugin_path.to_path_buf(),
-            reason: "missing .codex-plugin/plugin.json".to_string(),
+            reason: "missing plugin.json manifest".to_string(),
         });
     }
 
@@ -74,6 +74,12 @@ pub(crate) fn pack_plugin_bundle_tar_gz(
         .finish()
         .map(SizeLimitedBuffer::into_inner)
         .map_err(archive_io_error)
+}
+
+fn has_plugin_manifest(plugin_path: &Path) -> bool {
+    [".codex-plugin/plugin.json", ".codex-plugin/plugin.json"]
+        .iter()
+        .any(|relative| plugin_path.join(relative).is_file())
 }
 
 fn append_plugin_tree<W: Write>(

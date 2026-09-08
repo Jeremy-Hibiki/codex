@@ -64,7 +64,7 @@ impl McpProcess {
         cmd.stdin(Stdio::piped());
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
-        cmd.env("CODEX_HOME", codex_home);
+        cmd.env("GREVO_HOME", codex_home);
         cmd.env("RUST_LOG", "debug");
         // Debug/test-only bypass so the suite does not need a live FMSH
         // license server; release binaries never honor this.

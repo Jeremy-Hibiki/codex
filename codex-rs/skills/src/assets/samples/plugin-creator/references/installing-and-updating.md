@@ -12,14 +12,14 @@ Use this flow when all of the following are true:
 
 - the plugin already exists locally
 - the marketplace entry already points at the plugin source you are editing
-- the user wants Codex to see the updated plugin without manually editing marketplace files
+- the user wants Grevo to see the updated plugin without manually editing marketplace files
 
 If the user still needs the initial plugin entry or marketplace structure created, use the scaffold
 flow first and only then switch to this reinstall flow.
 
 ## Update Loop
 
-1. Update the plugin manifest to a single Codex cachebuster suffix:
+1. Update the plugin manifest to a single Grevo cachebuster suffix:
 
 ```bash
 python3 scripts/update_plugin_cachebuster.py \
@@ -30,7 +30,7 @@ Prefer the default helper behavior here. If you omit `--cachebuster`, the helper
 timestamp down to seconds, which is the recommended path for routine local iteration.
 
 Only use a manual cachebuster override when the user explicitly asks for one or when a workflow
-outside Codex depends on a specific token:
+outside Grevo depends on a specific token:
 
 ```bash
 python3 scripts/update_plugin_cachebuster.py \
@@ -86,7 +86,7 @@ continuing.
 codex plugin add <plugin-name>@<local-marketplace>
 ```
 
-6. Prompt the user to use a new thread to try the updated plugin, so that Codex picks up new skills
+6. Prompt the user to use a new thread to try the updated plugin, so that Grevo picks up new skills
    and tools.
 
 ## Cachebuster Policy
@@ -106,7 +106,7 @@ Examples:
 - `1.2.3-beta.1+codex.prev` → `1.2.3-beta.1+codex.local-20260519-184516`
 - `dev-build+other-tag` → `dev-build+codex.local-20260519-184516`
 
-Replace the existing Codex cachebuster instead of appending another one. Do not keep incrementing
+Replace the existing Grevo cachebuster instead of appending another one. Do not keep incrementing
 numeric version components just to trigger reinstall behavior.
 
 ## Marketplace Rules
@@ -121,7 +121,7 @@ numeric version components just to trigger reinstall behavior.
   `python3 scripts/read_marketplace_name.py --marketplace-path <path-to-marketplace.json>` to read
   the name before constructing reinstall commands.
 - Do not tell the user to run `codex plugin marketplace add` for the default personal-marketplace
-  flow. That marketplace is discovered implicitly by Codex.
+  flow. That marketplace is discovered implicitly by Grevo.
 - If the user specified a different marketplace path, make sure that marketplace is installed
   before giving install or reinstall instructions. Non-default marketplace paths are not
   discovered implicitly.

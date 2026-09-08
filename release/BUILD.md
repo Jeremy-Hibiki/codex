@@ -27,23 +27,23 @@ release/build-fm.sh --local
 # bash release/predownload-deps.sh
 # 2. 计算后缀并构建（Bazel 沙箱没有 git 元数据，必须通过 action env 传入）
 # suffix=fm.r37-456e4457
-# bazel build --action_env=FM_BUILD_SUFFIX="$suffix" //codex-rs/cli:codex
+# bazel build --action_env=FM_BUILD_SUFFIX="$suffix" //codex-rs/cli:grevo
 # 3. 验证
 # bazel-bin/codex-rs/cli/codex --version
-# 输出: codex 0.146.0-fm.r37-456e4457
+# 输出: grevo 0.146.0-fm.r37-456e4457
 ```
 
 ### 方式二：Docker 构建（推荐，用于分发）
 
 ```bash
-release/build-fm.sh                        # 默认 Docker 构建，tag: codex:v<base>-fm.rNNN-HHHHHHHH-ubuntu-22.04
+release/build-fm.sh                        # 默认 Docker 构建，tag: grevo:v<base>-fm.rNNN-HHHHHHHH-ubuntu-22.04
 release/build-fm.sh --ubuntu-version 24.04
 release/build-fm.sh --tag codex:custom
 release/build-fm.sh --appimage            # 额外产出纯 CLI 单文件 AppImage（codex-<version>-x86_64.AppImage，无 desktop/icon；AppDir/打包全在容器 appimage stage 内完成）
 
 # 提取二进制
 id=$(docker create codex:ubuntu-22.04)
-docker cp "$id:/usr/local/bin/codex" ./codex
+docker cp "$id:/usr/local/bin/grevo" ./grevo
 docker rm "$id"
 ```
 
@@ -162,7 +162,7 @@ gcc/clang，保证本机、CI、Docker 里构建行为完全一致。
 
 ```
 $ codex --version
-codex 0.146.0-fm.r37-456e4457
+grevo 0.146.0-fm.r37-456e4457
 
 $ file codex
 ELF 64-bit LSB pie executable, x86-64, dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2

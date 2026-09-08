@@ -77,7 +77,7 @@ pub(crate) fn pack_plugin_bundle_tar_gz(
 }
 
 fn has_plugin_manifest(plugin_path: &Path) -> bool {
-    [".codex-plugin/plugin.json", ".codex-plugin/plugin.json"]
+    [".grevo-plugin/plugin.json", ".codex-plugin/plugin.json"]
         .iter()
         .any(|relative| plugin_path.join(relative).is_file())
 }

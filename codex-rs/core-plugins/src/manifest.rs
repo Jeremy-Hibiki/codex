@@ -147,9 +147,9 @@ pub fn load_plugin_manifest(plugin_root: &Path) -> Option<PluginManifest> {
     let contents = fs::read_to_string(&manifest_path).ok()?;
     let is_agent_plugin = manifest_path == plugin_root.join(AGENT_PLUGIN_MANIFEST_RELATIVE_PATH);
     let overlay = if is_agent_plugin {
-        let codex_overlay = plugin_root.join(".codex-plugin/plugin.json");
-        let overlay_path = if codex_overlay.is_file() {
-            codex_overlay
+        let grevo_overlay = plugin_root.join(".grevo-plugin/plugin.json");
+        let overlay_path = if grevo_overlay.is_file() {
+            grevo_overlay
         } else {
             // Legacy pre-rename manifest location.
             plugin_root.join(".codex-plugin/plugin.json")

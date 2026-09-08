@@ -378,8 +378,9 @@ fn skill_roots_from_layer_stack_inner(
                 });
             }
             ConfigLayerSource::System { .. } => {
-                // The system config layer lives under `/etc/codex/` on Unix, so treat
-                // `/etc/codex/skills` as admin-scoped skills.
+                // The system config layer lives under `/etc/grevo/` on Unix (with
+                // legacy `/etc/codex/` still honored), so treat its `skills`
+                // directory as admin-scoped.
                 roots.push(SkillRoot {
                     path: config_folder.join(SKILLS_DIR_NAME),
                     scope: SkillScope::Admin,

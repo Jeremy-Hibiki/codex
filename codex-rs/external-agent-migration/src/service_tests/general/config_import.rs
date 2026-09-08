@@ -23,19 +23,19 @@ async fn import_repo_mcp_preserves_existing_same_named_server() {
         }"#,
     )
     .expect("write mcp");
-    fs::create_dir_all(repo_root.join(".codex")).expect("create codex dir");
+    fs::create_dir_all(repo_root.join(".grevo")).expect("create codex dir");
     let existing_config = r#"[mcp_servers.mixedTransport]
 url = "https://example.com/mixed-transport"
 "#;
     fs::write(
-        repo_root.join(".codex").join("config.toml"),
+        repo_root.join(".grevo").join("config.toml"),
         existing_config,
     )
     .expect("write config");
 
     let service = service_for_paths(
         root.path().join(EXTERNAL_AGENT_DIR),
-        root.path().join(".codex"),
+        root.path().join(".grevo"),
     );
     assert_eq!(
         service
@@ -59,7 +59,7 @@ url = "https://example.com/mixed-transport"
         .await;
 
     assert_eq!(
-        fs::read_to_string(repo_root.join(".codex").join("config.toml")).expect("read config"),
+        fs::read_to_string(repo_root.join(".grevo").join("config.toml")).expect("read config"),
         existing_config
     );
 }
@@ -79,9 +79,9 @@ async fn detect_repo_mcp_lists_only_missing_servers() {
         }"#,
     )
     .expect("write mcp");
-    fs::create_dir_all(repo_root.join(".codex")).expect("create codex dir");
+    fs::create_dir_all(repo_root.join(".grevo")).expect("create codex dir");
     fs::write(
-        repo_root.join(".codex").join("config.toml"),
+        repo_root.join(".grevo").join("config.toml"),
         r#"[mcp_servers.mixedTransport]
 url = "https://example.com/mixed-transport"
 "#,
@@ -90,7 +90,7 @@ url = "https://example.com/mixed-transport"
 
     let items = service_for_paths(
         root.path().join(EXTERNAL_AGENT_DIR),
-        root.path().join(".codex"),
+        root.path().join(".grevo"),
     )
     .detect(ExternalAgentConfigDetectOptions {
         include_home: false,
@@ -107,7 +107,7 @@ url = "https://example.com/mixed-transport"
             description: format!(
                 "Migrate MCP servers from {} into {}",
                 repo_root.display(),
-                repo_root.join(".codex").join("config.toml").display()
+                repo_root.join(".grevo").join("config.toml").display()
             ),
             cwd: Some(repo_root),
             details: Some(MigrationDetails {
@@ -318,7 +318,7 @@ async fn import_local_plugins_returns_completed_status() {
     let plugin_root = marketplace_root.join("plugins").join("cloudflare");
     fs::create_dir_all(marketplace_root.join(EXTERNAL_AGENT_PLUGIN_MANIFEST_DIR))
         .expect("create marketplace manifest dir");
-    fs::create_dir_all(plugin_root.join(".codex-plugin")).expect("create plugin manifest dir");
+    fs::create_dir_all(plugin_root.join(".grevo-plugin")).expect("create plugin manifest dir");
     fs::create_dir_all(&codex_home).expect("create codex home");
 
     fs::write(
@@ -353,7 +353,7 @@ async fn import_local_plugins_returns_completed_status() {
     )
     .expect("write marketplace manifest");
     fs::write(
-        plugin_root.join(".codex-plugin").join("plugin.json"),
+        plugin_root.join(".grevo-plugin").join("plugin.json"),
         r#"{"name":"cloudflare","version":"0.1.0"}"#,
     )
     .expect("write plugin manifest");

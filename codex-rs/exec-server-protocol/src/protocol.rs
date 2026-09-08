@@ -44,8 +44,9 @@ pub const FS_COPY_METHOD: &str = "fs/copy";
 pub const CAPABILITY_ROOTS_DISCOVER_METHOD: &str = "capabilityRoots/discoverV1";
 /// Ordered plugin manifest paths recognized beneath a plugin root.
 pub const DISCOVERABLE_PLUGIN_MANIFEST_PATHS: &[&str] = &[
-    ".codex-plugin/plugin.json",
+    ".grevo-plugin/plugin.json",
     // Legacy pre-rename plugin manifest, still honored for existing plugins.
+    ".codex-plugin/plugin.json",
     ".codex-plugin/plugin.json",
     ".claude-plugin/plugin.json",
     ".cursor-plugin/plugin.json",

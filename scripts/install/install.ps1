@@ -427,6 +427,11 @@ function Get-CurrentInstalledVersion {
         [string]$StandaloneCurrentDir
     )
 
+    $standaloneVersion = Get-VersionFromBinary -CodexPath (Join-Path $StandaloneCurrentDir "bin\grevo.exe")
+    if (-not [string]::IsNullOrWhiteSpace($standaloneVersion)) {
+        return $standaloneVersion
+    }
+
     $standaloneVersion = Get-VersionFromBinary -CodexPath (Join-Path $StandaloneCurrentDir "bin\codex.exe")
     if (-not [string]::IsNullOrWhiteSpace($standaloneVersion)) {
         return $standaloneVersion
@@ -772,9 +777,12 @@ function Test-ReleaseIsComplete {
 }
 
 function Get-ExistingCodexCommand {
-    $existing = Get-Command codex -ErrorAction SilentlyContinue
+    $existing = Get-Command grevo -ErrorAction SilentlyContinue
     if ($null -eq $existing) {
-        return $null
+        $existing = Get-Command codex -ErrorAction SilentlyContinue
+        if ($null -eq $existing) {
+            return $null
+        }
     }
 
     return $existing.Source
@@ -860,10 +868,29 @@ function Test-VisibleCodexCommand {
         [string]$VisibleBinDir
     )
 
-    $codexCommand = Join-Path $VisibleBinDir "codex.exe"
-    & $codexCommand --version *> $null
+    $grevoCommand = Join-Path $VisibleBinDir "grevo.exe"
+    & $grevoCommand --version *> $null
     if ($LASTEXITCODE -ne 0) {
-        throw "Installed Codex command failed verification: $codexCommand --version"
+        throw "Installed Grevo command failed verification: $grevoCommand --version"
+    }
+}
+
+function Add-GrevoCompatibilityCommand {
+    param(
+        [string]$ReleaseDir,
+        [string]$Layout
+    )
+
+    $binaryDir = if ($Layout -eq "Package") {
+        Join-Path $ReleaseDir "bin"
+    } else {
+        $ReleaseDir
+    }
+    $grevoPath = Join-Path $binaryDir "grevo.exe"
+    $codexPath = Join-Path $binaryDir "codex.exe"
+
+    if (-not (Test-Path -LiteralPath $grevoPath) -and (Test-Path -LiteralPath $codexPath)) {
+        Copy-Item -LiteralPath $codexPath -Destination $grevoPath
     }
 }
 
@@ -899,7 +926,11 @@ switch ($architecture) {
 }
 
 $codexHome = if ([string]::IsNullOrWhiteSpace($env:GREVO_HOME)) {
-    Join-Path $env:USERPROFILE ".codex"
+    if ([string]::IsNullOrWhiteSpace($env:CODEX_HOME)) {
+        Join-Path $env:USERPROFILE ".grevo"
+    } else {
+        $env:CODEX_HOME
+    }
 } else {
     $env:GREVO_HOME
 }
@@ -908,7 +939,7 @@ $releasesDir = Join-Path $standaloneRoot "releases"
 $currentDir = Join-Path $standaloneRoot "current"
 $lockPath = Join-Path $standaloneRoot "install.lock"
 
-$defaultVisibleBinDir = Join-Path $env:LOCALAPPDATA "Programs\OpenAI\Codex\bin"
+$defaultVisibleBinDir = Join-Path $env:LOCALAPPDATA "Programs\Grevo\bin"
 if ([string]::IsNullOrWhiteSpace($env:GREVO_INSTALL_DIR)) {
     $visibleBinDir = $defaultVisibleBinDir
 } else {
@@ -923,11 +954,11 @@ $releaseName = "$resolvedVersion-$target"
 $releaseDir = Join-Path $releasesDir $releaseName
 
 if (-not [string]::IsNullOrWhiteSpace($currentVersion) -and $currentVersion -ne $resolvedVersion) {
-    Write-Step "Updating Codex CLI from $currentVersion to $resolvedVersion"
+    Write-Step "Updating Grevo CLI from $currentVersion to $resolvedVersion"
 } elseif (-not [string]::IsNullOrWhiteSpace($currentVersion)) {
-    Write-Step "Updating Codex CLI"
+    Write-Step "Updating Grevo CLI"
 } else {
-    Write-Step "Installing Codex CLI"
+    Write-Step "Installing Grevo CLI"
 }
 Write-Step "Detected platform: $platformLabel"
 Write-Step "Resolved version: $resolvedVersion"
@@ -957,7 +988,7 @@ try {
             $checksumPath = Join-Path $tempDir $checksumAsset
             $stagingDir = Join-Path $releasesDir ".staging.$releaseName.$PID"
 
-            Write-Step "Downloading Codex CLI"
+            Write-Step "Downloading Grevo CLI"
             if ($installLayout -eq "Package") {
                 Invoke-WebRequestWithFallback -Metadata $checksumMetadata -OutFile $checksumPath -ExpectedDigest $checksumMetadata.Sha256 -AssetName $checksumAsset -ReleaseVersion $resolvedVersion -RequiredManifestAsset $packageAsset
                 $expectedPackageDigest = Get-PackageArchiveDigest -ManifestPath $checksumPath -AssetName $packageAsset
@@ -1007,8 +1038,10 @@ try {
         }
 
         if (-not (Test-ReleaseIsComplete -ReleaseDir $releaseDir -ExpectedVersion $resolvedVersion -ExpectedTarget $target -Layout $installLayout)) {
-            throw "Installed Codex command did not report expected version $resolvedVersion."
+            throw "Installed Grevo command did not report expected version $resolvedVersion."
         }
+
+        Add-GrevoCompatibilityCommand -ReleaseDir $releaseDir -Layout $installLayout
 
         New-Item -ItemType Directory -Force -Path $standaloneRoot | Out-Null
         Ensure-Junction -LinkPath $currentDir -TargetPath $releaseDir -InstallerOwnedTargetPrefix $releasesDir
@@ -1078,12 +1111,12 @@ if ($prioritizeVisibleBin) {
     }
 }
 
-Write-Step "Current PowerShell session: codex"
-Write-Step "Future PowerShell windows: open a new PowerShell window and run: codex"
-Write-Host "Codex CLI $resolvedVersion installed successfully."
+Write-Step "Current PowerShell session: grevo"
+Write-Step "Future PowerShell windows: open a new PowerShell window and run: grevo"
+Write-Host "Grevo CLI $resolvedVersion installed successfully."
 
-$codexCommand = Join-Path $visibleBinDir "codex.exe"
-if (Prompt-YesNo "Start Codex now?") {
-    Write-Step "Launching Codex"
-    & $codexCommand
+$grevoCommand = Join-Path $visibleBinDir "grevo.exe"
+if (Prompt-YesNo "Start Grevo now?") {
+    Write-Step "Launching Grevo"
+    & $grevoCommand
 }

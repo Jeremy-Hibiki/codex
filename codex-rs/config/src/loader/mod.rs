@@ -52,7 +52,13 @@ use std::path::PathBuf;
 use toml::Value as TomlValue;
 
 #[cfg(unix)]
-const SYSTEM_CONFIG_TOML_FILE_UNIX: &str = "/etc/codex/config.toml";
+const SYSTEM_CONFIG_TOML_FILE_UNIX: &str = "/etc/grevo/config.toml";
+#[cfg(unix)]
+const LEGACY_SYSTEM_CONFIG_TOML_FILE_UNIX: &str = "/etc/codex/config.toml";
+#[cfg(unix)]
+const SYSTEM_REQUIREMENTS_TOML_FILE_UNIX: &str = "/etc/grevo/requirements.toml";
+#[cfg(unix)]
+const LEGACY_SYSTEM_REQUIREMENTS_TOML_FILE_UNIX: &str = "/etc/codex/requirements.toml";
 
 #[cfg(windows)]
 const DEFAULT_PROGRAM_DATA_DIR_WINDOWS: &str = r"C:\ProgramData";
@@ -84,7 +90,7 @@ async fn first_layer_config_error_from_entries(layers: &[ConfigLayerEntry]) -> O
 /// composed with config-style TOML merging plus field-specific handling for
 /// hooks, rules, deny-read permissions, and remote sandbox config:
 ///
-/// - system    `/etc/codex/requirements.toml` (Unix) or
+/// - system    `/etc/grevo/requirements.toml` (Unix; legacy `/etc/codex/...` is still honored) or
 ///   `%ProgramData%\OpenAI\Codex\requirements.toml` (Windows)
 /// - cloud:    enterprise-managed cloud config bundle requirements
 /// - legacy:   managed_config.toml reinterpreted as requirements.toml
@@ -96,14 +102,16 @@ async fn first_layer_config_error_from_entries(layers: &[ConfigLayerEntry]) -> O
 /// Configuration is built up from multiple layers in the following order:
 ///
 /// - admin:    managed preferences (*)
-/// - system    `/etc/codex/config.toml` (Unix) or
+/// - system    `/etc/grevo/config.toml` (Unix; legacy `/etc/codex/...` is still honored) or
 ///   `%ProgramData%\OpenAI\Codex\config.toml` (Windows)
 /// - cloud     enterprise-managed cloud config bundle fragments
 /// - user      `${GREVO_HOME}/config.toml`
 /// - profile   `${GREVO_HOME}/<name>.config.toml`, when selected
 /// - cwd       `${PWD}/config.toml` (loaded but disabled when the directory is untrusted)
-/// - tree      parent directories up to root looking for `./.codex/config.toml` (loaded but disabled when untrusted)
-/// - repo      `$(git rev-parse --show-toplevel)/.codex/config.toml` (loaded but disabled when untrusted)
+/// - tree      parent directories up to root looking for `./.grevo/config.toml` (legacy
+///             `./.codex/config.toml` is still honored; loaded but disabled when untrusted)
+/// - repo      `$(git rev-parse --show-toplevel)/.grevo/config.toml` (legacy
+///             `$(git rev-parse --show-toplevel)/.codex/config.toml` is still honored)
 /// - runtime   e.g., --config flags, model selector in UI
 ///
 /// (*) Only available on macOS via managed device profiles.
@@ -632,7 +640,7 @@ pub async fn load_requirements_toml(
 
 #[cfg(unix)]
 fn system_requirements_toml_file() -> io::Result<AbsolutePathBuf> {
-    AbsolutePathBuf::from_absolute_path(Path::new("/etc/codex/requirements.toml"))
+    AbsolutePathBuf::from_absolute_path(Path::new(SYSTEM_REQUIREMENTS_TOML_FILE_UNIX))
 }
 
 #[cfg(windows)]
@@ -645,7 +653,15 @@ fn system_requirements_toml_file_with_overrides(
 ) -> io::Result<AbsolutePathBuf> {
     match &overrides.system_requirements_path {
         Some(path) => AbsolutePathBuf::from_absolute_path(path),
-        None => system_requirements_toml_file(),
+        None => {
+            let path = system_requirements_toml_file()?;
+            if path.as_path().is_file() {
+                return Ok(path);
+            }
+            AbsolutePathBuf::from_absolute_path(Path::new(
+                LEGACY_SYSTEM_REQUIREMENTS_TOML_FILE_UNIX,
+            ))
+        }
     }
 }
 
@@ -664,7 +680,13 @@ fn system_config_toml_file_with_overrides(
 ) -> io::Result<AbsolutePathBuf> {
     match &overrides.system_config_path {
         Some(path) => AbsolutePathBuf::from_absolute_path(path),
-        None => system_config_toml_file(),
+        None => {
+            let path = system_config_toml_file()?;
+            if path.as_path().is_file() {
+                return Ok(path);
+            }
+            AbsolutePathBuf::from_absolute_path(Path::new(LEGACY_SYSTEM_CONFIG_TOML_FILE_UNIX))
+        }
     }
 }
 
@@ -677,6 +699,10 @@ fn windows_codex_system_dir() -> PathBuf {
         );
         PathBuf::from(DEFAULT_PROGRAM_DATA_DIR_WINDOWS)
     });
+    let dir = program_data.join("Grevo");
+    if dir.is_dir() {
+        return dir;
+    }
     program_data.join("OpenAI").join("Codex")
 }
 
@@ -931,7 +957,13 @@ impl ProjectTrustContext {
         }
 
         let relative_dir = dir.as_path().strip_prefix(checkout_root.as_path()).ok()?;
-        Some(repo_root.join(relative_dir).join(".codex"))
+        let checkout_folder = repo_root.join(relative_dir);
+        let grevo_folder = checkout_folder.join(PROJECT_GREVO_FOLDER);
+        if grevo_folder.is_dir() {
+            Some(grevo_folder)
+        } else {
+            Some(checkout_folder.join(PROJECT_LEGACY_CODEX_FOLDER))
+        }
     }
 }
 
@@ -951,6 +983,18 @@ fn project_layer_entry(
         ConfigLayerEntry::new(source, config)
     };
     entry.with_hooks_config_folder_override(hooks_config_folder_override)
+}
+
+const PROJECT_GREVO_FOLDER: &str = ".grevo";
+const PROJECT_LEGACY_CODEX_FOLDER: &str = ".codex";
+
+fn project_config_folder_for_dir(dir: &AbsolutePathBuf) -> AbsolutePathBuf {
+    let grevo_folder = dir.join(PROJECT_GREVO_FOLDER);
+    if grevo_folder.as_path().is_dir() {
+        grevo_folder
+    } else {
+        dir.join(PROJECT_LEGACY_CODEX_FOLDER)
+    }
 }
 
 fn sanitize_project_config(config: &mut TomlValue) -> Vec<String> {
@@ -1240,7 +1284,7 @@ async fn load_project_layers(
     let mut layers = Vec::new();
     let mut startup_warnings = Vec::new();
     for dir in dirs {
-        let dot_codex_abs = dir.join(".codex");
+        let dot_codex_abs = project_config_folder_for_dir(&dir);
         let dot_codex_uri = PathUri::from_abs_path(&dot_codex_abs);
         if !fs
             .get_metadata(&dot_codex_uri, /*sandbox*/ None)
@@ -1433,6 +1477,25 @@ mod unit_tests {
     #[cfg(windows)]
     use std::path::Path;
     use tempfile::tempdir;
+
+    #[test]
+    fn project_config_folder_prefers_grevo_and_falls_back_to_codex() -> io::Result<()> {
+        let tmp = tempdir()?;
+        let root = AbsolutePathBuf::from_absolute_path(tmp.path())?;
+
+        std::fs::create_dir(root.join(PROJECT_LEGACY_CODEX_FOLDER).as_path())?;
+        assert_eq!(
+            project_config_folder_for_dir(&root),
+            root.join(PROJECT_LEGACY_CODEX_FOLDER)
+        );
+
+        std::fs::create_dir(root.join(PROJECT_GREVO_FOLDER).as_path())?;
+        assert_eq!(
+            project_config_folder_for_dir(&root),
+            root.join(PROJECT_GREVO_FOLDER)
+        );
+        Ok(())
+    }
 
     #[test]
     fn ensure_resolve_relative_paths_in_config_toml_preserves_all_fields() -> anyhow::Result<()> {

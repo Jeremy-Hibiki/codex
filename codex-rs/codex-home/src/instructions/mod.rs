@@ -6,8 +6,12 @@ use codex_extension_api::UserInstructions;
 use codex_extension_api::UserInstructionsProvider;
 use codex_utils_absolute_path::AbsolutePathBuf;
 
-const DEFAULT_AGENTS_MD_FILENAME: &str = "GREVO.md";
-const LOCAL_AGENTS_MD_FILENAME: &str = "GREVO.override.md";
+const GREVO_OVERRIDE_FILENAME: &str = "GREVO.override.md";
+const GREVO_FILENAME: &str = "GREVO.md";
+const LEGACY_AGENTS_OVERRIDE_FILENAME: &str = "AGENTS.override.md";
+const LEGACY_AGENTS_FILENAME: &str = "AGENTS.md";
+const DEFAULT_AGENTS_MD_FILENAME: &str = GREVO_FILENAME;
+const LOCAL_AGENTS_MD_FILENAME: &str = GREVO_OVERRIDE_FILENAME;
 
 /// Loads user instructions from a Codex home directory.
 #[derive(Clone, Debug)]
@@ -23,7 +27,12 @@ impl CodexHomeUserInstructionsProvider {
 
     async fn load_from_codex_home(&self) -> LoadedUserInstructions {
         let mut warnings = Vec::new();
-        for candidate in [LOCAL_AGENTS_MD_FILENAME, DEFAULT_AGENTS_MD_FILENAME] {
+        for candidate in [
+            LOCAL_AGENTS_MD_FILENAME,
+            DEFAULT_AGENTS_MD_FILENAME,
+            LEGACY_AGENTS_OVERRIDE_FILENAME,
+            LEGACY_AGENTS_FILENAME,
+        ] {
             let path = self.codex_home.join(candidate);
             match tokio::fs::metadata(path.as_path()).await {
                 Ok(metadata) if !metadata.is_file() => continue,
@@ -31,7 +40,7 @@ impl CodexHomeUserInstructionsProvider {
                 Err(err) if err.kind() == io::ErrorKind::NotFound => continue,
                 Err(err) => {
                     warnings.push(format!(
-                        "Failed to read global AGENTS.md instructions from `{}`: {err}",
+                        "Failed to read global instructions from `{}`: {err}",
                         path.display()
                     ));
                     continue;
@@ -42,7 +51,7 @@ impl CodexHomeUserInstructionsProvider {
                 Err(err) if err.kind() == io::ErrorKind::NotFound => continue,
                 Err(err) => {
                     warnings.push(format!(
-                        "Failed to read global AGENTS.md instructions from `{}`: {err}",
+                        "Failed to read global instructions from `{}`: {err}",
                         path.display()
                     ));
                     continue;

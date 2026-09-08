@@ -267,7 +267,7 @@ npm/Rust 双端契约：`CODEX_MANAGED_BY_*` + `CODEX_MANAGED_PACKAGE_ROOT`（`c
 
 ## 7. 模型可见提示词（改名会改变模型行为 + 快照联动）
 
-> 这是行为敏感区：提示词里的 "Codex" 改成 "Grevo" 会改变模型自我认知的措辞；配套的 `core/src/session/tests.rs:1307` 断言完整基础提示词，TUI 约 38 个 insta 快照含品牌文案，需同批重生成。
+> 本轮不改：提示词会改变模型自我认知与行为，后续单独设计后再处理。本节仅保留盘点，不代表本轮实施范围。
 
 | 位置                                                                                                                                     | 内容                                                                                                                                                                                                                                                                                                           |
 |------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -279,9 +279,9 @@ npm/Rust 双端契约：`CODEX_MANAGED_BY_*` + `CODEX_MANAGED_PACKAGE_ROOT`（`c
 | `protocol/src/protocol.rs:126`                                                                                                           | 用户消息前缀 `"## My request for Codex:"`（历史会话里的旧前缀仍需可解析）                                                                                                                                                                                                                                      |
 | `core/src/realtime_context.rs:30`、`tui/src/goal_files.rs:18`、`memories/write/src/prompts.rs:84`、`core/src/guardian/prompt.rs:145-189` | "Startup context from Codex"、"Read the Codex goal objective file…"、"Consolidate Codex memories…"、"The Codex agent has requested…"                                                                                                                                                                           |
 | `tui/src/inline_visualization.rs:27,243`                                                                                                 | 模型输出协议标记 `::codex-inline-vis{`（解析器同步）                                                                                                                                                                                                                                                           |
-| 内置技能（进模型上下文）                                                                                                                 | `skills/src/assets/samples/`：`imagegen/SKILL.md`（"Use when Codex should…"、大量 `$CODEX_HOME` 引用、`references/codex-network.md`）、`openai-docs/SKILL.md`（"Codex self-knowledge"）、`skill-installer/agents/openai.yaml`、`plugin-creator/scripts/create_basic_plugin.py:68-69`（生成 "…in Codex." 文案） |
+| 内置技能（进模型上下文）                                                                                                                 | 已删除 `imagegen`、`openai-docs` 两个 Skill；其余保留项包括 `skill-installer/agents/openai.yaml`、`plugin-creator/scripts/create_basic_plugin.py:68-69`（生成 "…in Codex." 文案） |
 
-处置（已确认与 OpenAI 无关）：`"Codex CLI is an open source project led by OpenAI"`、`"an OpenAI general-purpose agentic assistant"` 等句子直接删除；agent 自称统一改 Grevo。若模型底座也弃用 GPT-5 系（换自建/其他模型），`gpt_5_*_prompt.md` 与 `models.json` 指令模板随模型目录整体重写（见 §10.3-9）。
+处置：本轮保持现状。后续单独设计模型提示词口径；若模型底座也弃用 GPT-5 系（换自建/其他模型），`gpt_5_*_prompt.md` 与 `models.json` 指令模板随模型目录整体重写（见 §10.3-9）。
 
 ---
 
@@ -341,7 +341,7 @@ npm/Rust 双端契约：`CODEX_MANAGED_BY_*` + `CODEX_MANAGED_PACKAGE_ROOT`（`c
 3. `CODEX_SANDBOX*` 是否改名为 `GREVO_SANDBOX*`（技术上可行，见 §10.2；建议随 Phase 1 原子改）。
 4. npm scope 与 PyPI 包名定名（新身份，无旧名兼容负担）。
 5. MCP 工具名 `codex` → `grevo` 的时间点（配套 IDE 插件发版节奏）。
-6. ~~提示词口径~~ 已定方向：删除全部 OpenAI 表述、自称 Grevo（见 §7）。
+6. ~~提示词口径~~ **已定（2026-09-08）：本轮不改，后续单独设计**（见 §7）。
 7. 更新通道（npm、releases URL、announcement 抓取 URL、brew 等）指向 fork 自有基础设施的具体地址。
 8. fork license 环境变量 `FMSH_CODEX_LIC_*` 是否随之改名（涉及 license 服务端）。
 9. 模型底座：若弃用 GPT-5 系模型，`models.json` 模型目录、`gpt_5_*_prompt.md`、`gpt-5*-codex` slug 需整体重写（`CODEX_OSS_*`→`GREVO_OSS_*` 的 ollama/lmstudio 本地通道可保留）。

@@ -147,7 +147,7 @@ fn resolve_db_path(args: &Args) -> anyhow::Result<PathBuf> {
 }
 
 fn default_codex_home() -> PathBuf {
-    for key in ["GREVO_HOME", "GREVO_HOME"] {
+    for key in ["GREVO_HOME", "CODEX_HOME"] {
         if let Ok(value) = std::env::var(key) {
             if !value.is_empty() {
                 return PathBuf::from(value);
@@ -155,9 +155,13 @@ fn default_codex_home() -> PathBuf {
         }
     }
     if let Some(home) = home_dir() {
-        return home.join(".codex");
+        let grevo_home = home.join(".grevo");
+        if grevo_home.is_dir() {
+            return grevo_home;
+        }
+        return home.join(".grevo");
     }
-    PathBuf::from(".codex")
+    PathBuf::from(".grevo")
 }
 
 fn build_filter(args: &Args) -> anyhow::Result<LogFilter> {

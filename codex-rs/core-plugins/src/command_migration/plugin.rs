@@ -13,7 +13,8 @@ use std::io;
 use std::path::Path;
 
 const PLUGIN_COMMANDS_DIR: &str = "commands";
-const PLUGIN_METADATA_DIR: &str = ".codex-plugin";
+const PLUGIN_METADATA_DIR: &str = ".grevo-plugin";
+const LEGACY_PLUGIN_METADATA_DIR: &str = ".codex-plugin";
 const MIGRATED_COMMAND_SKILLS_DIR: &str = "migrated-command-skills";
 const MAX_MIGRATED_COMMAND_SKILL_BYTES: usize = 4_000;
 
@@ -42,9 +43,14 @@ pub(crate) fn migrate_plugin_commands(plugin_root: &Path) -> io::Result<()> {
 }
 
 pub(crate) fn migrated_command_skills_root(plugin_root: &AbsolutePathBuf) -> AbsolutePathBuf {
-    plugin_root
-        .join(PLUGIN_METADATA_DIR)
-        .join(MIGRATED_COMMAND_SKILLS_DIR)
+    let root = plugin_root.join(PLUGIN_METADATA_DIR);
+    if root.is_dir() {
+        root.join(MIGRATED_COMMAND_SKILLS_DIR)
+    } else {
+        plugin_root
+            .join(LEGACY_PLUGIN_METADATA_DIR)
+            .join(MIGRATED_COMMAND_SKILLS_DIR)
+    }
 }
 
 fn plugin_command_sources(plugin_root: &Path) -> io::Result<Vec<CommandSource>> {

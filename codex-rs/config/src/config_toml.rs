@@ -1,4 +1,4 @@
-//! Schema-heavy configuration TOML types used by Codex.
+//! Schema-heavy configuration TOML types used by Grevo.
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -260,7 +260,7 @@ pub struct GuardrailToml {
     pub base_url: Option<String>,
 }
 
-/// Base config deserialized from ~/.codex/config.toml.
+/// Base config deserialized from ~/.grevo/config.toml.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct ConfigToml {
@@ -363,7 +363,7 @@ pub struct ConfigToml {
     /// Optional path to a file containing model instructions that will override
     /// the built-in instructions for the selected model. Users are STRONGLY
     /// DISCOURAGED from using this field, as deviating from the instructions
-    /// sanctioned by Codex will likely degrade model performance.
+    /// sanctioned by Grevo will likely degrade model performance.
     pub model_instructions_file: Option<AbsolutePathBuf>,
 
     /// Compact prompt used for history compaction.
@@ -378,13 +378,13 @@ pub struct ConfigToml {
     pub forced_login_method: Option<ForcedLoginMethod>,
 
     /// Preferred backend for storing CLI auth credentials.
-    /// file (default): Use a file in the Codex home directory.
+    /// file (default): Use a file in the Grevo home directory.
     /// keyring: Use an OS-specific keyring service.
     /// auto: Use the keyring if available, otherwise use a file.
     #[serde(default)]
     pub cli_auth_credentials_store: Option<AuthCredentialsStoreMode>,
 
-    /// Definition for MCP servers that Codex can reach out to for tool calls.
+    /// Definition for MCP servers that Grevo can reach out to for tool calls.
     #[serde(default)]
     // Uses the raw MCP input shape (custom deserialization) rather than `McpServerConfig`.
     #[schemars(schema_with = "crate::schema::mcp_servers_schema")]
@@ -393,13 +393,13 @@ pub struct ConfigToml {
     /// Preferred backend for storing MCP OAuth credentials.
     /// keyring: Use an OS-specific keyring service.
     ///          https://github.com/openai/codex/blob/main/codex-rs/rmcp-client/src/oauth.rs#L2
-    /// file: Use a file in the Codex home directory.
+    /// file: Use a file in the Grevo home directory.
     /// auto (default): Use the OS-specific keyring service if available, otherwise use a file.
     #[serde(default)]
     pub mcp_oauth_credentials_store: Option<OAuthCredentialsStoreMode>,
 
     /// Optional fixed port for the local HTTP callback server used during MCP OAuth login.
-    /// When unset, Codex will bind to an ephemeral port chosen by the OS.
+    /// When unset, Grevo will bind to an ephemeral port chosen by the OS.
     pub mcp_oauth_callback_port: Option<u16>,
 
     /// Optional redirect URI to use during MCP OAuth login.
@@ -413,11 +413,11 @@ pub struct ConfigToml {
     #[serde(default, deserialize_with = "deserialize_model_providers")]
     pub model_providers: HashMap<String, ModelProviderInfo>,
 
-    /// Maximum number of bytes to include from an AGENTS.md project doc file.
+    /// Maximum number of bytes to include from a GREVO.md project doc file.
     #[serde(default = "default_project_doc_max_bytes")]
     pub project_doc_max_bytes: Option<usize>,
 
-    /// Ordered list of fallback filenames to look for when AGENTS.md is missing.
+    /// Ordered list of fallback filenames to look for when GREVO.md is missing.
     #[serde(default = "default_project_doc_fallback_filenames")]
     pub project_doc_fallback_filenames: Option<Vec<String>>,
 
@@ -443,15 +443,15 @@ pub struct ConfigToml {
     #[serde(default)]
     pub profiles: HashMap<String, ConfigProfile>,
 
-    /// Settings that govern if and what will be written to `~/.codex/history.jsonl`.
+    /// Settings that govern if and what will be written to `~/.grevo/history.jsonl`.
     #[serde(default = "default_history")]
     pub history: Option<History>,
 
-    /// Directory where Codex stores the SQLite state DB.
+    /// Directory where Grevo stores the SQLite state DB.
     /// Defaults to `$CODEX_SQLITE_HOME` when set. Otherwise uses `$GREVO_HOME`.
     pub sqlite_home: Option<AbsolutePathBuf>,
 
-    /// Directory where Codex writes log files. Setting this value explicitly
+    /// Directory where Grevo writes log files. Setting this value explicitly
     /// also enables the TUI text log in this directory.
     /// Defaults to `$GREVO_HOME/log`.
     pub log_dir: Option<AbsolutePathBuf>,
@@ -495,7 +495,7 @@ pub struct ConfigToml {
     /// Base URL for requests to ChatGPT (as opposed to the OpenAI API).
     pub chatgpt_base_url: Option<String>,
 
-    /// Optional product SKU forwarded on host-owned Codex Apps MCP requests.
+    /// Optional product SKU forwarded on host-owned Grevo Apps MCP requests.
     pub apps_mcp_product_sku: Option<String>,
 
     /// Orchestrator-owned feature settings.
@@ -598,8 +598,8 @@ pub struct ConfigToml {
     #[serde(default)]
     pub project_root_markers: Option<Vec<String>>,
 
-    /// When `true`, checks for Codex updates on startup and surfaces update prompts.
-    /// Set to `false` only if your Codex updates are centrally managed.
+    /// When `true`, checks for Grevo updates on startup and surfaces update prompts.
+    /// Set to `false` only if your Grevo updates are centrally managed.
     /// Defaults to `true`.
     pub check_for_update_on_startup: Option<bool>,
 
@@ -608,11 +608,11 @@ pub struct ConfigToml {
     /// or placeholder replacement will occur for fast keypress bursts.
     pub disable_paste_burst: Option<bool>,
 
-    /// When `false`, disables analytics across Codex product surfaces in this machine.
+    /// When `false`, disables analytics across Grevo product surfaces in this machine.
     /// Defaults to `true`.
     pub analytics: Option<AnalyticsConfigToml>,
 
-    /// When `false`, disables feedback collection across Codex product surfaces.
+    /// When `false`, disables feedback collection across Grevo product surfaces.
     /// Defaults to `true`.
     pub feedback: Option<FeedbackConfigToml>,
 
@@ -660,13 +660,13 @@ pub struct DebugToml {
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct DebugConfigLockToml {
-    /// Directory where Codex writes effective session config lock files.
+    /// Directory where Grevo writes effective session config lock files.
     pub export_dir: Option<AbsolutePathBuf>,
 
     /// Lockfile to replay as the authoritative effective config.
     pub load_path: Option<AbsolutePathBuf>,
 
-    /// Allow replaying a lock generated by a different Codex version.
+    /// Allow replaying a lock generated by a different Grevo version.
     pub allow_codex_version_mismatch: Option<bool>,
 
     /// Save fields resolved from the model catalog/session configuration.

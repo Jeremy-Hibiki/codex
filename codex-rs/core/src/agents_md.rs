@@ -36,8 +36,12 @@ use tracing::error;
 
 /// Default filename scanned for AGENTS.md instructions.
 pub const DEFAULT_AGENTS_MD_FILENAME: &str = "GREVO.md";
-/// Preferred local override for AGENTS.md instructions.
+/// Preferred local override for Grevo instructions.
 pub const LOCAL_AGENTS_MD_FILENAME: &str = "GREVO.override.md";
+/// Legacy instruction filenames are read for pre-rename projects, but never
+/// take precedence over the Grevo names.
+pub const LEGACY_AGENTS_MD_FILENAME: &str = "AGENTS.md";
+pub const LEGACY_LOCAL_AGENTS_MD_FILENAME: &str = "AGENTS.override.md";
 
 /// When both user and project AGENTS.md docs are present, they will be
 /// concatenated with the following separator.
@@ -232,9 +236,11 @@ async fn agents_md_paths(
 }
 
 fn candidate_filenames(config: &Config) -> Vec<&str> {
-    let mut names: Vec<&str> = Vec::with_capacity(2 + config.project_doc_fallback_filenames.len());
+    let mut names: Vec<&str> = Vec::with_capacity(4 + config.project_doc_fallback_filenames.len());
     names.push(LOCAL_AGENTS_MD_FILENAME);
     names.push(DEFAULT_AGENTS_MD_FILENAME);
+    names.push(LEGACY_LOCAL_AGENTS_MD_FILENAME);
+    names.push(LEGACY_AGENTS_MD_FILENAME);
     for candidate in &config.project_doc_fallback_filenames {
         let candidate = candidate.as_str();
         if candidate.is_empty() {

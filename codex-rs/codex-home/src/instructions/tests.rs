@@ -10,6 +10,7 @@ use tempfile::TempDir;
 
 use super::CodexHomeUserInstructionsProvider;
 use super::DEFAULT_AGENTS_MD_FILENAME;
+use super::LEGACY_AGENTS_FILENAME;
 use super::LOCAL_AGENTS_MD_FILENAME;
 
 fn provider(home: &TempDir) -> CodexHomeUserInstructionsProvider {
@@ -108,6 +109,23 @@ async fn directory_override_falls_back_to_default() {
 }
 
 #[tokio::test]
+async fn legacy_agents_md_is_fallback_for_grevo_md() {
+    let home = TempDir::new().expect("temp dir");
+    fs::write(home.path().join(LEGACY_AGENTS_FILENAME), "legacy").expect("write legacy");
+
+    assert_eq!(
+        provider(&home).load_user_instructions().await,
+        expected(&home, LEGACY_AGENTS_FILENAME, "legacy", Vec::new())
+    );
+
+    fs::write(home.path().join(DEFAULT_AGENTS_MD_FILENAME), "current").expect("write current");
+    assert_eq!(
+        provider(&home).load_user_instructions().await,
+        expected(&home, DEFAULT_AGENTS_MD_FILENAME, "current", Vec::new())
+    );
+}
+
+#[tokio::test]
 async fn recoverable_override_read_error_warns_and_falls_back_to_default() {
     let home = TempDir::new().expect("temp dir");
     let override_path = home.path().join(LOCAL_AGENTS_MD_FILENAME);
@@ -115,7 +133,7 @@ async fn recoverable_override_read_error_warns_and_falls_back_to_default() {
     fs::write(home.path().join(DEFAULT_AGENTS_MD_FILENAME), "default").expect("write default");
     let read_error = fs::read(&override_path).expect_err("symlink loop should not be readable");
     let warning = format!(
-        "Failed to read global AGENTS.md instructions from `{}`: {read_error}",
+        "Failed to read global instructions from `{}`: {read_error}",
         override_path.display()
     );
 

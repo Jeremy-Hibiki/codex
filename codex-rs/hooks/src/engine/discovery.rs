@@ -226,6 +226,7 @@ fn append_plugin_hook_sources(
             plugin_data_root,
             source_path,
             source_relative_path,
+            is_managed,
             hooks,
         } = source;
         let mut env = HashMap::new();
@@ -250,7 +251,7 @@ fn append_plugin_hook_sources(
                     source_relative_path.as_str(),
                 ),
                 source: HookSource::Plugin,
-                is_managed: false,
+                is_managed,
                 bypass_hook_trust: policy.bypass_hook_trust,
                 hook_states,
                 env,
@@ -723,6 +724,8 @@ mod tests {
     use codex_config::ConfigLayerSource;
     use codex_config::HookEventsToml;
     use codex_config::RequirementSource;
+    use codex_plugin::PluginHookSource;
+    use codex_plugin::PluginId;
     use codex_protocol::protocol::HookEventName;
     use codex_protocol::protocol::HookSource;
     use codex_utils_absolute_path::AbsolutePathBuf;
@@ -799,6 +802,38 @@ mod tests {
         assert_eq!(
             super::hook_source_for_requirement_source(Some(&source)),
             HookSource::System
+        );
+    }
+
+    #[test]
+    fn managed_plugin_hook_sources_are_managed() {
+        let plugin_root = test_path_buf("/tmp/managed-plugin").abs();
+        let source = PluginHookSource {
+            plugin_id: PluginId::parse("demo@test-marketplace").expect("plugin id"),
+            plugin_root: plugin_root.clone(),
+            plugin_data_root: plugin_root.join("data"),
+            source_path: plugin_root.join("hooks/hooks.json"),
+            source_relative_path: "hooks/hooks.json".to_string(),
+            is_managed: true,
+            hooks: HookEventsToml {
+                pre_tool_use: vec![command_group(Some("^Bash$"))],
+                ..Default::default()
+            },
+        };
+
+        let discovered = super::discover_handlers(
+            /*config_layer_stack*/ None,
+            vec![source],
+            Vec::new(),
+            /*bypass_hook_trust*/ false,
+        );
+
+        assert_eq!(discovered.handlers.len(), 1);
+        assert_eq!(discovered.hook_entries.len(), 1);
+        assert!(discovered.hook_entries[0].is_managed);
+        assert_eq!(
+            discovered.hook_entries[0].trust_status,
+            HookTrustStatus::Managed
         );
     }
 

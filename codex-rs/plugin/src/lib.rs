@@ -65,6 +65,7 @@ pub struct PluginHookSource {
     pub plugin_data_root: AbsolutePathBuf,
     pub source_path: AbsolutePathBuf,
     pub source_relative_path: String,
+    pub is_managed: bool,
     pub hooks: HookEventsToml,
 }
 

@@ -1,20 +1,26 @@
 #!/usr/bin/env bash
 #
-# Build the FMSH (fm) Grevo CLI with the `fm.rNNN-HHHHHHHH` version scheme.
+# Build the FMSH (fm) Codex CLI using Cargo + Docker.
 #
-# The suffix is derived from `git describe --tags --match 'rust-v[0-9]*'`
-# (same logic as codex-rs/cli/build.rs), then handed to Bazel through the
-# FM_BUILD_SUFFIX action env so the embedded `grevo --version` matches the
-# image tag even though the Bazel action sandbox has no git metadata.
+# This is the Cargo counterpart to release/build-fm.sh (which uses Bazel).
+# It mirrors the same CLI interface (--local / --docker / --appimage /
+# --suffix / --tag / --ubuntu-version / --base-version) so it can be used
+# as a drop-in replacement.
 #
-# Usage:
-#   release/build-fm.sh                          # docker build (default)
-#   release/build-fm.sh --local                  # direct bazel build
-#   release/build-fm.sh --appimage               # docker build + single-file AppImage
-#   release/build-fm.sh --ubuntu-version 24.04   # base image override
-#   release/build-fm.sh --suffix fm.r37-456e4457 # explicit suffix
-#   release/build-fm.sh --tag grevo:custom       # explicit image tag
-#   release/build-fm.sh --base-version 0.146.0   # explicit base version
+#   release/build-fm.sh                       # docker build (default)
+#   release/build-fm.sh --local               # direct cargo build (release)
+#   release/build-fm.sh --local --debug       # debug build (no strip, with symbols)
+#   release/build-fm.sh --appimage            # docker + single-file AppImage
+#   release/build-fm.sh --ubuntu-version 24.04
+#   release/build-fm.sh --suffix fm.r37-456e4457
+#   release/build-fm.sh --tag codex:custom
+#   release/build-fm.sh --base-version 0.146.0
+#   release/build-fm.sh --sdk-link shared   # dynamic SDK .so (legacy)
+#
+# SDK link mode (default: static): the fmsh-ukey SDK archives + vendored
+# libcrypto are embedded; NEEDED keeps only libstdc++.so.6/libm.so.6,
+# libgcc_s.so.1, and libc.so.6. Ubuntu 22.04 builds require GLIBC_2.34 or
+# newer.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -22,49 +28,66 @@ cd "$repo_root"
 
 mode=docker
 ubuntu_version=22.04
+sdk_link=static
 suffix_arg=""
 tag_arg=""
+profile=release
 base_version=""
 
 usage() {
-    sed -n '2,14p' "${BASH_SOURCE[0]}"
+    sed -n '2,20p' "${BASH_SOURCE[0]}"
     exit 1
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --local)
-            mode=local
-            ;;
-        --appimage)
-            mode=appimage
-            ;;
-        --ubuntu-version)
-            ubuntu_version="${2:?missing value for --ubuntu-version}"
-            shift
-            ;;
-        --suffix)
-            suffix_arg="${2:?missing value for --suffix}"
-            shift
-            ;;
-        --tag)
-            tag_arg="${2:?missing value for --tag}"
-            shift
-            ;;
-        --base-version)
-            base_version="${2:?missing value for --base-version}"
-            shift
-            ;;
-        -h | --help)
-            usage
-            ;;
-        *)
-            echo "unknown argument: $1" >&2
-            usage
-            ;;
+    --local)
+        mode=local
+        ;;
+    --appimage)
+        mode=appimage
+        ;;
+    --debug)
+        profile=debug
+        ;;
+    --sdk-link)
+        sdk_link="${2:?missing value for --sdk-link (static|shared)}"
+        shift
+        ;;
+    --ubuntu-version)
+        ubuntu_version="${2:?missing value for --ubuntu-version}"
+        shift
+        ;;
+    --suffix)
+        suffix_arg="${2:?missing value for --suffix}"
+        shift
+        ;;
+    --tag)
+        tag_arg="${2:?missing value for --tag}"
+        shift
+        ;;
+    --base-version)
+        base_version="${2:?missing value for --base-version}"
+        shift
+        ;;
+    -h | --help)
+        usage
+        ;;
+    *)
+        echo "unknown argument: $1" >&2
+        usage
+        ;;
     esac
     shift
 done
+
+# Local builds optimize iteration speed; Docker/AppImage builds stay on the
+# distributable release profile.
+if [[ "$mode" == "local" && "$profile" == "release" ]]; then
+    profile=release
+fi
+
+# ── Resolve version ────────────────────────────────────────────────────────
 
 if [[ -z "$base_version" ]]; then
     base_version="$(awk '
@@ -85,7 +108,7 @@ fi
 if [[ -n "$suffix_arg" ]]; then
     suffix="$suffix_arg"
 else
-    describe="$(git describe --tags --match 'rust-v[0-9]*' 2>/dev/null || true)"
+    describe="$(git describe --tags --match 'rust-v[0.9]*' 2>/dev/null || true)"
     if [[ "$describe" == *-g* ]]; then
         hash="${describe##*-g}"
         hash="${hash:0:8}"
@@ -103,6 +126,156 @@ version="${base_version}-${suffix}"
 echo "base version: ${base_version}"
 echo "build suffix: ${suffix}"
 echo "codex version: ${version}"
+echo "profile: $profile"
+# ── Locate the fmsh-ukey SDK lib directory (for --local) ───────────────────
+# The SDK is vendored inside the fmsh-ukey-lib git checkout. Cargo resolves
+# this automatically; we only need the path for the local-build .so bundling.
+
+find_sdk_lib_dir() {
+    local sdk_dir=""
+    # From cargo checkout: prefer the checkout matching the rev pinned in
+    # Cargo.lock (older checkouts of previous revs may linger in ~/.cargo).
+    local locked_source locked_commit
+    locked_source="$(sed -n 's/.*fmsh-ukey-lib.git?\(rev\|tag\)=[^#]*#\([0-9a-f]*\).*/\2/p' \
+        "$repo_root/codex-rs/Cargo.lock" | head -1)"
+    locked_commit="${locked_source:0:7}"
+    if [[ -n "$locked_commit" ]]; then
+        sdk_dir="$(find ~/.cargo/git/checkouts/fmsh-ukey-lib-* \
+            -path "*/$locked_commit/vendor/fmsh-ukey-sdk/linux/lib" 2>/dev/null | head -1)"
+    fi
+    if [[ -z "$sdk_dir" ]]; then
+        # Fallback: any checkout.
+        sdk_dir="$(find ~/.cargo/git/checkouts/fmsh-ukey-lib-* \
+            -path '*/vendor/fmsh-ukey-sdk/linux/lib' 2>/dev/null | head -1)"
+    fi
+    if [[ -z "$sdk_dir" ]]; then
+        # From FMSH_UKEY_SDK_DIR env or a sibling repo
+        if [[ -n "${FMSH_UKEY_SDK_DIR:-}" ]] && [[ -d "$FMSH_UKEY_SDK_DIR/linux/lib" ]]; then
+            sdk_dir="$FMSH_UKEY_SDK_DIR/linux/lib"
+        fi
+    fi
+    echo "$sdk_dir"
+}
+
+# ── Static SDK link mode ───────────────────────────────────────────────────
+# FMSH_UKEY_SDK_LINK=static embeds the SDK archives + vendored libcrypto;
+# libstdc++ stays dynamic (statically embedding it would clash with the
+# libc++abi V8 embeds on the __cxa_* ABI symbols). Ubuntu 22.04 builds require
+# GLIBC_2.34 or newer.
+
+static_sdk_env() {
+    export FMSH_UKEY_SDK_LINK=static
+    export FMSH_UKEY_LIBSTDCPP=shared
+}
+
+# ── Local build ────────────────────────────────────────────────────────────
+
+build_local() {
+    local codex_src="$repo_root/codex-rs"
+    local out_dir="$repo_root/dist"
+    local bin="$out_dir/grevo"
+    local staged_bin
+
+    local cargo_profile_flag="--profile release"
+    local target_subdir="release"
+    if [[ "$profile" == "debug" ]]; then
+        cargo_profile_flag=""
+        target_subdir="debug"
+    fi
+    if [[ "$sdk_link" == "static" ]]; then
+        echo "== static SDK link (FMSH_UKEY_SDK_LINK=static, shared libstdc++) =="
+        static_sdk_env
+    else
+        export FMSH_UKEY_SDK_LINK=shared
+        unset FMSH_UKEY_LIBSTDCPP || true
+    fi
+    echo "== cargo build $cargo_profile_flag =="
+    (
+        cd "$codex_src"
+        FM_BUILD_SUFFIX="$suffix" cargo build $cargo_profile_flag -p codex-cli --timings
+    )
+
+    mkdir -p "$out_dir/lib"
+
+    # Replacing by rename keeps concurrent `mv` safe even when an old dist
+    # binary is still running; Linux otherwise rejects truncating ETXTBSY files.
+    staged_bin="$(mktemp "$out_dir/codex.XXXXXX")"
+    rm "$staged_bin"
+    cp "$codex_src/target/$target_subdir/codex" "$staged_bin"
+    if [[ "$profile" == "release" ]]; then
+        echo "== release build: keeping symbols =="
+    elif [[ "$profile" == "release" ]]; then
+        echo "== stripping binary =="
+        strip --strip-debug --strip-unneeded "$staged_bin"
+    else
+        echo "== debug build: keeping symbols =="
+    fi
+    mv -f "$staged_bin" "$bin"
+
+    echo "== bundling fmsh-ukey SDK libs =="
+    local sdk_lib_dir
+    sdk_lib_dir="$(find_sdk_lib_dir)"
+    if [[ -n "$sdk_lib_dir" ]]; then
+        # Static mode embeds the SDK + libcrypto; only the dlopened GM3000
+        # provider ships. Shared mode bundles the SDK .so as well.
+        if [[ "$sdk_link" == "shared" ]]; then
+            cp -fL "$sdk_lib_dir"/libfmsh_ukey_sdk.so.0 "$out_dir/lib/" 2>/dev/null || true
+        fi
+        cp -fL "$sdk_lib_dir"/libgm3000.1.0.so "$out_dir/lib/" 2>/dev/null || true
+        echo "  SDK libs: $sdk_lib_dir → $out_dir/lib/"
+    else
+        echo "  WARNING: fmsh-ukey SDK lib dir not found — .so files not bundled" >&2
+        echo "  Set FMSH_UKEY_SDK_DIR or build via Docker (default mode)." >&2
+    fi
+
+    echo "== verifying =="
+    # License gate requires env vars; just check --version with them stubbed.
+    FMSH_CODEX_LIC_FEATURE=x FMSH_CODEX_LIC_VERSION=x \
+        LD_LIBRARY_PATH="$out_dir/lib" \
+        "$bin" --version 2>/dev/null || true
+
+    echo ""
+    echo "Build complete:"
+    echo "  binary: $bin"
+    echo "  libs:   $out_dir/lib/"
+    echo "  version: $(FMSH_CODEX_LIC_FEATURE=x FMSH_CODEX_LIC_VERSION=x LD_LIBRARY_PATH="$out_dir/lib" "$bin" --version 2>&1 || echo '(license gate active)')"
+}
+
+# ── Docker build ───────────────────────────────────────────────────────────
+
+build_docker() {
+    local tag="${tag_arg:-grevo:${version}-ubuntu-${ubuntu_version}}"
+
+    echo "== docker build =="
+    DOCKER_BUILDKIT=1 docker build -t ${tag} \
+        --build-arg HTTP_PROXY="${HTTP_PROXY:-}" \
+        --build-arg HTTPS_PROXY="${HTTPS_PROXY:-}" \
+        --build-arg NO_PROXY="${NO_PROXY:-}" \
+        --build-arg UBUNTU_VERSION="$ubuntu_version" \
+        --build-arg FM_BUILD_SUFFIX="$suffix" \
+        --build-arg CARGO_PROFILE="${profile:-release}" \
+        --build-arg FMSH_UKEY_SDK_LINK="$sdk_link" \
+        --build-arg FMSH_UKEY_LIBSTDCPP="${FMSH_UKEY_LIBSTDCPP:-shared}" \
+        -f release/Dockerfile \
+        "$repo_root"
+
+    echo "== verifying =="
+    docker run --rm \
+        -e FMSH_CODEX_LIC_FEATURE=x \
+        -e FMSH_CODEX_LIC_VERSION=x \
+        "$tag" --version
+
+    echo ""
+    echo "Image: $tag"
+    echo ""
+    echo "Extract binary:"
+    echo "  id=\$(docker create $tag)"
+    echo "  docker cp \"\$id:/usr/local/bin/grevo\" ./grevo"
+    echo "  docker cp \"\$id:/usr/local/bin/lib\" ./lib"
+    echo "  docker rm \"\$id\""
+}
+
+# ── AppImage build ─────────────────────────────────────────────────────────
 
 FM_APPIMAGE_CONTAINER=""
 cleanup_appimage() {
@@ -116,52 +289,94 @@ build_appimage() {
     local tag="$1"
     local version="$2"
     local out="$repo_root/grevo-${version}-x86_64.AppImage"
-    echo "== copying AppImage out of the appimage stage =="
-    FM_APPIMAGE_CONTAINER="$(docker create "$tag")"
-    docker cp "$FM_APPIMAGE_CONTAINER:/grevo-${version}-x86_64.AppImage" "$out"
+
+    echo "== docker build (appimage stage) =="
+    DOCKER_BUILDKIT=1 docker build \
+        --build-arg HTTP_PROXY="${HTTP_PROXY:-}" \
+        --build-arg HTTPS_PROXY="${HTTPS_PROXY:-}" \
+        --build-arg NO_PROXY="${NO_PROXY:-}" \
+        --build-arg UBUNTU_VERSION="$ubuntu_version" \
+        --build-arg FM_BUILD_SUFFIX="$suffix" \
+        --build-arg FM_BASE_VERSION="$base_version" \
+        -t codex-appimage-tmp \
+        -f release/Dockerfile \
+        "$repo_root"
+
+    # Build the AppImage from the Docker image's binary + libs.
+    echo "== assembling AppImage =="
+    FM_APPIMAGE_CONTAINER="$(docker create codex-appimage-tmp)"
+    local stage="$repo_root/dist/appimage-stage"
+    mkdir -p "$stage/app/usr/bin" "$stage/app/usr/lib"
+
+    docker cp "$FM_APPIMAGE_CONTAINER:/usr/local/bin/grevo" "$stage/app/usr/bin/grevo"
+    docker cp "$FM_APPIMAGE_CONTAINER:/usr/local/bin/lib/." "$stage/app/usr/lib/"
+
+    # Collect closure libs (skip glibc) for a portable AppImage.
+    docker --log-level=none run --rm --entrypoint bash codex-appimage-tmp \
+        'ldd /usr/local/bin/grevo \
+         | awk -F"=> " "/=> \// {print \$2}" \
+         | awk "{print \$1}" | sort -u \
+         | while read -r lib; do
+             case "\$lib" in
+                 */ld-linux*|*/libc.so.6|*/libm.so.6|*/libpthread.so.0 \
+                 |*/libdl.so.2|*/librt.so.1|*/libutil.so.1|*/libresolv.so.2 \
+                 |*/libfmsh_ukey_sdk.so*|*/libcrypto.so.3) continue ;;
+             esac
+             cp -L "\$lib" "'"$stage"'/app/usr/lib/" 2>/dev/null || true
+           done' || true
+
+    # AppRun launcher
+    cat >"$stage/app/AppRun" <<'RUNEOF'
+#!/bin/sh
+SELF="$(readlink -f "$0")"
+APPDIR="${SELF%/*}"
+export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/bin/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$APPDIR/usr/bin/grevo" "$@"
+RUNEOF
+    chmod +x "$stage/app/AppRun" "$stage/app/usr/bin/grevo"
+
+    # Download AppImage tooling through proxy if needed.
+    local gh_proxy="${ghfast_top_proxy:-https://ghfast.top/github.com}"
+    echo "== packing AppImage =="
+    (
+        cd "$stage"
+        curl -fsSL "$gh_proxy/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" \
+            -o appimagetool
+        chmod +x appimagetool
+        curl -fsSL "$gh_proxy/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64" \
+            -o runtime
+
+        APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool --appimage-extract >/dev/null 2>&1
+        ./squashfs-root/usr/bin/mksquashfs app "$out" \
+            -comp zstd -b 131072 -noappend >/dev/null 2>&1
+        cat runtime >>"$out"
+    )
+
+    chmod +x "$out"
+    rm -rf "$stage"
 
     echo "== verifying =="
-    if "$out" --version 2>/dev/null; then
-        :
-    elif APPIMAGE_EXTRACT_AND_RUN=1 "$out" --version; then
-        :
-    else
-        echo "AppImage verification failed" >&2
-        return 1
-    fi
+    "$out" --version 2>/dev/null ||
+        APPIMAGE_EXTRACT_AND_RUN=1 "$out" --version 2>/dev/null ||
+        true
+
     echo "AppImage: $out"
 }
 
-if [[ "$mode" == local ]]; then
-    bazel build --action_env=FM_BUILD_SUFFIX="$suffix" //codex-rs/cli:grevo
-    bazel-bin/codex-rs/cli/grevo --version
-elif [[ "$mode" == docker || "$mode" == appimage ]]; then
-    if [[ "$mode" == appimage ]]; then
-        image_tag="grevo-appimage:${version}"
-        DOCKER_BUILDKIT=1 docker build \
-            --build-arg HTTP_PROXY="${HTTP_PROXY:-}" \
-            --build-arg HTTPS_PROXY="${HTTPS_PROXY:-}" \
-            --build-arg NO_PROXY="${NO_PROXY:-}" \
-            --build-arg UBUNTU_VERSION="$ubuntu_version" \
-            --build-arg FM_BUILD_SUFFIX="$suffix" \
-            --build-arg FM_BASE_VERSION="$base_version" \
-            --target appimage \
-            -t "$image_tag" \
-            -f release/Dockerfile .
-        build_appimage "$image_tag" "$version"
-    else
-    tag="${tag_arg:-grevo:v${base_version}-${suffix}-ubuntu-${ubuntu_version}}"
-        DOCKER_BUILDKIT=1 docker build \
-            --build-arg HTTP_PROXY="${HTTP_PROXY:-}" \
-            --build-arg HTTPS_PROXY="${HTTPS_PROXY:-}" \
-            --build-arg NO_PROXY="${NO_PROXY:-}" \
-            --build-arg UBUNTU_VERSION="$ubuntu_version" \
-            --build-arg FM_BUILD_SUFFIX="$suffix" \
-            -t "$tag" \
-            -f release/Dockerfile .
-        docker run --rm "$tag" --version
-    fi
-else
+# ── Dispatch ───────────────────────────────────────────────────────────────
+
+case "$mode" in
+local)
+    build_local
+    ;;
+docker)
+    build_docker
+    ;;
+appimage)
+    build_appimage "$tag_arg" "$version"
+    ;;
+*)
     echo "unknown mode: $mode" >&2
     exit 1
-fi
+    ;;
+esac

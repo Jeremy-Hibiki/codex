@@ -1,32 +1,42 @@
-# Dockerfile for building Codex with FMSH license.
+# Dockerfile for building Codex with FMSH license using Cargo.
 #
-# Build (pass proxy so the builder can reach the network):
+# This is the Cargo-based alternative to release/Dockerfile (which uses Bazel).
+# Cargo builds don't need the Bazel sandbox workarounds (cc_import, rules_rs
+# patches, BCR proxy, distdir pre-download) because build.rs runs in-process
+# and its cargo:rustc-link-search paths are visible to the final link.
+#
+# Build:
 #   docker build \
 #     --build-arg HTTP_PROXY="$HTTP_PROXY" \
 #     --build-arg HTTPS_PROXY="$HTTPS_PROXY" \
 #     --build-arg NO_PROXY="$NO_PROXY" \
 #     --build-arg UBUNTU_VERSION=22.04 \
-#     -t grevo:ubuntu-22.04 -f release/Dockerfile .
-#
-# Ubuntu 20.04 is not supported: the fmsh-ukey SDK 0.3.1 shared library
-# needs GLIBC_2.34 and the host's libcrypto.so.3 (libssl3), so the minimum
-# base image is Ubuntu 22.04. Override with e.g. --build-arg UBUNTU_VERSION=24.04.
+#     -t grevo:ubuntu-22.04 -f release/Dockerfile.cargo .
 #
 # Extract the binary:
 #   id=$(docker create grevo:ubuntu-22.04)
 #   docker cp "$id:/usr/local/bin/grevo" ./grevo
 #   docker rm "$id"
 #
-# Bazel disk/repo caches are persisted across builds via BuildKit cache
-# mounts, so incremental rebuilds skip already-compiled actions (V8 etc.).
-# The output base is intentionally NOT cached — it holds Bazel server lock
-# files that would corrupt across container teardowns.
+# Why Cargo instead of Bazel?
+# - fmsh-ukey is the only dynamic library; lmclient is already static.
+# - cli/build.rs embeds RPATH $ORIGIN/lib + forces NEEDED libcrypto.so.3
+#   at link time — no patchelf or cc_import needed.
+# - Docker provides host isolation + reproducible toolchain = hermetic enough
+#   for single-platform release builds. Bazel's action sandbox is the source
+#   of the cc_import/patch complexity, not a benefit for this use case.
+# - Cargo.lock replaces MODULE.bazel.lock for dependency pinning.
 #
-# Note: the apt mirror sed assumes the classic sources.list format.
-# Ubuntu 24.04+ uses deb822 ( /etc/apt/sources.list.d/ubuntu.sources );
-# adapt the sed or remove it if building on newer bases.
+# SDK link mode (default: static since the fm work): FMSH_UKEY_SDK_LINK=static
+# embeds the SDK archives + vendored libcrypto, keeps libstdc++ dynamic
+# (FMSH_UKEY_LIBSTDCPP=shared — statically embedding it would clash with the
+# libc++abi V8 embeds on the __cxa_* ABI symbols). The tested Ubuntu 22.04
+# binary requires GLIBC_2.34 or newer. --sdk-link shared restores the legacy
+# dynamic mode, which also requires Ubuntu 22.04+.
 
 ARG UBUNTU_VERSION=22.04
+ARG FMSH_UKEY_SDK_LINK=static
+ARG FMSH_UKEY_LIBSTDCPP=shared
 
 # ── builder stage ─────────────────────────────────────────────────────────
 FROM ubuntu:${UBUNTU_VERSION} AS builder
@@ -34,150 +44,141 @@ FROM ubuntu:${UBUNTU_VERSION} AS builder
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY
-ARG FM_BUILD_SUFFIX=fm.r0-unknown
-ENV http_proxy=${HTTP_PROXY} \
-    https_proxy=${HTTPS_PROXY} \
-    no_proxy=${NO_PROXY} \
-    FM_BUILD_SUFFIX=${FM_BUILD_SUFFIX} \
-    DEBIAN_FRONTEND=noninteractive
+ARG FMSH_UKEY_SDK_LINK
+ARG FMSH_UKEY_LIBSTDCPP
 
-# Aliyun apt mirror for China network (classic sources.list format)
-RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
-        /etc/apt/sources.list \
-    && sed -i 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
-        /etc/apt/sources.list
+# Proxy is only needed for apt + rustup (reaching the external network).
+# It is cleared before `cargo build` because rsproxy.cn, ghfast.top, and the
+# internal git server (192.168.131.126) are directly reachable, and the proxy
+# breaks TLS to ghfast.top (HTTPS interception).
+ENV DEBIAN_FRONTEND=noninteractive
 
-# g++ needed for -lstdc++ symlink; libcurl4-openssl-dev for -lcurl symlink
+# Aliyun apt mirror for China network (classic sources.list format).
+# Note: if the proxy is set this is unnecessary; if not, it covers bare-VM builds.
+RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://192.168.131.250:18080/ubuntu|g' \
+    /etc/apt/sources.list \
+    && sed -i 's|http://security.ubuntu.com/ubuntu|http://192.168.131.250:18080/ubuntu|g' \
+    /etc/apt/sources.list
+
+# Build deps:
+#   gcc-10/g++-10     — aws-lc-sys rejects GCC 9 (memcmp bug, gcc#95189)
+#   make/perl         — openssl-sys + curl-sys vendored builds
+#   pkg-config        — openssl-sys discovery
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean \
     && apt-get update && apt-get install -y --no-install-recommends \
-        bash curl git python3 ca-certificates xz-utils \
-        g++ libcurl4-openssl-dev
-# Create libstdc++.so symlink for -lstdc++ (hermetic LLVM lld needs it)
+    bash curl git ca-certificates xz-utils pkg-config make perl cmake upx-ucl \
+    gcc-10 g++-10 \
+    && update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-10 100 \
+    && update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-10 100 \
+    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 \
+    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 100
+
+# Create libstdc++.so symlink (lmclient build.rs links -lstdc++ which expects
+# the dev symlink, not just the runtime .so.6).
 RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /usr/lib/x86_64-linux-gnu/libstdc++.so
 
-# Bazelisk via ghfast.top proxy. BAZELISK_BASE_URL makes bazelisk itself
-# download Bazel through the proxy instead of hitting github.com directly.
-RUN curl -fsSL "https://ghfast.top/github.com/bazelbuild/bazelisk/releases/download/v1.26.0/bazelisk-linux-amd64" \
-        -o /usr/local/bin/bazel \
-    && chmod +x /usr/local/bin/bazel
-ENV USE_BAZEL_VERSION=9.0.0
-ENV BAZELISK_BASE_URL=https://ghfast.top/github.com/bazelbuild/bazel/releases/download
+# Install Rust via rustup with rsproxy.cn mirror. The toolchain is pinned by
+# codex-rs/rust-toolchain.toml (1.95.0); we install it explicitly because the
+# toolchain file lives in codex-rs/ and won't auto-discover from /workspace.
+RUN curl -fsSL "https://rsproxy.cn/rustup-init.sh" \
+    -o /tmp/rustup-init \
+    && chmod +x /tmp/rustup-init \
+    && RUSTUP_DIST_SERVER=https://rsproxy.cn RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup \
+    /tmp/rustup-init -y --default-toolchain 1.95.0 --profile minimal \
+    && rm /tmp/rustup-init \
+    && RUSTUP_DIST_SERVER=https://rsproxy.cn /root/.cargo/bin/rustup component add clippy rustfmt rust-src
+ENV PATH="/root/.cargo/bin:${PATH}" \
+    RUSTUP_DIST_SERVER=https://rsproxy.cn \
+    RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup
 
-# Redirect ALL git operations on github.com through ghfast.top (covers
-# git_repository rules that the BCR proxy doesn't handle).
+# Cargo registry mirror (rsproxy.cn sparse index).
+RUN mkdir -p /root/.cargo && cat > /root/.cargo/config.toml <<'EOF'
+[source.crates-io]
+replace-with = 'rsproxy-sparse'
+[source.rsproxy]
+registry = "https://rsproxy.cn/crates.io-index"
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
+[registries.rsproxy]
+index = "https://rsproxy.cn/crates.io-index"
+[net]
+git-fetch-with-cli = true
+EOF
+
+# Redirect ALL git operations on github.com through ghfast.top proxy (covers
+# cargo git deps: nucleo, crossterm, ratatui, tungstenite forks).
 RUN git config --global url."https://ghfast.top/github.com/".insteadOf "https://github.com/"
 
 WORKDIR /workspace
 COPY . .
+WORKDIR /workspace/codex-rs
 
-# Dynamically pre-download all bare github.com archives into distdir.
-# This catches BCR module internal downloads (bsdtar, bats-core, toml2json,
-# rules_rust, etc.) that bypass the ghfast URL patches and BCR proxy.
-RUN bash release/predownload-deps.sh
-# cache mounts persist Bazel's disk/repo caches across docker build invocations.
-# Do NOT cache the output base (/root/.cache/bazel) — it holds server lock files.
-# --nobuild fails fast on any download/patch issue before the long V8 compile.
-RUN --mount=type=cache,target=/root/.cache/bazel-disk-cache,sharing=locked \
-    --mount=type=cache,target=/root/.cache/bazel-repo-cache,sharing=locked \
-    --mount=type=cache,target=/root/.cache/bazel-repo-contents-cache,sharing=locked \
-    --mount=type=cache,target=/root/.cache/bazelisk,sharing=locked \
-    python3 release/bazel-registry-proxy.py 8765 > /tmp/proxy.log 2>&1 & \
-    sleep 1 && \
-    bazel build --action_env=FM_BUILD_SUFFIX //codex-rs/cli:grevo --nobuild \
-    && bazel build --action_env=FM_BUILD_SUFFIX //codex-rs/cli:grevo \
-    && mkdir -p /codex/lib \
-    && cp bazel-bin/codex-rs/cli/grevo /codex/grevo \
-    && strip /codex/grevo \
-    # Bundle the fmsh-ukey SDK shared libraries next to the binary. The
-    # executable's RUNPATH includes $ORIGIN/lib, so the runtime image only
-    # needs these files copied to /usr/local/bin/lib. The SDK's NEEDED
-    # libcrypto.so.3 comes from the host (Ubuntu 22.04 ships libssl3). The
-    # GM3000 provider (libgm3000.1.0.so) is dlopen'd at runtime via
-    # FMSH_UKEY_PROVIDER, so it never appears in NEEDED/_solib_k8 and must be
-    # copied from the vendored SDK directory explicitly.
-    && cp -L bazel-bin/_solib_k8/*/*.so* /codex/lib/ \
-    && gm3000_provider="$(find -L "$(bazel info output_base)/execroot/_main/external" \
-        -name 'libgm3000.1.0.so' | head -n1)" \
-    && cp -L "$gm3000_provider" /codex/lib/ \
-    && bazel shutdown
-
-# ── appimage stage ──────────────────────────────────────────────────────
-# Builds the single-file CLI AppImage entirely inside the container:
-# assembles AppDir (codex + SDK/closure libs + AppRun), packs squashfs and
-# concatenates the type2 runtime. No desktop file / icon (pure CLI).
-FROM ubuntu:${UBUNTU_VERSION} AS appimage
-
-ARG HTTP_PROXY
-ARG HTTPS_PROXY
-ARG NO_PROXY
+# Disable proxy for cargo build — rsproxy.cn, ghfast.top, and the internal
+# git server are directly reachable; the proxy breaks TLS to ghfast.top.
+# RUSTY_V8_MIRROR redirects the v8 prebuilt binary download to ghfast.top.
+# CARGO_NET_GIT_FETCH_WITH_CLI makes cargo use git CLI (respects insteadOf).
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true \
+    RUSTY_V8_MIRROR=https://ghfast.top/github.com/denoland/rusty_v8/releases/download
+# Force a cache miss when FM_BUILD_SUFFIX changes. build.rs reads this at
+# compile time (cargo:rustc-env), but Docker layer caching only keys on file
+# hashes, so without this touch the old suffix is baked into a reused layer.
 ARG FM_BUILD_SUFFIX=fm.r0-unknown
-ARG FM_BASE_VERSION=0.146.0
-ENV http_proxy=${HTTP_PROXY} \
-    https_proxy=${HTTPS_PROXY} \
-    no_proxy=${NO_PROXY} \
-    DEBIAN_FRONTEND=noninteractive
+ARG CARGO_PROFILE=release
+RUN echo "$FM_BUILD_SUFFIX" > /tmp/build-suffix-marker
+# FM_BUILD_SUFFIX deliberately enters the environment only after the COPY, so
+# the apt/rustup layers (and the COPY itself) stay cached across builds: the
+# suffix changes with every git commit and would otherwise invalidate every
+# layer below this point. build.rs watches it via rerun-if-env-changed.
+ENV FM_BUILD_SUFFIX=${FM_BUILD_SUFFIX}
 
-RUN sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
-        /etc/apt/sources.list \
-    && sed -i 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
-        /etc/apt/sources.list \
-    && apt-get update && apt-get install -y --no-install-recommends \
-        curl ca-certificates libcurl4 libssl3 libstdc++6 libzstd1
+# Build. CARGO_PROFILE=release (default) uses --release + strip + UPX; =debug
+# builds without optimization and keeps symbols for profiling/debugging.
+RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
+    --mount=type=cache,target=/root/.cargo/git,sharing=locked \
+    --mount=type=cache,target=/workspace/codex-rs/target,sharing=locked \
+    set -eu; \
+    export FMSH_UKEY_SDK_LINK FMSH_UKEY_LIBSTDCPP; \
+    if [ "$CARGO_PROFILE" = "debug" ]; then \
+    cargo build -p codex-cli --bin grevo \
+    && cp target/debug/grevo /codex-grevo; \
+    else \
+    cargo build --release -p codex-cli --bin grevo \
+    && strip target/release/grevo \
+    && cp target/release/grevo /codex-grevo; \
+    fi
 
-COPY --from=builder /codex/grevo /app/usr/bin/grevo
-COPY --from=builder /codex/lib /app/usr/bin/lib/
-
-RUN mkdir -p /app/usr/lib /work \
-    && ldd /app/usr/bin/grevo \
-        | awk -F'=> ' '/=> \// {print $2}' \
-        | awk '{print $1}' | sort -u \
-        | while read -r lib; do \
-            case "$lib" in \
-                */ld-linux*|*/libc.so.6|*/libm.so.6|*/libpthread.so.0 \
-                |*/libdl.so.2|*/librt.so.1|*/libutil.so.1|*/libresolv.so.2 \
-                |*/libfmsh_ukey_sdk.so*|*/libcrypto.so.3) continue ;; \
-            esac; \
-            cp -L "$lib" /app/usr/lib/; \
-          done \
-    && true
-
-RUN cat > /app/AppRun <<'EOF'
-#!/bin/sh
-SELF="$(readlink -f "$0")"
-APPDIR="${SELF%/*}"
-export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/bin/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-exec "$APPDIR/usr/bin/grevo" "$@"
-EOF
-
-RUN chmod +x /app/AppRun /app/usr/bin/grevo \
-    && curl -fsSL "https://ghfast.top/github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" \
-        -o /work/appimagetool \
-    && chmod +x /work/appimagetool \
-    && curl -fsSL "https://ghfast.top/github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64" \
-        -o /work/runtime \
-    && cd /work \
-    && APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool --appimage-extract >/dev/null \
-    && ./squashfs-root/usr/bin/mksquashfs /app /work/grevo.squashfs \
-        -comp zstd -b 131072 -noappend >/dev/null \
-    && cp /work/runtime "/grevo-${FM_BASE_VERSION}-${FM_BUILD_SUFFIX}-x86_64.AppImage" \
-    && cat /work/grevo.squashfs >> "/grevo-${FM_BASE_VERSION}-${FM_BUILD_SUFFIX}-x86_64.AppImage" \
-    && chmod +x "/grevo-${FM_BASE_VERSION}-${FM_BUILD_SUFFIX}-x86_64.AppImage"
+# ── bundle runtime libs ───────────────────────────────────────────────────
+# Static mode embeds the SDK + vendored libcrypto; only the dlopened GM3000
+# provider (found via FMSH_UKEY_PROVIDER or $ORIGIN/lib) ships. Shared mode
+# additionally bundles libfmsh_ukey_sdk.so.0 (its libcrypto.so.3 comes from
+# the host: Ubuntu 22.04 ships libssl3).
+ARG FMSH_UKEY_SDK_LINK
+RUN --mount=type=cache,target=/root/.cargo/git,sharing=locked \
+    mkdir -p /codex/lib \
+    && cp /codex-grevo /codex/grevo \
+    && SDK_LIB="$(find /root/.cargo/git/checkouts/fmsh-ukey-lib-* -path '*/vendor/fmsh-ukey-sdk/linux/lib' | head -1)" \
+    && if [ "$FMSH_UKEY_SDK_LINK" != "static" ]; then \
+    cp -fL "$SDK_LIB"/libfmsh_ukey_sdk.so.0 /codex/lib/; \
+    fi \
+    && (cp -fL "$SDK_LIB"/libgm3000.1.0.so /codex/lib/ 2>/dev/null || true)
 
 # ── runtime stage ─────────────────────────────────────────────────────────
 FROM ubuntu:${UBUNTU_VERSION}
 
+ARG FMSH_UKEY_SDK_LINK
 ENV DEBIAN_FRONTEND=noninteractive
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
-        /etc/apt/sources.list \
+    /etc/apt/sources.list \
     && sed -i 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
-        /etc/apt/sources.list \
+    /etc/apt/sources.list \
     && rm -f /etc/apt/apt.conf.d/docker-clean \
     && apt-get update && apt-get install -y --no-install-recommends \
-        libcurl4 libssl3 libstdc++6 libzstd1
+    libstdc++6 ca-certificates \
+    $( [ "$FMSH_UKEY_SDK_LINK" = "static" ] || echo libssl3 )
 
 COPY --from=builder /codex/grevo /usr/local/bin/grevo
 COPY --from=builder /codex/lib /usr/local/bin/lib

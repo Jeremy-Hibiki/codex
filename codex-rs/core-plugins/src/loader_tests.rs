@@ -597,6 +597,13 @@ fn write_hook_file(plugin_root: &AbsolutePathBuf, relative_path: &str, event: &s
 }
 
 fn load_sources(plugin_root: &AbsolutePathBuf) -> (Vec<PluginHookSource>, Vec<String>) {
+    load_sources_for(plugin_root, &plugin_id())
+}
+
+fn load_sources_for(
+    plugin_root: &AbsolutePathBuf,
+    plugin_id: &PluginId,
+) -> (Vec<PluginHookSource>, Vec<String>) {
     let loaded_manifest =
         load_plugin_manifest_with_format(plugin_root.as_path()).expect("manifest");
     let plugin_data_root = AbsolutePathBuf::try_from(
@@ -609,7 +616,7 @@ fn load_sources(plugin_root: &AbsolutePathBuf) -> (Vec<PluginHookSource>, Vec<St
     .expect("plugin data root");
     load_plugin_hooks(
         plugin_root,
-        &plugin_id(),
+        plugin_id,
         &plugin_data_root,
         &loaded_manifest.manifest.paths,
     )
@@ -637,6 +644,7 @@ fn assert_sources(sources: &[PluginHookSource], expected_relative_paths: &[&str]
             .collect::<Vec<_>>(),
         vec![1; expected_relative_paths.len()]
     );
+    assert!(sources.iter().all(|source| !source.is_managed));
 }
 
 #[test]
@@ -662,6 +670,25 @@ fn load_plugin_hooks_discovers_default_hooks_file() {
 
     assert_eq!(warnings, Vec::<String>::new());
     assert_sources(&sources, &["hooks/hooks.json"]);
+}
+
+#[test]
+fn load_plugin_hooks_marks_fmsh_marketplace_managed() {
+    let (_tmp, plugin_root) = plugin_root();
+    write_manifest(&plugin_root, r#"{ "name": "demo-plugin" }"#);
+    write_hook_file(
+        &plugin_root,
+        "hooks/hooks.json",
+        "PreToolUse",
+        "echo managed",
+    );
+    let plugin_id = PluginId::parse("demo-plugin@fmsh").expect("plugin id");
+
+    let (sources, warnings) = load_sources_for(&plugin_root, &plugin_id);
+
+    assert_eq!(warnings, Vec::<String>::new());
+    assert_eq!(sources.len(), 1);
+    assert!(sources[0].is_managed);
 }
 
 #[test]

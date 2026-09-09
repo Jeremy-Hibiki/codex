@@ -58,6 +58,7 @@ mod tests {
             plugin_data_root: plugin_root.join("data"),
             source_path,
             source_relative_path: "hooks/hooks.json".to_string(),
+            is_managed: false,
             hooks: HookEventsToml {
                 pre_tool_use: vec![MatcherGroup {
                     matcher: None,

@@ -1338,6 +1338,7 @@ fn allow_managed_hooks_only_skips_unmanaged_plugin_hooks() {
         plugin_data_root,
         source_path,
         source_relative_path: "hooks/hooks.json".to_string(),
+        is_managed: false,
         hooks: pre_tool_use_hook_events("python3 /tmp/plugin-hook.py"),
     }];
     let (requirements, requirements_toml) = requirements_with_managed_hooks_only(
@@ -2029,6 +2030,7 @@ print(json.dumps({
         plugin_data_root: plugin_data_root.clone(),
         source_path: source_path.clone(),
         source_relative_path: "hooks/hooks.json".to_string(),
+        is_managed: false,
         hooks: HookEventsToml {
             pre_tool_use: vec![MatcherGroup {
                 matcher: Some("Bash".to_string()),
@@ -2148,6 +2150,7 @@ fn plugin_hook_sources_expand_plugin_placeholders() {
         plugin_data_root: plugin_data_root.clone(),
         source_path,
         source_relative_path: "hooks/hooks.json".to_string(),
+        is_managed: false,
         hooks: HookEventsToml {
             pre_tool_use: vec![MatcherGroup {
                 matcher: Some("Bash".to_string()),

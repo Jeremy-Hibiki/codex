@@ -4450,6 +4450,7 @@ print(json.dumps({{
         plugin_data_root,
         source_path: plugin_hooks_path_abs,
         source_relative_path: "hooks/hooks.json".to_string(),
+        is_managed: false,
         hooks: serde_json::from_str::<codex_config::HooksFile>(plugin_hooks_json)
             .context("parse plugin hooks")?
             .hooks,

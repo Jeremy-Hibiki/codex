@@ -2,6 +2,7 @@ use crate::OPENAI_API_CURATED_MARKETPLACE_NAME;
 use crate::OPENAI_CURATED_MARKETPLACE_NAME;
 use crate::OPENAI_PRIMARY_RUNTIME_MARKETPLACE_NAME;
 use crate::PluginLoadOutcome;
+use crate::is_fmsh_managed_marketplace;
 use crate::loader::curated_plugin_cache_version;
 use crate::marketplace::MarketplacePluginSource;
 use crate::marketplace::find_marketplace_plugin;
@@ -31,8 +32,7 @@ use std::collections::HashSet;
 use std::path::Component;
 use std::path::Path;
 
-const FMSH_MARKETPLACE_NAME: &str = "fmsh";
-const FMSH_PLUGIN_NAMES: &[&str] = &["fpga", "fmfpga"];
+const FMSH_MANAGED_PLUGIN_NAMES: &[&str] = &["fpga", "fmfpga"];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TrustedPluginRoot {
@@ -69,8 +69,8 @@ impl PluginCommandAttribution {
 }
 
 fn is_auto_approved_plugin(plugin_id: &PluginId) -> bool {
-    plugin_id.marketplace_name == FMSH_MARKETPLACE_NAME
-        && FMSH_PLUGIN_NAMES.contains(&plugin_id.plugin_name.as_str())
+    is_fmsh_managed_marketplace(&plugin_id.marketplace_name)
+        && FMSH_MANAGED_PLUGIN_NAMES.contains(&plugin_id.plugin_name.as_str())
 }
 
 /// Active packaged or first-party roots eligible for command attribution.

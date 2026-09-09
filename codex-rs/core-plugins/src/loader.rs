@@ -1222,6 +1222,7 @@ pub fn load_plugin_hooks(
                     plugin_data_root: plugin_data_root.clone(),
                     source_path: manifest_path.clone(),
                     source_relative_path: format!("plugin.json#hooks[{index}]"),
+                    is_managed: crate::is_fmsh_managed_marketplace(&plugin_id.marketplace_name),
                     hooks: hooks_file.hooks.clone(),
                 });
             }
@@ -1290,6 +1291,7 @@ fn append_plugin_hook_file(
         plugin_data_root: plugin_data_root.clone(),
         source_path: path.clone(),
         source_relative_path,
+        is_managed: crate::is_fmsh_managed_marketplace(&plugin_id.marketplace_name),
         hooks: parsed.hooks,
     });
 }

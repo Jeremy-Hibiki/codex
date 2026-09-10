@@ -71,10 +71,6 @@ use codex_core_api::resolve_installation_id;
 use codex_core_api::set_default_originator;
 use codex_core_api::thread_store_from_config;
 
-#[cfg(target_os = "linux")]
-#[cfg(not(debug_assertions))]
-use debugoff;
-
 #[derive(Debug, Parser)]
 #[command(
     name = "codex-thread-manager-sample",
@@ -93,7 +89,8 @@ struct Args {
 fn main() -> anyhow::Result<()> {
     #[cfg(target_os = "linux")]
     #[cfg(not(debug_assertions))]
-    debugoff::multi_ptraceme_or_die();
+    codex_process_hardening::disable_process_dumping()
+        .unwrap_or_else(|err| eprintln!("WARNING: failed to disable process dumping: {err}"));
 
     arg0_dispatch_or_else(run_main)
 }

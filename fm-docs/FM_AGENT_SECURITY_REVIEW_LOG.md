@@ -123,3 +123,27 @@
 ### Round 2 验证
 - workspace check 0 错;clippy(fm-encrypted-skills/fm-license/codex-core/codex-app-server/codex-exec --all-targets)0 错(修掉 G1 引入的 2 处 needless_borrow + 1 处 useless_format)
 - fm-encrypted-skills 211/211(serial);fm-license 12/12(bypass,skip child);encrypted_skills 集成 20/20;core lib 2469 通过/12 失败(10 个既有基线+2 个负载 flake:stdin_approval_preserves_the_reviewed_terminal、multi_agent_v2_does_not_expose_model_overrides_by_default 隔离运行均过;基线 7 + guardian_ephemeral_retry/isolated 过往 flake)
+
+---
+
+## Process Hardening(debugoff → codex_process_hardening,用户指令)
+
+按 grevo 分支做法,全仓移除 debugoff 注入,统一改用 `codex_process_hardening::disable_process_dumping()`。
+
+### 变更(31 文件,+58/−163)
+- **15 个二进制入口**:app-server-test-client、file-search、cli、windows-sandbox-rs(setup_main/command_runner)、thread-manager-sample、linux-sandbox、apply-patch、bwrap(×2 处)、exec、responses-api-proxy、stdio-to-uds、execpolicy、app-server — 删 `use debugoff;` 及 `debugoff::multi_ptraceme_or_die()`,原位替换为 grevo 同款:
+  `codex_process_hardening::disable_process_dumping().unwrap_or_else(|err| eprintln!("WARNING: failed to disable process dumping: {err}"));`
+  保留各处原有 `#[cfg(target_os = "linux")] #[cfg(not(debug_assertions))]` 门(debug 构建与旧行为一致为 no-op;失败 fail-open 仅告警,不会崩)。
+- **tui**:fm 分支迁移时丢了注入点(仅剩死依赖),按 grevo tui/src/main.rs:53 同款补回 disable_process_dumping。
+- **清单**:14 个 Cargo.toml 的 `debugoff` 依赖换/删;workspace Cargo.toml 删 `debugoff = "0.2"`;Cargo.lock 由 cargo 重新生成(−88 行,debugoff 及其依赖树消失)。process-hardening crate 本体与 grevo 完全一致,已在树中,零改动。
+- **无 BUILD.bazel 引用**(grep 验证);Bazel 锁刷新仍按既有决策超范围。
+
+### 验证
+- 全仓 grep debugoff(源码/清单/bazel)0 残留
+- 全部受影响 crate `cargo check` 0 错(**debug 构建**,证明 cfg 属性拓扑正确;曾修复两处机械替换事故:孤儿 cfg 属性对悬空到 `#[tokio::main]`/`use std::path::PathBuf` 导致 debug 构建丢 main — E0601,已清理)
+- file-search debug 运行冒烟 OK;responses-api-proxy release 冒烟 OK(启动/参数/设计内报错路径正常)
+- clippy(13 个受影响 crate --all-targets)0 错;cargo fmt 干净
+
+### D14(by design):防调试/dump 机制选型
+- 统一采用 `disable_process_dumping()`(prctl PR_SET_DUMPABLE=0 + RLIMIT_CORE=0,grevo 验证过的实现);弃用 debugoff crate 的 TRACEME 混淆方案(依赖第三方混淆分支,维护面大,且 `multi_ptraceme_or_die` 遇 ptrace 不可用环境可能 die)。二者互斥不叠加;保留各入口原有 cfg 门。
+- 本环境无法直接观测 Dumpable/ptrace(容器屏蔽),以 debug/release 双构建 + 运行冒烟代替;机制行为由 process-hardening 上游语义保证。

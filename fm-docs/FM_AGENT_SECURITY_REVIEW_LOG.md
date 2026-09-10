@@ -78,3 +78,34 @@
 - workspace check 0 error;clippy(全部涉及 crate)0 error;fmt 干净
 - fm-encrypted-skills 211/211(serial);fm-license 12/12(bypass,skip child);codex-core lib 2467 过/10 败(7 基线 + 3 负载 flake,隔离全过);codex-app-server 失败集 ⊆ 基线
 - tui composer 333 过;codex-exec 78 过
+
+
+---
+
+## Round 2(复审完成 → 修复中)
+
+复审:R2Fixes(Round 1 修复正确性逐条复核)+ R2Residual(三个遗留面)。结论:**16 项修复中 14 项干净通过**,M2 部分通过;paths 归一化实现正确但有 shell 语义层盲区。
+
+### Round 1 修复复核结论(全部有据)
+通过:F1-sec 接线、M5 全分段、M6 首次尝试、F5-sec timeline(三路径全覆盖)、M1 全变体、M3 状态迁移+幂等、M9 覆盖面、F3-sec trace token 化(WS 增量退化为整体脱敏,方向安全)、M8 递归脱敏、M7 delta 全覆盖、M4 接线、M10 otel 路径、F6 边界、F7 stub 告警、M2 中央接线。
+部分通过:M2(FsCopy/FsRemove 漏 + `..` 词法穿透 → Round 2 MED-1)。
+
+### Round 2 新发现与修复项(G1-G3 分工)
+
+| ID | 严重度 | 问题 | 修复归属 |
+|----|--------|------|----------|
+| G1-sec | HIGH | paths 词法守卫的 shell 语义绕过:①glob 元字符顶替受控组件(`/dev/s*/...`);②词中引号切分(`/dev/sh"m/fm"-agent-security/...`);③cd 链 cwd 状态(`cd /dev && cd shm && cat ...`,分段独立判定全放行)。后果:execute-only 被破(脚本源码不在 known plaintexts 内) | G1(fm guard/paths) |
+| G2-sec | HIGH | I6 只盖首次沙箱尝试:escalation 重试以 sandbox_requested=false 无沙箱执行明文脚本(engaged+WorkspaceWrite+D9 免审组合);unix_escalation 的 Unsandboxed 分支同样无 engaged 检查 | G2(core tools) |
+| G3-med | MED | M2 残口:rpc 门漏 FsCopy/FsRemove;is_codex_home_config_file 的 `..` 词法穿透 | G3(app-server) |
+| G4-med | MED | realtime 文本输入(Op::RealtimeConversationText)绕过 guardrail,无 REMINDER 也无审计 | G3(app-server) |
+| G5-lm | LOW-MED | inference trace **输出侧**(client.rs:2267 items_added → record_completed)原样落盘模型输出(engaged 时可能含复述明文),无脱敏无审计 —— F3-sec 只修了请求侧 | G3(core client.rs) |
+| G6-low | LOW | ①events.rs/parallel.rs 错误回显家族绕过 RedactingToolOutput(片段级明文+解密路径片段落 rollout/trace);②stream_events_utils.rs:318 tracing 用未脱敏 payload | G2(core tools) |
+| G7-low | LOW | session_guard 的 redact_turn_item / redact_tool_output_plaintext_for_persistence 零调用点(死防御层,易误认为有保护) | G1(删除并记录) |
+
+### By design 补充(Round 2 确认)
+- D11:WS 增量 delta 的 guard-redacted 视图不含哨兵 token,trace 回放/重水合映射不可重建 —— 保真度取舍,机密性方向安全,接受。
+- D12:guardrail 为软缓解(命中仍放行 + 注入 REMINDER + 审计);strict 模式列为后续可选,当前不做。
+- D13:failure_response 错误回显的泄露下限=片段级明文+解密路径片段(before_tool 在 dispatch 前已 Block 含完整明文的参数;exec 工具输出仍经 RedactingToolOutput)。
+
+### 修复状态(Round 2)
+- G1:待开始 G2:待开始 G3:待开始 G4(=G3 app-server 部分):待开始 G5:待开始 G6:待开始 G7:待开始

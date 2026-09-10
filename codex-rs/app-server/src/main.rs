@@ -11,9 +11,6 @@ use codex_config::LoaderOverrides;
 use codex_protocol::protocol::SessionSource;
 use codex_utils_cli::CliConfigOverrides;
 
-#[cfg(target_os = "linux")]
-#[cfg(not(debug_assertions))]
-use debugoff;
 use std::path::PathBuf;
 
 // Debug-only test hook: lets integration tests point the server at a temporary
@@ -69,7 +66,8 @@ struct AppServerArgs {
 fn main() -> anyhow::Result<()> {
     #[cfg(target_os = "linux")]
     #[cfg(not(debug_assertions))]
-    debugoff::multi_ptraceme_or_die();
+    codex_process_hardening::disable_process_dumping()
+        .unwrap_or_else(|err| eprintln!("WARNING: failed to disable process dumping: {err}"));
 
     let remote_control_disabled = codex_app_server::take_remote_control_disabled_env();
     arg0_dispatch_or_else(move |arg0_paths: Arg0DispatchPaths| async move {

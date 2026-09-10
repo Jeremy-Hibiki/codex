@@ -1,9 +1,5 @@
 use clap::Parser;
 
-#[cfg(target_os = "linux")]
-#[cfg(not(debug_assertions))]
-use debugoff;
-
 #[derive(Debug, Parser)]
 struct Cli {
     /// Transport endpoint: `stdio`, `stdio://`, or `ws://IP:PORT`.
@@ -19,7 +15,8 @@ struct Cli {
 async fn main() -> anyhow::Result<()> {
     #[cfg(target_os = "linux")]
     #[cfg(not(debug_assertions))]
-    debugoff::multi_ptraceme_or_die();
+    codex_process_hardening::disable_process_dumping()
+        .unwrap_or_else(|err| eprintln!("WARNING: failed to disable process dumping: {err}"));
 
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)

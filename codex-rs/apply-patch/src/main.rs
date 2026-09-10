@@ -1,11 +1,8 @@
-#[cfg(target_os = "linux")]
-#[cfg(not(debug_assertions))]
-use debugoff;
-
 pub fn main() -> ! {
     #[cfg(target_os = "linux")]
     #[cfg(not(debug_assertions))]
-    debugoff::multi_ptraceme_or_die();
+    codex_process_hardening::disable_process_dumping()
+        .unwrap_or_else(|err| eprintln!("WARNING: failed to disable process dumping: {err}"));
 
     codex_apply_patch::main()
 }

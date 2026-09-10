@@ -10,7 +10,8 @@ fn main() -> anyhow::Result<()> {
 fn main() {
     #[cfg(target_os = "linux")]
     #[cfg(not(debug_assertions))]
-    debugoff::multi_ptraceme_or_die();
+    codex_process_hardening::disable_process_dumping()
+        .unwrap_or_else(|err| eprintln!("WARNING: failed to disable process dumping: {err}"));
 
     panic!("codex-windows-sandbox-setup is Windows-only");
 }

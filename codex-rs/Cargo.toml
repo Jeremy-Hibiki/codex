@@ -316,7 +316,6 @@ crossbeam-channel = "0.5.15"
 crypto_box = { version = "0.9.1", features = ["seal"] }
 crossterm = "0.28.1"
 ctor = "0.6.3"
-debugoff = { version = "0.2", features = ["obfuscate", "syscallobf"] }
 deno_core_icudata = "0.77.0"
 derive_more = "2"
 diffy = "0.4.2"

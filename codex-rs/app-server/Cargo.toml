@@ -88,7 +88,7 @@ codex-utils-json-to-toml = { workspace = true }
 codex-utils-path-uri = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
-debugoff = { workspace = true }
+codex-process-hardening = { workspace = true }
 fm-license = { workspace = true }
 fm-encrypted-skills = { workspace = true }
 fm-product-policy = { workspace = true }

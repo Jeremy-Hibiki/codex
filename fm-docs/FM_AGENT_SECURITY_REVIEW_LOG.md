@@ -147,3 +147,25 @@
 ### D14(by design):防调试/dump 机制选型
 - 统一采用 `disable_process_dumping()`(prctl PR_SET_DUMPABLE=0 + RLIMIT_CORE=0,grevo 验证过的实现);弃用 debugoff crate 的 TRACEME 混淆方案(依赖第三方混淆分支,维护面大,且 `multi_ptraceme_or_die` 遇 ptrace 不可用环境可能 die)。二者互斥不叠加;保留各入口原有 cfg 门。
 - 本环境无法直接观测 Dumpable/ptrace(容器屏蔽),以 debug/release 双构建 + 运行冒烟代替;机制行为由 process-hardening 上游语义保证。
+
+---
+
+## Round 3(定向复审,HEAD=5f8858ebad)
+
+### 逐项结论
+通过(7/8):G2(orchestrator engaged 布尔单源,重试必带沙箱;unix_escalation 同源)、G6(parallel.rs:81-89 全部 dispatch 错误单点 + registry redacted_log_payload)、G3(协议全量枚举无 FsMove/变体遗漏;lexical_normalize 在位)、G4(REMINDER 先于 flagged 原文;shared_file_sink 同源审计)、G5(输出侧 6 点全覆盖)、加固(16 入口 + 全树 debugoff 零残留)、G7(死 API 零残留)。
+不通过:G1 — 复合语句盲区。
+
+### 新发现(Round 4 修复项)
+| ID | 严重度 | 问题 | 最小修复 |
+|----|--------|------|----------|
+| H1 | HIGH | split_command_segments 只收顶层 statement(is_top_level 排除祖先含 if/while/until/for/case/subshell/function_definition 的节点),复合语句整体不产 segment;guard 三入口无整命令兜底。PoC:`(cd /dev/shm/fm-agent-security/... && cat scripts/run.py)` 直接 Allow | 复合语句整体产出 segment(或递归子命令入段);被包裹的脚本执行因不可识别为 is_skill_script_execution 而 fail-closed 拒绝;补红→绿测试 |
+| M1 | MED | cwd_shift 漏 popd → 虚拟 cwd 陈旧(`cd /dev && pushd /tmp && popd && cat shm/...` 漏判) | popd → CwdShift::Unknown(保守启发已兜底)+ 测试 |
+| M2 | MED | globstar/extglob 未建模:`**` 被当单分量 zip 错位;`(` 不在 has_glob_meta(`shopt -s globstar; cat /dev/**/run.py` 漏判) | 锚定特判 `**` 吞任意多分量;`(` 入 has_glob_meta;补测试 |
+| L1 | LOW | legacy 回退( tree-sitter 不可用时)分词未过 unquote_token,`/dev/s\hm` 绕过 | 分词后过 unquote_token |
+| L2 | LOW | stream_events_utils.rs ~:313-322 tracing ToolCall preview 未脱敏(intake 早于 guard,被 block 命令明文片段落本地日志) | engaged 时过 redact_text_for |
+| L3 | LOW(记录) | G3 词法不解析 symlink;FsRemove 整 codex_home 不拦(DoS 非绕过) | 记录,不修 |
+
+已知限制确认:不可解析 cd 后无尾分量相对路径放行(Round 2 启发上限,钉死);D11/D12/D13 维持 by design。
+
+**收敛判定:不收敛(H1 HIGH 在)。Round 4 修复 H1/M1/M2/L1/L2 后做定向复审。**

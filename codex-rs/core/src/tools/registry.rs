@@ -517,7 +517,7 @@ impl ToolRegistry {
             Some(tool) => tool,
             None => {
                 let message = unsupported_tool_call_message(&invocation.payload, &tool_name);
-                let log_payload = tool_log_payload(&invocation.payload, &invocation.source);
+                let log_payload = redacted_log_payload(&invocation);
                 let mut tool_result_tags = Vec::with_capacity(2);
                 sandbox_tags.append_metric_tags(&mut tool_result_tags);
                 otel.tool_result_with_tags(
@@ -548,7 +548,7 @@ impl ToolRegistry {
         }
         if !tool.matches_kind(&invocation.payload) {
             let message = format!("tool {tool_name} invoked with incompatible payload");
-            let log_payload = tool_log_payload(&invocation.payload, &invocation.source);
+            let log_payload = redacted_log_payload(&invocation);
             otel.tool_result_with_tags(
                 &tool_name,
                 &call_id_owned,
@@ -846,6 +846,26 @@ fn redact_telemetry_text(
 ) -> String {
     let unrewritten = crate::encrypted_skills_guard::redact_text_for(runtime, session_id, text);
     fm_encrypted_skills::guard::redact_text_quiet(runtime, session_id, &unrewritten)
+}
+
+// fm G6: dispatch-error telemetry must apply the same redaction as the success
+// path — the payload can carry guard-rewritten `/dev/shm` paths and known
+// plaintext for engaged sessions.
+fn redacted_log_payload(invocation: &ToolInvocation) -> std::borrow::Cow<'_, str> {
+    let payload = tool_log_payload(&invocation.payload, &invocation.source);
+    let runtime = Arc::clone(&invocation.session.services.encrypted_skills_runtime);
+    let session_id = invocation.session.thread_id.to_string();
+    let engaged = invocation
+        .turn
+        .agent_security
+        .as_ref()
+        .map(crate::agent_security::AgentSecurityContext::engaged)
+        .unwrap_or_else(|| runtime.is_engaged(&session_id));
+    if engaged {
+        std::borrow::Cow::Owned(redact_telemetry_text(&runtime, &session_id, &payload))
+    } else {
+        payload
+    }
 }
 
 async fn notify_tool_finish_if_unclaimed(

@@ -2,13 +2,12 @@
 //!
 //! Hosts (codex-core) repeatedly call pairs like
 //! `(&runtime, &session_id.to_string())`; this facade bundles the two so call
-//! sites read `session.encrypted_skills_guard().redact_turn_item(item)` and
-//! the session id is materialized once.
+//! sites read `session.encrypted_skills_guard().redact_assistant_reply_item(item)`
+//! and the session id is materialized once.
 
 use std::borrow::Cow;
 use std::path::PathBuf;
 
-use codex_protocol::items::TurnItem;
 use codex_protocol::models::ResponseItem;
 use serde_json::Value;
 
@@ -126,20 +125,6 @@ impl SessionGuard<'_> {
         items: Cow<'b, [ResponseItem]>,
     ) -> Cow<'b, [ResponseItem]> {
         crate::guard::redact_assistant_reply_items(self.runtime, self.session_id(), items)
-    }
-
-    /// Redacts one turn item before it is emitted or persisted.
-    pub fn redact_turn_item(&self, item: TurnItem) -> TurnItem {
-        crate::guard::redact_turn_item(self.runtime, self.session_id(), item)
-    }
-
-    /// Redacts tool-output and developer text for durable surfaces.
-    pub fn redact_tool_output_plaintext_for_persistence(&self, item: ResponseItem) -> ResponseItem {
-        crate::guard::redact_tool_output_plaintext_for_persistence(
-            self.runtime,
-            self.session_id(),
-            item,
-        )
     }
 
     /// Redacts every text-bearing response item for trace payloads.

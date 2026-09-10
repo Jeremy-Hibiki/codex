@@ -871,3 +871,141 @@ fn telemetry_redaction_unrewrites_decrypted_paths_and_plaintext() {
         plain
     );
 }
+
+// fm G6: dispatch-error telemetry (unknown tool, incompatible payload) must
+// apply the same redaction as the success path for engaged sessions.
+struct ArcLogBuffer(Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for ArcLogBuffer {
+    type Writer = ArcLogBuffer;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        ArcLogBuffer(Arc::clone(&self.0))
+    }
+}
+
+impl std::io::Write for ArcLogBuffer {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn dispatch_error_telemetry_redacts_decrypted_paths_and_plaintext() -> anyhow::Result<()> {
+    let (session, turn) = crate::session::tests::make_session_and_context().await;
+    let tmp = tempfile::tempdir().expect("temp dir");
+    let runtime = Arc::new(fm_encrypted_skills::runtime::EncryptedSkillRuntime::new(
+        Arc::new(TelemetryRedactionTestSdk),
+        fm_encrypted_skills::registry::TtlConfig::default(),
+        tmp.path().join("mem-root"),
+    ));
+    let session_id = session.thread_id.to_string();
+    runtime
+        .load_or_register(
+            &session_id,
+            "secret",
+            std::path::Path::new("/skills/secret.zip.enc"),
+        )
+        .expect("test sdk should decrypt the skill package");
+    let decrypted = runtime
+        .decrypted_dirs(&session_id)
+        .pop()
+        .expect("loaded skill should register a decrypted dir");
+    let mut session = Arc::new(session);
+    Arc::get_mut(&mut session)
+        .expect("session should be uniquely owned")
+        .services
+        .encrypted_skills_runtime = Arc::clone(&runtime);
+    let turn = Arc::new(turn);
+
+    let tool_name = codex_tools::ToolName::plain("kind_probe");
+    let handler = Arc::new(TestHandler {
+        tool_name: tool_name.clone(),
+    }) as Arc<dyn CoreToolRuntime>;
+    let registry = ToolRegistry::from_tools([handler]);
+
+    let secret_arguments = format!(
+        r#"{{"path":"{}","data":"TOPSECRET-PLAINTEXT-CONTENT"}}"#,
+        decrypted.join("run.sh").to_string_lossy()
+    );
+
+    let buffer: Arc<std::sync::Mutex<Vec<u8>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let subscriber = tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_max_level(tracing::Level::INFO)
+        .with_writer(ArcLogBuffer(Arc::clone(&buffer)))
+        .finish();
+    let _subscriber_guard = tracing::subscriber::set_default(subscriber);
+
+    // Path 1: unknown tool name.
+    let mut unknown = test_invocation(
+        Arc::clone(&session),
+        Arc::clone(&turn),
+        "unknown-call",
+        codex_tools::ToolName::plain("no_such_tool"),
+    );
+    unknown.payload = ToolPayload::Function {
+        arguments: secret_arguments.clone(),
+    };
+    assert!(
+        registry
+            .dispatch_any_with_terminal_outcome(unknown, /*terminal_outcome_reached*/ None)
+            .await
+            .is_err(),
+        "unknown tool should fail dispatch"
+    );
+
+    // Path 2: payload kind mismatch for a registered function tool.
+    let mut mismatched = test_invocation(
+        Arc::clone(&session),
+        Arc::clone(&turn),
+        "kind-call",
+        codex_tools::ToolName::namespaced(DEFAULT_FUNCTION_NAMESPACE, "kind_probe"),
+    );
+    mismatched.payload = ToolPayload::Custom {
+        input: secret_arguments.clone(),
+    };
+    assert!(
+        registry
+            .dispatch_any_with_terminal_outcome(mismatched, /*terminal_outcome_reached*/ None)
+            .await
+            .is_err(),
+        "incompatible payload should fail dispatch"
+    );
+
+    let logs = String::from_utf8(
+        buffer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone(),
+    )?;
+    let result_events = logs
+        .lines()
+        .filter(|line| line.contains("codex.tool_result") && line.contains("codex_otel.log_only"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        result_events.len(),
+        2,
+        "both dispatch error paths should emit tool_result telemetry; logs:\n{logs}"
+    );
+    for line in &result_events {
+        assert!(
+            !line.contains(decrypted.to_string_lossy().as_ref()),
+            "dispatch-error telemetry must not contain the decrypted path: {line}"
+        );
+        assert!(
+            !line.contains("TOPSECRET-PLAINTEXT-CONTENT"),
+            "dispatch-error telemetry must not contain known skill plaintext: {line}"
+        );
+    }
+
+    Ok(())
+}

@@ -107,5 +107,19 @@
 - D12:guardrail 为软缓解(命中仍放行 + 注入 REMINDER + 审计);strict 模式列为后续可选,当前不做。
 - D13:failure_response 错误回显的泄露下限=片段级明文+解密路径片段(before_tool 在 dispatch 前已 Block 含完整明文的参数;exec 工具输出仍经 RedactingToolOutput)。
 
-### 修复状态(Round 2)
-- G1:待开始 G2:待开始 G3:待开始 G4(=G3 app-server 部分):待开始 G5:待开始 G6:待开始 G7:待开始
+### 修复状态(Round 2)— 全部完成 ✓
+| ID | 修复 | 测试(先红后绿) |
+|----|------|----------------|
+| G1 ✓ | paths.rs:glob_component_matches(分量级 fnmatch,前缀锚定受控目录才命中;/dev/* 不误拦)+ strip_shell_quotes(去引号归一后重跑全部检查)+ segment_guarded_flags(cd/pushd 虚拟 cwd,含 .. 弹栈;目标不可解析时退化为受控尾分量启发) | glob_tokens_anchored_on_guarded_dirs_are_flagged、unanchored_glob_tokens_are_not_flagged、quote_split_guarded_paths_are_flagged、cd_chain_resolves_relative_guarded_reads、cd_chain_dotdot_moves_virtual_cwd、unresolvable_cd_target_falls_back_to_tail_heuristic、unresolvable_cd_target_ignores_unrelated_relative_paths、cd_chain_relative_skill_script_stays_executable_for_d9 + guard 层 4 个 |
+| G2 ✓ | I6 选(b):unsandboxed_allowed 追加 !session_is_engaged(orchestrator.rs,与 :314 同源;同时盖住 retry_sandbox_requested 与 codex_linux_sandbox_exe);unix_escalation determine_action 同门,shell_request_escalation_execution 增加 engaged 参数 → RequireEscalated 降 TurnDefault 而非 Unsandboxed | engaged_session_sandbox_denial_does_not_retry_unsandboxed、engaged_sessions_never_escalate_to_unsandboxed |
+| G6 ✓ | ①failure_response 持 session,engaged 时经 redact_text_for 单点覆盖全部 RespondToModel 回显;②registry 新增 redacted_log_payload(未知工具/不兼容 payload 两处 dispatch 错误 otel 路径) | failure_response_redacts_decrypted_paths_when_engaged、dispatch_error_telemetry_redacts_decrypted_paths_and_plaintext |
+| G3 ✓ | ensure_config_mutation_allowed 补 FsCopy(destination)/FsRemove/FsCreateDirectory;is_codex_home_config_file 双侧词法归一(CurDir 剔除/ParentDir 弹栈)后再 strip_prefix | is_codex_home_config_file_resolves_lexical_traversal、rpc_guard_blocks_config_file_fs_mutations_when_engaged |
+| G4 ✓ | turn_processor realtime 文本:guardrail enabled 时 is_attack,命中记审计 + 在 flagged 文本前注入 developer-role REMINDER(软缓解,同 M4 语义;审计经 shared_file_sink 同进程共享 sink) | realtime_guardrail_flags_text_and_injects_reminder_when_engaged |
+| G5 ✓ | client.rs map_response_events/stream 增 encrypted_skills 参数;**全部 6 个**输出侧 trace record 点(cancelled×3/completed/failed×2)过 redact_all_response_item_text;会话侧 intake 不变(同 D1 请求侧模式) | trace 测试(encrypted_skills suite,红→绿) |
+| G7 ✓ | 删除 session_guard.redact_turn_item / redact_tool_output_plaintext_for_persistence 死防御链(全仓零调用;guard.rs 自由函数+独占辅助+12 个死测试+21 个失效 import) | 全仓 grep 零残留;crate 211 测试全过 |
+
+**G3 勘误**:工单示例 `$CODEX_HOME/../x/.codex/config.toml` 归一后在 home 外,本就允许(合法);真正被堵的是 `$CODEX_HOME/sub/../config.toml` 回拼写法。AbsolutePathBuf 反序列化即解析 `..`,RPC 路径 `..` 到不了守卫。
+
+### Round 2 验证
+- workspace check 0 错;clippy(fm-encrypted-skills/fm-license/codex-core/codex-app-server/codex-exec --all-targets)0 错(修掉 G1 引入的 2 处 needless_borrow + 1 处 useless_format)
+- fm-encrypted-skills 211/211(serial);fm-license 12/12(bypass,skip child);encrypted_skills 集成 20/20;core lib 2469 通过/12 失败(10 个既有基线+2 个负载 flake:stdin_approval_preserves_the_reviewed_terminal、multi_agent_v2_does_not_expose_model_overrides_by_default 隔离运行均过;基线 7 + guardian_ephemeral_retry/isolated 过往 flake)

@@ -9,8 +9,6 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
 
-use codex_protocol::items::AgentMessageContent;
-use codex_protocol::items::TurnItem;
 use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputBody;
@@ -143,8 +141,12 @@ fn guard_shell(
     // Split at unquoted chain operators (`;`, `|`, `&&`, `&`) and judge each
     // segment independently. This closes the smuggle vector where a forbidden
     // read hides after an allowed execution (`bash run.sh; cat SKILL.md`).
-    for segment in paths::split_command_segments(&rewritten) {
-        let references_dir = paths::command_references_dir(&segment, &guarded_paths);
+    // The judgment tracks the virtual cwd across `cd`/`pushd` segments so a
+    // relative read cannot hide behind chained `cd`s (`cd /dev && cd shm &&
+    // cat fm-agent-security/...`).
+    let segments = paths::split_command_segments(&rewritten);
+    let flags = paths::segment_guarded_flags(&segments, &guarded_paths);
+    for (segment, references_dir) in segments.iter().zip(flags) {
         if references_dir {
             // Execution of a skill script is allowed (the runner receives the
             // rewritten decrypted path). Anything else that touches the
@@ -152,9 +154,9 @@ fn guard_shell(
             // blocked, including reads smuggled through redirections or
             // command substitutions inside an otherwise-allowed script
             // execution (`bash run.sh < SKILL.md`, `bash run.sh $(cat SKILL.md)`).
-            let script_execution = paths::is_script_execution(&segment);
+            let script_execution = paths::is_script_execution(segment);
             if !script_execution
-                || !paths::script_execution_avoids_guarded_io(&segment, &guarded_paths)
+                || !paths::script_execution_avoids_guarded_io(segment, &guarded_paths)
             {
                 return GuardDecision::Blocked {
                     message: BLOCK_MESSAGE.to_string(),
@@ -302,11 +304,13 @@ pub fn guard_stdin_input(
         }
     }
     let guarded_paths = guarded_paths_for_session(runtime, session_id);
-    for segment in paths::split_command_segments(chars) {
-        if paths::command_references_dir(&segment, &guarded_paths) {
-            let script_execution = paths::is_script_execution(&segment);
+    let segments = paths::split_command_segments(chars);
+    let flags = paths::segment_guarded_flags(&segments, &guarded_paths);
+    for (segment, references_dir) in segments.iter().zip(flags) {
+        if references_dir {
+            let script_execution = paths::is_script_execution(segment);
             if !script_execution
-                || !paths::script_execution_avoids_guarded_io(&segment, &guarded_paths)
+                || !paths::script_execution_avoids_guarded_io(segment, &guarded_paths)
             {
                 return GuardDecision::Blocked {
                     message: BLOCK_MESSAGE.to_string(),
@@ -335,13 +339,13 @@ pub fn is_skill_script_execution(
     }
     let guarded_paths = guarded_paths_for_session(runtime, session_id);
     let rewritten = runtime.rewrite_paths(session_id, command);
-    paths::split_command_segments(&rewritten)
-        .into_iter()
-        .any(|segment| {
-            paths::command_references_dir(&segment, &guarded_paths)
-                && paths::is_script_execution(&segment)
-                && paths::script_execution_avoids_guarded_io(&segment, &guarded_paths)
-        })
+    let segments = paths::split_command_segments(&rewritten);
+    let flags = paths::segment_guarded_flags(&segments, &guarded_paths);
+    segments.iter().zip(flags).any(|(segment, references_dir)| {
+        references_dir
+            && paths::is_script_execution(segment)
+            && paths::script_execution_avoids_guarded_io(segment, &guarded_paths)
+    })
 }
 
 fn collect_string_values<'a>(value: &'a Value, out: &mut Vec<&'a str>) {
@@ -484,109 +488,6 @@ fn assistant_reply_texts(item: &ResponseItem) -> Vec<&str> {
         }
         _ => Vec::new(),
     }
-}
-
-/// Text fields redacted by [`redact_tool_output_plaintext_for_persistence`].
-fn persistence_texts(item: &ResponseItem) -> Vec<&str> {
-    let mut out = Vec::new();
-    match item {
-        ResponseItem::Message { role, content, .. } if role == "developer" => {
-            for content_item in content {
-                match content_item {
-                    ContentItem::InputText { text } | ContentItem::OutputText { text } => {
-                        out.push(text.as_str())
-                    }
-                    _ => {}
-                }
-            }
-        }
-        ResponseItem::FunctionCall { arguments, .. } => out.push(arguments.as_str()),
-        ResponseItem::CustomToolCall { input, .. } => out.push(input.as_str()),
-        ResponseItem::FunctionCallOutput { output, .. }
-        | ResponseItem::CustomToolCallOutput { output, .. } => match &output.body {
-            FunctionCallOutputBody::Text(text) => out.push(text.as_str()),
-            FunctionCallOutputBody::ContentItems(items) => {
-                for content in items {
-                    if let FunctionCallOutputContentItem::InputText { text } = content {
-                        out.push(text.as_str());
-                    }
-                }
-            }
-        },
-        _ => {}
-    }
-    out
-}
-
-/// Text fields redacted by [`redact_turn_item`].
-fn turn_item_texts(item: &TurnItem) -> Vec<&str> {
-    let mut out = Vec::new();
-    match item {
-        TurnItem::AgentMessage(agent_message) => {
-            for content in &agent_message.content {
-                let AgentMessageContent::Text { text } = content;
-                out.push(text.as_str());
-            }
-        }
-        TurnItem::Reasoning(reasoning) => {
-            out.extend(reasoning.summary_text.iter().map(String::as_str));
-            out.extend(reasoning.raw_content.iter().map(String::as_str));
-        }
-        TurnItem::Plan(plan) => out.push(plan.text.as_str()),
-        TurnItem::CommandExecution(command_execution) => {
-            if let Some(text) = &command_execution.stdout {
-                out.push(text.as_str());
-            }
-            if let Some(text) = &command_execution.stderr {
-                out.push(text.as_str());
-            }
-            if let Some(text) = &command_execution.aggregated_output {
-                out.push(text.as_str());
-            }
-            if let Some(text) = &command_execution.formatted_output {
-                out.push(text.as_str());
-            }
-            if let Some(text) = &command_execution.interaction_input {
-                out.push(text.as_str());
-            }
-        }
-        TurnItem::FileChange(file_change) => {
-            if let Some(text) = &file_change.stdout {
-                out.push(text.as_str());
-            }
-            if let Some(text) = &file_change.stderr {
-                out.push(text.as_str());
-            }
-        }
-        TurnItem::WebSearch(web_search) => out.push(web_search.query.as_str()),
-        TurnItem::CollabAgentToolCall(collab_agent_tool_call) => {
-            if let Some(text) = &collab_agent_tool_call.prompt {
-                out.push(text.as_str());
-            }
-        }
-        TurnItem::DynamicToolCall(dynamic_tool_call) => {
-            if let Some(content_items) = &dynamic_tool_call.content_items {
-                for content in content_items {
-                    if let codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem::InputText {
-                        text,
-                    } = content
-                    {
-                        out.push(text.as_str());
-                    }
-                }
-            }
-            if let Some(text) = &dynamic_tool_call.error {
-                out.push(text.as_str());
-            }
-        }
-        TurnItem::McpToolCall(mcp_tool_call) => {
-            if let Some(error) = &mcp_tool_call.error {
-                out.push(error.message.as_str());
-            }
-        }
-        _ => {}
-    }
-    out
 }
 
 /// Redacts known skill plaintext from assistant replies and plaintext
@@ -814,66 +715,6 @@ fn redact_output_body(
     }
 }
 
-/// Redacts known skill plaintext (and decrypted paths) from tool-output and
-/// developer-role text for durable surfaces (rollout and the client stream).
-/// In-memory history keeps the original text so the model can keep using
-/// skill-provided content across turns; the persisted copy never contains
-/// plaintext. Hook-provided additional contexts arrive as developer messages,
-/// so they are covered here as defense-in-depth even though
-/// `record_additional_contexts` already redacts them at the source.
-pub fn redact_tool_output_plaintext_for_persistence(
-    runtime: &EncryptedSkillRuntime,
-    session_id: &str,
-    mut item: ResponseItem,
-) -> ResponseItem {
-    let known = runtime.known_plaintexts(session_id);
-    if known.is_empty() {
-        return item;
-    }
-    let texts = persistence_texts(&item);
-    emit_redaction_if_matched(runtime, session_id, "tool_output", &texts);
-    let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
-    match &mut item {
-        ResponseItem::Message { role, content, .. } if role == "developer" => {
-            for content_item in content {
-                match content_item {
-                    ContentItem::InputText { text } | ContentItem::OutputText { text } => {
-                        redact_text_field(runtime, text, &known);
-                    }
-                    ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => {}
-                }
-            }
-        }
-        // Tool call arguments are model-generated and can echo skill content
-        // back into the transcript; redact them for durable surfaces.
-        ResponseItem::FunctionCall { arguments, .. } => {
-            redact_text_field(runtime, arguments, &known)
-        }
-        ResponseItem::CustomToolCall { input, .. } => redact_text_field(runtime, input, &known),
-        ResponseItem::FunctionCallOutput { output, .. }
-        | ResponseItem::CustomToolCallOutput { output, .. } => match &mut output.body {
-            FunctionCallOutputBody::Text(text) => redact_text_field(runtime, text, &known),
-            FunctionCallOutputBody::ContentItems(items) => {
-                redact_content_items(runtime, items, &known)
-            }
-        },
-        _ => {}
-    }
-    item
-}
-
-fn redact_content_items(
-    runtime: &EncryptedSkillRuntime,
-    items: &mut [FunctionCallOutputContentItem],
-    known: &[&str],
-) {
-    for content in items {
-        if let FunctionCallOutputContentItem::InputText { text } = content {
-            redact_text_field(runtime, text, known);
-        }
-    }
-}
-
 fn contains_redactable_text(item: &ResponseItem) -> bool {
     match item {
         ResponseItem::Message { role, content, .. } => {
@@ -893,114 +734,6 @@ fn contains_redactable_text(item: &ResponseItem) -> bool {
         } => !summary.is_empty() || content.as_ref().is_some_and(|content| !content.is_empty()),
         _ => false,
     }
-}
-
-/// Redacts known skill plaintext from assistant turn items (messages and
-/// reasoning) before they are emitted or persisted, covering the
-/// `ItemStarted`/`ItemCompleted` event surface that `record_conversation_items`
-/// does not reach.
-pub fn redact_turn_item(
-    runtime: &EncryptedSkillRuntime,
-    session_id: &str,
-    mut item: TurnItem,
-) -> TurnItem {
-    let known = runtime.known_plaintexts(session_id);
-    let known: Vec<&str> = known.iter().map(|s| s.as_str()).collect();
-    let texts = turn_item_texts(&item);
-    emit_redaction_if_matched(runtime, session_id, "turn_item", &texts);
-    match &mut item {
-        TurnItem::AgentMessage(agent_message) => {
-            for content in &mut agent_message.content {
-                let AgentMessageContent::Text { text } = content;
-                *text = redact_turn_item_text(runtime, session_id, text, &known);
-            }
-        }
-        TurnItem::Reasoning(reasoning) => {
-            for text in &mut reasoning.summary_text {
-                *text = redact_turn_item_text(runtime, session_id, text, &known);
-            }
-            for text in &mut reasoning.raw_content {
-                *text = redact_turn_item_text(runtime, session_id, text, &known);
-            }
-        }
-        TurnItem::Plan(plan) => {
-            plan.text = redact_turn_item_text(runtime, session_id, &plan.text, &known);
-        }
-        TurnItem::CommandExecution(command_execution) => {
-            if let Some(text) = &mut command_execution.stdout {
-                *text = redact_turn_item_text(runtime, session_id, text, &known);
-            }
-            if let Some(text) = &mut command_execution.stderr {
-                *text = redact_turn_item_text(runtime, session_id, text, &known);
-            }
-            if let Some(text) = &mut command_execution.aggregated_output {
-                *text = redact_turn_item_text(runtime, session_id, text, &known);
-            }
-            if let Some(text) = &mut command_execution.formatted_output {
-                *text = redact_turn_item_text(runtime, session_id, text, &known);
-            }
-            if let Some(text) = &mut command_execution.interaction_input {
-                *text = redact_turn_item_text(runtime, session_id, text, &known);
-            }
-        }
-        TurnItem::FileChange(file_change) => {
-            if let Some(text) = &mut file_change.stdout {
-                *text = redact_turn_item_text(runtime, session_id, text, &known);
-            }
-            if let Some(text) = &mut file_change.stderr {
-                *text = redact_turn_item_text(runtime, session_id, text, &known);
-            }
-        }
-        TurnItem::WebSearch(web_search) => {
-            web_search.query =
-                redact_turn_item_text(runtime, session_id, &web_search.query, &known);
-        }
-        TurnItem::CollabAgentToolCall(collab_agent_tool_call) => {
-            if let Some(text) = &mut collab_agent_tool_call.prompt {
-                *text = redact_turn_item_text(runtime, session_id, text, &known);
-            }
-        }
-        TurnItem::DynamicToolCall(dynamic_tool_call) => {
-            if let Some(content_items) = &mut dynamic_tool_call.content_items {
-                for content in content_items {
-                    if let codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem::InputText {
-                        text,
-                    } = content
-                    {
-                        *text = redact_turn_item_text(runtime, session_id, text, &known);
-                    }
-                }
-            }
-            if let Some(text) = &mut dynamic_tool_call.error {
-                *text = redact_turn_item_text(runtime, session_id, text, &known);
-            }
-        }
-        TurnItem::McpToolCall(mcp_tool_call) => {
-            if let Some(error) = &mut mcp_tool_call.error {
-                error.message = redact_turn_item_text(runtime, session_id, &error.message, &known);
-            }
-        }
-        _ => {}
-    }
-    item
-}
-
-fn redact_turn_item_text(
-    runtime: &EncryptedSkillRuntime,
-    session_id: &str,
-    text: &str,
-    known: &[&str],
-) -> String {
-    let mut out = runtime.unrewrite_paths(session_id, text);
-    if !known.is_empty() {
-        out = export_guard::redact_known_plaintext(&out, known);
-    }
-    let root = runtime.mem_root().to_string_lossy();
-    out = paths::redact_path_prefix(&out, root.as_ref());
-    if root.as_ref() != paths::MEM_ROOT {
-        out = paths::redact_path_prefix(&out, paths::MEM_ROOT);
-    }
-    out
 }
 
 /// Wraps a tool output so any decrypted storage path string is redacted before

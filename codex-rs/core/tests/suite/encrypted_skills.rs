@@ -1370,3 +1370,47 @@ async fn streamed_reasoning_and_non_message_deltas_are_redacted() -> Result<()> 
     }
     Ok(())
 }
+
+/// G5: with `CODEX_ROLLOUT_TRACE_ROOT` enabled, model output quoting skill
+/// plaintext must be redacted in the inference trace (output side), mirroring
+/// the D1 request-side redaction. Before the fix the streamed output items
+/// were serialized into the trace verbatim.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rollout_trace_redacts_model_output_quoting_skill_plaintext() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let trace_root = init_trace_root();
+
+    let server = start_mock_server().await;
+    let test = build_test_with_encrypted_skill(&server).await?;
+    let _mock = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_assistant_message(
+                "msg-1",
+                "the skill file starts with REAL_SKILL_CONTENT_MARKER indeed",
+            ),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+
+    submit_single_turn(&test, "please use $secret-skill").await?;
+    // SAFETY: see set_var above.
+    unsafe {
+        std::env::remove_var("CODEX_ROLLOUT_TRACE_ROOT");
+    }
+
+    let bundle = read_trace_bundle(trace_root);
+    assert!(
+        !bundle.contains("REAL_SKILL_CONTENT_MARKER"),
+        "trace must not contain skill plaintext echoed by the model, got: {bundle}"
+    );
+    assert!(
+        bundle.contains("[REDACTED]"),
+        "engaged model output quoting plaintext must be redacted in trace, got: {bundle}"
+    );
+    Ok(())
+}

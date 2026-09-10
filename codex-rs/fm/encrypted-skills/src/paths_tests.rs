@@ -168,12 +168,170 @@ fn command_references_lexical_path_aliases() {
     assert!(!command_references_dir("echo $HOME", &dirs));
 }
 
+// ---- HIGH-1 ① glob 元字符顶替 ----
+
+#[test]
+fn glob_tokens_anchored_on_guarded_dirs_are_flagged() {
+    let dirs = vec!["/dev/shm/fm-agent-security/p1/x".to_string()];
+    for command in [
+        "cat /dev/s*/fm-agent-security/p1/x/SKILL.md",
+        "cat /dev/*/fm-agent-security/p1/x/SKILL.md",
+        "cat /dev/sh*/fm-agent-security/p1/x/SKILL.md",
+        "cat /dev/sh?/fm-agent-security/p1/x/SKILL.md",
+        "cat /dev/sh[m]/fm-agent-security/p1/x/SKILL.md",
+        "cat /dev/s*/fm-agent-security/p1/x/*.md",
+        // `/run/shm` 别名叠加 glob。
+        "cat /run/sh*/fm-agent-security/p1/x/SKILL.md",
+        // brace 展开。
+        "cat /dev/sh{m,M}/fm-agent-security/p1/x/SKILL.md",
+        "cat /dev/{shm,tmp}/fm-agent-security/p1/x/SKILL.md",
+    ] {
+        assert!(
+            command_references_dir(command, &dirs),
+            "glob token anchored on a guarded dir must be flagged: {command}"
+        );
+    }
+}
+
+#[test]
+fn unanchored_glob_tokens_are_not_flagged() {
+    let dirs = vec!["/dev/shm/fm-agent-security/p1/x".to_string()];
+    for command in [
+        // 纯通配、无受控目录锚点：不能全盘误拦。
+        "cat /dev/*",
+        "echo *",
+        "cat /usr/local/*/bin",
+        // 固定前缀够不到受控目录的其余分量。
+        "cat /dev/s*/mouse",
+        "cat /opt/*/notes.txt",
+    ] {
+        assert!(
+            !command_references_dir(command, &dirs),
+            "unanchored glob must stay allowed: {command}"
+        );
+    }
+}
+
+// ---- HIGH-1 ② 词中引号切分 ----
+
+#[test]
+fn quote_split_guarded_paths_are_flagged() {
+    let dirs = vec!["/dev/shm/fm-agent-security/p1/x".to_string()];
+    for command in [
+        "cat /dev/sh\"m/fm\"-agent-security/p1/x/SKILL.md",
+        "cat /dev/sh'm/fm'-agent-security/p1/x/SKILL.md",
+        "cat /dev/\"shm\"/fm-agent-security/p1/x/SKILL.md",
+    ] {
+        assert!(
+            command_references_dir(command, &dirs),
+            "quote-split guarded path must be flagged: {command}"
+        );
+    }
+    // 去引号后不指向受控目录的词保持放行。
+    assert!(!command_references_dir("cat /da\"t\"a/x/SKILL.md", &dirs));
+}
+
+// ---- HIGH-1 ③ cd 链 cwd 状态 ----
+
+#[test]
+fn cd_chain_resolves_relative_guarded_reads() {
+    let dirs = vec!["/dev/shm/fm-agent-security/p1/x".to_string()];
+    for command in [
+        "cd /dev && cd shm && cat fm-agent-security/p1/x/SKILL.md",
+        "cd /dev && pushd shm && cat fm-agent-security/p1/x/SKILL.md",
+        "cd /dev/shm/fm-agent-security/p1 && cd x && cat SKILL.md",
+        "cd /dev/shm/fm-agent-security && cat p1/x/SKILL.md",
+        "cd /dev && cd shm && cat ./fm-agent-security/p1/x/SKILL.md",
+        // 相对词 + glob，经虚拟 cwd 解析后命中。
+        "cd /dev/shm && cat fm*/SKILL.md",
+    ] {
+        let segments = split_command_segments(command);
+        let flags = segment_guarded_flags(&segments, &dirs);
+        assert!(
+            flags.iter().any(|flag| *flag),
+            "cd-chain relative guarded read must be flagged: {command} → {flags:?}"
+        );
+    }
+}
+
+#[test]
+fn cd_chain_dotdot_moves_virtual_cwd() {
+    let dirs = vec!["/dev/shm/fm-agent-security/p1/x".to_string()];
+    // 进入 `/dev/shm` 本身就是受控引用（既有策略）；`..` 弹栈后必须离开
+    // 受控树：`cd ..` 段与其后的相对读取都不得命中。
+    let segments = split_command_segments("cd /dev/shm && cd .. && cat fm-agent-security/x/f");
+    let flags = segment_guarded_flags(&segments, &dirs);
+    assert!(flags[0], "entering /dev/shm is itself a guarded reference");
+    // 段 2 的动词词 `cd` 经虚拟 cwd 连接成 `/dev/shm/cd`（保守产物，整体
+    // 判定不变）；`..` 弹栈正确性由段 3 证明：离开受控树后的相对读取
+    // `/dev/fm-agent-security/...` 不得命中。
+    assert!(
+        !flags[2],
+        "cd .. out of the guarded tree must stay allowed: {flags:?}"
+    );
+    // 再进受控目录则必须命中（命中的是回到树内的相对读取段）。
+    let segments = split_command_segments(
+        "cd /dev/shm && cd .. && cd shm && cat fm-agent-security/p1/x/SKILL.md",
+    );
+    let flags = segment_guarded_flags(&segments, &dirs);
+    assert!(
+        flags.last().is_some_and(|flag| *flag),
+        "re-entering the guarded tree must be flagged: {flags:?}"
+    );
+}
+
+#[test]
+fn unresolvable_cd_target_falls_back_to_tail_heuristic() {
+    let dirs = vec!["/dev/shm/fm-agent-security/p1/fm_skill_security_abc".to_string()];
+    for command in [
+        "cd $DIR && cat fm-agent-security/p1/x/SKILL.md",
+        "cd $(pwd) && cat fm_skill_security_abc/SKILL.md",
+        "cd /tmp && cd $D && cat fm_skill_security_abc/scripts/run.sh",
+    ] {
+        let segments = split_command_segments(command);
+        let flags = segment_guarded_flags(&segments, &dirs);
+        assert!(
+            flags.iter().any(|flag| *flag),
+            "relative tail of a guarded dir after an unresolvable cd must be flagged: {command} → {flags:?}"
+        );
+    }
+}
+
+#[test]
+fn unresolvable_cd_target_ignores_unrelated_relative_paths() {
+    let dirs = vec!["/dev/shm/fm-agent-security/p1/fm_skill_security_abc".to_string()];
+    let segments = split_command_segments("cd $D && cat notes.txt && ls src");
+    let flags = segment_guarded_flags(&segments, &dirs);
+    assert!(
+        flags.iter().all(|flag| !flag),
+        "unrelated relative paths after an unresolvable cd must stay allowed: {flags:?}"
+    );
+}
+
+#[test]
+fn cd_chain_relative_skill_script_stays_executable_for_d9() {
+    let dirs = vec!["/dev/shm/fm-agent-security/p1/fm_skill_security_abc".to_string()];
+    // D9 语义由上层判定；paths 层只需保证：相对 skill 脚本在保守模式下算
+    // 受控引用，同时仍被识别为无 IO 通道的脚本执行。
+    let segments = split_command_segments("cd $D && python fm_skill_security_abc/scripts/run.py");
+    let flags = segment_guarded_flags(&segments, &dirs);
+    assert!(
+        flags[1],
+        "relative skill script must count as guarded reference"
+    );
+    assert!(is_script_execution(&segments[1]));
+    assert!(
+        script_execution_avoids_guarded_io(&segments[1], &dirs),
+        "plain script argument must avoid guarded io"
+    );
+}
+
 #[test]
 fn script_execution_blocks_alias_io_channels() {
     let dir = format!("{MEM_ROOT}/p1/fm_skill_security_abc");
     let guarded = vec![dir.clone()];
     // 点段别名使重定向目标不含字面 guarded 目录。
-    let dot_alias = format!("/dev/shm/./fm-agent-security/p1/fm_skill_security_abc");
+    let dot_alias = "/dev/shm/./fm-agent-security/p1/fm_skill_security_abc".to_string();
     let cases = [
         format!("bash {dir}/scripts/build.sh < {dot_alias}/SKILL.md"),
         format!("bash {dir}/scripts/build.sh \"$(cat {dot_alias}/SKILL.md)\""),
@@ -368,6 +526,34 @@ fn corpus() -> Vec<(String, Vec<String>)> {
         ),
         (
             "cat /dev/shm/fm-agent-securit*/p*/fm_skill_security_abc/SKILL.md".to_string(),
+            vec![d.clone()],
+        ),
+        // HIGH-1 ①: glob 元字符顶替受控目录分量。
+        (
+            "cat /dev/s*/fm-agent-security/p1/fm_skill_security_abc/SKILL.md".to_string(),
+            vec![d.clone()],
+        ),
+        (
+            "cat /dev/*/fm-agent-security/p1/fm_skill_security_abc/SKILL.md".to_string(),
+            vec![d.clone()],
+        ),
+        (
+            "cat /dev/{shm,tmp}/fm-agent-security/p1/fm_skill_security_abc/SKILL.md".to_string(),
+            vec![d.clone()],
+        ),
+        // HIGH-1 ②: 词中引号切分。
+        (
+            "cat /dev/sh\"m/fm\"-agent-security/p1/fm_skill_security_abc/SKILL.md".to_string(),
+            vec![d.clone()],
+        ),
+        // HIGH-1 ③: cd 链（分段判定层不感知 cwd，两种切分实现须一致）。
+        (
+            "cd /dev && cd shm && cat fm-agent-security/p1/fm_skill_security_abc/SKILL.md"
+                .to_string(),
+            vec![d.clone()],
+        ),
+        (
+            "cd $D && cat fm_skill_security_abc/SKILL.md".to_string(),
             vec![d.clone()],
         ),
         (format!("cd {d} && cat SKILL.md"), vec![d.clone()]),

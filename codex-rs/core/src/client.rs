@@ -118,6 +118,7 @@ use uuid::Uuid;
 use crate::attestation::AttestationContext;
 use crate::attestation::AttestationProvider;
 use crate::attestation::X_OAI_ATTESTATION_HEADER;
+use crate::client_common::EncryptedSkillRehydrator;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::client_common::ResponseStream;
@@ -1680,6 +1681,7 @@ impl ModelClientSession {
                         request_session_telemetry,
                         inference_trace_attempt,
                         Arc::clone(&self.client.state.provider),
+                        prompt.encrypted_skills.clone(),
                     );
                     return Ok(stream);
                 }
@@ -1967,6 +1969,7 @@ impl ModelClientSession {
                 request_session_telemetry,
                 inference_trace_attempt,
                 Arc::clone(&self.client.state.provider),
+                prompt.encrypted_skills.clone(),
             );
             self.websocket_session.last_response_rx = Some(last_request_rx);
             return Ok(WebsocketStreamOutcome::Stream(stream));
@@ -2200,6 +2203,7 @@ fn map_response_stream(
     session_telemetry: SessionTelemetry,
     inference_trace_attempt: InferenceTraceAttempt,
     provider: SharedModelProvider,
+    encrypted_skills: Option<EncryptedSkillRehydrator>,
 ) -> (ResponseStream, oneshot::Receiver<LastResponse>) {
     let codex_api::ResponseStream {
         rx_event,
@@ -2215,6 +2219,7 @@ fn map_response_stream(
         session_telemetry,
         inference_trace_attempt,
         provider,
+        encrypted_skills,
     )
 }
 
@@ -2224,6 +2229,7 @@ fn map_response_events<S>(
     session_telemetry: SessionTelemetry,
     inference_trace_attempt: InferenceTraceAttempt,
     provider: SharedModelProvider,
+    encrypted_skills: Option<EncryptedSkillRehydrator>,
 ) -> (ResponseStream, oneshot::Receiver<LastResponse>)
 where
     S: futures::Stream<Item = std::result::Result<ResponseEvent, ApiError>>
@@ -2238,6 +2244,19 @@ where
     let consumer_dropped_for_stream = consumer_dropped.clone();
 
     tokio::spawn(async move {
+        // G5 (fm): inference trace payloads must never carry rehydrated skill
+        // plaintext echoed by the model, mirroring the request-side D1
+        // redaction. Only the trace view is redacted; the items forwarded to
+        // the session keep their intake-side redaction path.
+        let redact_trace_items = move |items: &[ResponseItem]| -> Vec<ResponseItem> {
+            match &encrypted_skills {
+                Some(rehydrator) => rehydrator
+                    .runtime
+                    .guard(&rehydrator.session_id)
+                    .redact_all_response_item_text(items),
+                None => items.to_vec(),
+            }
+        };
         let mut logged_error = false;
         let mut tx_last_response = Some(tx_last_response);
         let mut items_added: Vec<ResponseItem> = Vec::new();
@@ -2253,7 +2272,7 @@ where
                     inference_trace_attempt.record_cancelled(
                         STREAM_DROPPED_REASON,
                         upstream_request_id,
-                        &items_added,
+                        &redact_trace_items(&items_added),
                     );
                     return;
                 }
@@ -2273,7 +2292,7 @@ where
                         inference_trace_attempt.record_cancelled(
                             STREAM_DROPPED_REASON,
                             upstream_request_id,
-                            &items_added,
+                            &redact_trace_items(&items_added),
                         );
                         return;
                     }
@@ -2292,7 +2311,7 @@ where
                         &response_id,
                         upstream_request_id,
                         &token_usage,
-                        &items_added,
+                        &redact_trace_items(&items_added),
                     );
                     if let Some(sender) = tx_last_response.take() {
                         let _ = sender.send(LastResponse {
@@ -2323,7 +2342,7 @@ where
                         inference_trace_attempt.record_cancelled(
                             STREAM_DROPPED_REASON,
                             upstream_request_id,
-                            &items_added,
+                            &redact_trace_items(&items_added),
                         );
                         return;
                     }
@@ -2340,7 +2359,7 @@ where
                     inference_trace_attempt.record_failed(
                         &mapped,
                         upstream_request_id,
-                        &items_added,
+                        &redact_trace_items(&items_added),
                     );
                     if !logged_error {
                         session_telemetry.see_event_completed_failed(&mapped);
@@ -2355,7 +2374,7 @@ where
         inference_trace_attempt.record_failed(
             "stream closed before response.completed",
             upstream_request_id,
-            &items_added,
+            &redact_trace_items(&items_added),
         );
     });
 

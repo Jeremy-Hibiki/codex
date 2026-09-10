@@ -126,22 +126,36 @@ fn contains_guarded(text: &str, guarded: &[String]) -> bool {
 }
 
 /// Lexically normalizes an absolute path for guarded-prefix matching: drops
-/// empty and `.` components and maps the `/run/shm` symlink prefix onto
-/// `/dev/shm`. Only absolute paths are normalized, so relative words and
-/// URLs (`http://...`) pass through unchanged.
+/// empty and `.` components, pops `..` components, and maps the `/run/shm`
+/// symlink prefix onto `/dev/shm`. Only absolute paths are normalized, so
+/// relative words and URLs (`http://...`) pass through unchanged.
 pub(crate) fn normalize_path_token(token: &str) -> String {
     if !token.starts_with('/') {
         return token.to_string();
     }
-    let mut components: Vec<&str> = token
-        .split('/')
-        .filter(|component| !component.is_empty() && *component != ".")
-        .collect();
+    let mut components: Vec<&str> = Vec::new();
+    for component in token.split('/') {
+        match component {
+            "" | "." => {}
+            ".." => {
+                components.pop();
+            }
+            other => components.push(other),
+        }
+    }
     if components.len() >= 2 && components[0] == "run" && components[1] == "shm" {
         components[0] = "dev";
         components[1] = "shm";
     }
     format!("/{}", components.join("/"))
+}
+
+/// Removes every quote character from a word, approximating bash's
+/// quote-removal pass: `/dev/sh"m/fm"-agent` resolves as `/dev/shm/fm-agent`
+/// even though its raw text holds no guarded prefix. Only used to widen
+/// guarded matching, so aggressive stripping cannot loosen the guard.
+fn strip_shell_quotes(token: &str) -> String {
+    token.chars().filter(|c| *c != '"' && *c != '\'').collect()
 }
 
 /// A literal token led by a variable expansion (`$VAR/...`) cannot be
@@ -152,13 +166,64 @@ fn is_variable_led_path(token: &str) -> bool {
     token.starts_with('$') && token.contains('/')
 }
 
-/// True when a literal path token references the memory root, its parent, or
-/// any known decrypted dir, matching both the raw text and its lexical
-/// normalization (dot segments, `//`, `/run/shm` aliases).
-fn literal_token_references_guarded(token: &str, dirs: &[String]) -> bool {
+/// True when a literal word references the memory root, its parent, or any
+/// known decrypted dir. Layered over [`path_references_guarded`]: bash
+/// discards quotes before path resolution, so a word whose quote-stripped
+/// form reaches a guarded path is also a reference (HIGH-1 ②).
+/// `base` is the tracked virtual cwd: relative words are resolved against it
+/// before matching (HIGH-1 ③).
+fn token_references_guarded(token: &str, base: Option<&str>, dirs: &[String]) -> bool {
     if is_variable_led_path(token) {
         return true;
     }
+    if path_references_guarded(token, base, dirs) {
+        return true;
+    }
+    if token.contains('"') || token.contains('\'') {
+        let stripped = strip_shell_quotes(token);
+        if stripped != token
+            && (is_variable_led_path(&stripped) || path_references_guarded(&stripped, base, dirs))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// True when a word (resolved against the optional virtual cwd `base` for
+/// relative words) reaches a guarded path, either as a literal path or as a
+/// glob anchored on a controlled directory.
+fn path_references_guarded(token: &str, base: Option<&str>, dirs: &[String]) -> bool {
+    if literal_token_guarded(token, dirs) {
+        return true;
+    }
+    if has_glob_meta(token) && glob_token_references_guarded(token, dirs) {
+        return true;
+    }
+    if let Some(base) = base {
+        if !token.starts_with('/') {
+            let joined = join_lexical(base, token);
+            if literal_token_guarded(&joined, dirs) {
+                return true;
+            }
+            if has_glob_meta(&joined) && glob_token_references_guarded(&joined, dirs) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Lexically joins a relative word onto a tracked absolute cwd and
+/// normalizes the result (`.`/`..`/`//` collapse, `/run/shm` alias).
+fn join_lexical(base: &str, relative: &str) -> String {
+    normalize_path_token(&format!("{}/{}", base.trim_end_matches('/'), relative))
+}
+
+/// Literal (glob-free) guarded matching: the raw text and its lexical
+/// normalization are matched against the memory root, its parent, and the
+/// known decrypted dirs.
+fn literal_token_guarded(token: &str, dirs: &[String]) -> bool {
     if contains_path_prefix(token, MEM_ROOT_PARENT)
         || token.contains(MEM_ROOT)
         || dirs.iter().any(|dir| token.contains(dir.as_str()))
@@ -170,6 +235,187 @@ fn literal_token_references_guarded(token: &str, dirs: &[String]) -> bool {
         && (contains_path_prefix(&normalized, MEM_ROOT_PARENT)
             || normalized.contains(MEM_ROOT)
             || dirs.iter().any(|dir| normalized.contains(dir.as_str())))
+}
+
+/// Shell glob/brace metacharacters that make a word's runtime path
+/// resolution non-literal.
+fn has_glob_meta(token: &str) -> bool {
+    token.contains(['*', '?', '[', '{'])
+}
+
+/// True when a glob-metacharacter word can resolve at or beneath any
+/// controlled directory (decrypted dirs, the memory root, registered
+/// original dirs): every component of a controlled dir must be matched by
+/// the word's components (in order, `*`/`?`/`[...]`/`{...}` per component),
+/// with any remaining word components continuing deeper. A pure wildcard
+/// with too few components (`/dev/*`) cannot reach a controlled dir and is
+/// deliberately not flagged, so breadth-globs over unrelated trees keep
+/// working (HIGH-1 ①).
+fn glob_token_references_guarded(token: &str, dirs: &[String]) -> bool {
+    let mut patterns = expand_brace_alternatives(token);
+    // Glob components defeat the exact `/run/shm` alias mapping, so every
+    // `/run/...` candidate also matches under `/dev/...` (only the symlinked
+    // prefix is remapped; anchoring on a controlled dir is still required).
+    let alias_variants: Vec<String> = patterns
+        .iter()
+        .filter(|p| p.starts_with("/run/"))
+        .map(|p| format!("/dev/{}", &p[5..]))
+        .collect();
+    patterns.extend(alias_variants);
+    patterns.sort();
+    patterns.dedup();
+    patterns.iter().any(|pattern| {
+        let normalized = normalize_path_token(pattern);
+        let comps: Vec<&str> = normalized.split('/').filter(|c| !c.is_empty()).collect();
+        dirs.iter()
+            .map(String::as_str)
+            .chain(std::iter::once(MEM_ROOT))
+            .any(|dir| {
+                let dir_comps: Vec<&str> = dir.split('/').filter(|c| !c.is_empty()).collect();
+                comps.len() >= dir_comps.len()
+                    && comps
+                        .iter()
+                        .zip(&dir_comps)
+                        .all(|(p, d)| glob_component_matches(p, d))
+            })
+    })
+}
+
+/// Expands `{a,b}` brace groups into separate candidate patterns so glob
+/// matching can evaluate each expansion. A `{n..m}` range group is replaced
+/// with `*` (conservative: matches any single component). Malformed groups
+/// (unbalanced braces) yield the token unchanged.
+fn expand_brace_alternatives(token: &str) -> Vec<String> {
+    let Some((start, end)) = brace_group(token) else {
+        return vec![token.to_string()];
+    };
+    let body = &token[start + 1..end];
+    let prefix = &token[..start];
+    let suffix = &token[end + 1..];
+    let alternatives: Vec<String> = if !body.contains(',') && body.contains("..") {
+        vec!["*".to_string()]
+    } else {
+        let mut depth = 0usize;
+        let mut current = String::new();
+        let mut parts: Vec<String> = Vec::new();
+        for c in body.chars() {
+            match c {
+                '{' => {
+                    depth += 1;
+                    current.push(c);
+                }
+                '}' => {
+                    depth = depth.saturating_sub(1);
+                    current.push(c);
+                }
+                ',' if depth == 0 => parts.push(std::mem::take(&mut current)),
+                _ => current.push(c),
+            }
+        }
+        parts.push(current);
+        parts
+    };
+    let mut out = Vec::new();
+    for alternative in alternatives {
+        let expanded = format!("{prefix}{alternative}{suffix}");
+        out.extend(expand_brace_alternatives(&expanded));
+    }
+    out
+}
+
+/// Byte range `(start, end)` of the first balanced `{...}` group in `token`.
+fn brace_group(token: &str) -> Option<(usize, usize)> {
+    let start = token.find('{')?;
+    let mut depth = 0usize;
+    for (index, byte) in token.bytes().enumerate().skip(start) {
+        match byte {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some((start, index));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Classic glob matching within one path component: `*` and `?` do not cross
+/// `/`; `[...]` is a character class with `!`/`^` negation.
+fn glob_component_matches(pattern: &str, name: &str) -> bool {
+    if !has_glob_meta(pattern) {
+        return pattern == name;
+    }
+    glob_match(pattern.as_bytes(), name.as_bytes())
+}
+
+fn glob_match(pattern: &[u8], name: &[u8]) -> bool {
+    match pattern.first() {
+        None => name.is_empty(),
+        Some(b'*') => {
+            let mut stars = 1;
+            while stars < pattern.len() && pattern[stars] == b'*' {
+                stars += 1;
+            }
+            (0..=name.len()).any(|skip| glob_match(&pattern[stars..], &name[skip..]))
+        }
+        Some(b'?') => !name.is_empty() && glob_match(&pattern[1..], &name[1..]),
+        Some(b'[') => {
+            let Some(close) = char_class_end(pattern) else {
+                // Unmatched `[` is a literal character in bash.
+                return name.first() == Some(&b'[') && glob_match(&pattern[1..], &name[1..]);
+            };
+            if name.is_empty() {
+                return false;
+            }
+            let (body, negated) = match pattern[1] {
+                b'!' | b'^' => (&pattern[2..close], true),
+                _ => (&pattern[1..close], false),
+            };
+            char_class_matches(body, name[0]) != negated
+                && glob_match(&pattern[close + 1..], &name[1..])
+        }
+        Some(&c) => !name.is_empty() && name[0] == c && glob_match(&pattern[1..], &name[1..]),
+    }
+}
+
+/// Index of the `]` closing a `[...]` class; a `]` in first position (after
+/// optional negation) is a literal per POSIX glob rules.
+fn char_class_end(pattern: &[u8]) -> Option<usize> {
+    let mut index = 1;
+    if index < pattern.len() && (pattern[index] == b'!' || pattern[index] == b'^') {
+        index += 1;
+    }
+    if index < pattern.len() && pattern[index] == b']' {
+        index += 1;
+    }
+    while index < pattern.len() {
+        if pattern[index] == b']' {
+            return Some(index);
+        }
+        index += 1;
+    }
+    None
+}
+
+fn char_class_matches(body: &[u8], byte: u8) -> bool {
+    let mut index = 0;
+    while index < body.len() {
+        if index + 2 < body.len() && body[index + 1] == b'-' {
+            if body[index] <= byte && byte <= body[index + 2] {
+                return true;
+            }
+            index += 3;
+        } else {
+            if body[index] == byte {
+                return true;
+            }
+            index += 1;
+        }
+    }
+    false
 }
 
 /// Collapses `/./` dot segments so the legacy fallback scanner sees the same
@@ -492,17 +738,26 @@ pub(crate) fn contains_path_prefix(text: &str, prefix: &str) -> bool {
 /// Substring matching means globs (`/dev/shm/.../p*/f*/SKILL.md`) and
 /// cross-session directories under the shared root are also caught.
 pub fn command_references_dir(cmd: &str, decrypted_dirs: &[String]) -> bool {
+    command_references_dir_from(cmd, None, decrypted_dirs)
+}
+
+/// [`command_references_dir`] with an optional tracked virtual cwd: relative
+/// words are resolved against `base` before matching (HIGH-1 ③). When the
+/// command cannot be parsed by tree-sitter the legacy fallback runs without
+/// cwd resolution — the conservative tail heuristic at the segment layer
+/// still covers relative mentions there.
+fn command_references_dir_from(cmd: &str, base: Option<&str>, dirs: &[String]) -> bool {
     let Some(tree) = parse_shell(cmd) else {
-        return legacy_command_references_dir(cmd, decrypted_dirs);
+        return legacy_command_references_dir(cmd, dirs);
     };
     if tree.root_node().has_error() {
-        return legacy_command_references_dir(cmd, decrypted_dirs);
+        return legacy_command_references_dir(cmd, dirs);
     }
     let mut tokens = Vec::new();
     collect_literal_tokens(tree.root_node(), cmd, &mut tokens);
     tokens
         .iter()
-        .any(|token| literal_token_references_guarded(token, decrypted_dirs))
+        .any(|token| token_references_guarded(token, base, dirs))
 }
 
 /// Legacy substring/prefix scanner, kept as the fallback when the command
@@ -514,15 +769,10 @@ pub(crate) fn legacy_command_references_dir(cmd: &str, decrypted_dirs: &[String]
     {
         return true;
     }
-    // Alias shapes hold no literal guarded prefix; check each word's lexical
-    // normalization (and variable-led paths) the same way the tree-sitter
-    // implementation does.
-    cmd.split_whitespace().any(|word| {
-        literal_token_references_guarded(
-            word.trim_matches(|c| c == '\'' || c == '"'),
-            decrypted_dirs,
-        )
-    })
+    // Alias shapes, globs, and in-word quotes hold no literal guarded prefix;
+    // check each word the same way the tree-sitter implementation does.
+    cmd.split_whitespace()
+        .any(|word| token_references_guarded(word, None, decrypted_dirs))
 }
 
 /// Splits a command into independent segments at unquoted chain operators
@@ -650,6 +900,121 @@ fn push_segment(segments: &mut Vec<String>, chars: &[char], start: usize, end: u
     if !trimmed.is_empty() {
         segments.push(trimmed.to_string());
     }
+}
+
+// ---- cd-chain aware segment classification (HIGH-1 ③) ----
+
+/// The effect of a chained `cd`/`pushd` segment on the virtual working
+/// directory.
+enum CwdShift {
+    /// Target is a lexical path; carries the new working directory.
+    To(String),
+    /// Target is a variable, subcommand, tilde, dirstack entry, or glob:
+    /// cannot be resolved lexically. Later segments fall back to the
+    /// conservative tail-component heuristic.
+    Unknown,
+}
+
+/// Parses the `cd`/`pushd` target of a segment, if the segment shifts the
+/// working directory. Assignment-prefixed forms (`FOO=bar cd dir`) are
+/// recognized; option words (`-L`, `-P`) are skipped.
+fn cwd_shift(segment: &str) -> Option<CwdShift> {
+    let mut words = segment.split_whitespace().map(unquote_token);
+    let verb = loop {
+        let word = words.next()?;
+        if word
+            .split('/')
+            .next()
+            .is_some_and(|head| head.contains('='))
+        {
+            continue; // assignment prefix
+        }
+        break command_basename(&word).to_ascii_lowercase();
+    };
+    if verb != "cd" && verb != "pushd" {
+        return None;
+    }
+    let target = words
+        .find(|word| !(word.len() > 1 && word.starts_with('-')))
+        .unwrap_or_default();
+    if target.is_empty()
+        || target == "-"
+        || target.starts_with(['~', '+'])
+        || target.contains(['$', '`', '('])
+        || has_glob_meta(&target)
+    {
+        // `cd` (HOME), `cd -`/`pushd` (dirstack), and runtime glob expansion
+        // all resolve outside lexical knowledge.
+        return Some(CwdShift::Unknown);
+    }
+    Some(CwdShift::To(target))
+}
+
+/// Distinctive last path components of the controlled directories (the
+/// memory root's `fm-agent-security`, decrypted dirs' `fm_skill_security_*`,
+/// registered dirs' leaves), used by the conservative relative-path
+/// heuristic for segments whose cwd is unknown.
+fn controlled_tail_components(dirs: &[String]) -> Vec<String> {
+    let mut tails: Vec<String> = Vec::new();
+    for dir in dirs
+        .iter()
+        .map(String::as_str)
+        .chain(std::iter::once(MEM_ROOT))
+    {
+        if let Some(tail) = dir.split('/').filter(|c| !c.is_empty()).next_back() {
+            if !tails.iter().any(|known| known == tail) {
+                tails.push(tail.to_string());
+            }
+        }
+    }
+    tails
+}
+
+/// Conservative fallback for segments whose virtual cwd is unknown: a
+/// relative word mentioning a controlled directory's tail component counts
+/// as a guarded reference.
+fn relative_tail_guarded(segment: &str, tails: &[String]) -> bool {
+    segment.split_whitespace().any(|word| {
+        !word.starts_with('/') && tails.iter().any(|tail| contains_path_prefix(word, tail))
+    })
+}
+
+/// cd-chain-aware per-segment guarded-reference flags: walks the segments in
+/// order and maintains the virtual working directory across `cd`/`pushd`
+/// segments whose targets are lexical paths, so a relative reference in a
+/// later segment (`cd /dev && cd shm && cat fm-agent-security/...`) resolves
+/// against the tracked cwd. Segments of commands without any `cd` are judged
+/// exactly like [`command_references_dir`].
+pub(crate) fn segment_guarded_flags(segments: &[String], dirs: &[String]) -> Vec<bool> {
+    let mut flags = Vec::with_capacity(segments.len());
+    let mut cwd: Option<String> = None;
+    let mut conservative = false;
+    let tails = controlled_tail_components(dirs);
+    for segment in segments {
+        let references = match &cwd {
+            Some(base) => command_references_dir_from(segment, Some(base), dirs),
+            None => {
+                command_references_dir_from(segment, None, dirs)
+                    || (conservative && relative_tail_guarded(segment, &tails))
+            }
+        };
+        flags.push(references);
+        match cwd_shift(segment) {
+            None => {}
+            Some(CwdShift::Unknown) => {
+                cwd = None;
+                conservative = true;
+            }
+            Some(CwdShift::To(target)) if target.starts_with('/') => {
+                cwd = Some(normalize_path_token(&target));
+            }
+            Some(CwdShift::To(target)) => match &cwd {
+                Some(base) => cwd = Some(join_lexical(base, &target)),
+                None => conservative = true,
+            },
+        }
+    }
+    flags
 }
 
 fn command_basename(token: &str) -> &str {

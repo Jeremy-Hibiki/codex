@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -10,21 +9,6 @@ use crate::runtime::EncryptedSkillRuntime;
 use crate::sdk::EnvelopeError;
 use crate::sdk::EnvelopeSdk;
 use crate::sdk::PackageEntry;
-use codex_protocol::ThreadId;
-use codex_protocol::items::AgentMessageContent;
-use codex_protocol::items::CollabAgentTool;
-use codex_protocol::items::CollabAgentToolCallItem;
-use codex_protocol::items::CollabAgentToolCallStatus;
-use codex_protocol::items::CommandExecutionItem;
-use codex_protocol::items::CommandExecutionStatus;
-use codex_protocol::items::DynamicToolCallItem;
-use codex_protocol::items::DynamicToolCallStatus;
-use codex_protocol::items::FileChangeItem;
-use codex_protocol::items::McpToolCallError;
-use codex_protocol::items::McpToolCallItem;
-use codex_protocol::items::McpToolCallStatus;
-use codex_protocol::items::TurnItem;
-use codex_protocol::items::WebSearchItem;
 use codex_protocol::mcp::CallToolResult;
 use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::ContentItem;
@@ -34,9 +18,6 @@ use codex_protocol::models::ReasoningItemContent;
 use codex_protocol::models::ReasoningItemReasoningSummary;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
-use codex_protocol::models::WebSearchAction;
-use codex_protocol::protocol::ExecCommandSource;
-use codex_utils_path_uri::PathUri;
 use serde_json::json;
 
 use super::*;
@@ -282,6 +263,72 @@ fn blocks_modern_listing_commands() {
             "listing command on decrypted storage must be blocked: {command}"
         );
     }
+}
+
+// ---- HIGH-1 ③ cd 链 cwd 状态（guard 层） ----
+
+#[test]
+fn blocks_cd_chain_relative_guarded_read() {
+    let (runtime, tmp) = loaded_runtime();
+    let decrypted = runtime.decrypted_dirs("t1").pop().unwrap();
+    let mem_root = runtime.mem_root();
+    let rel = decrypted.strip_prefix(mem_root).unwrap();
+    let command = format!(
+        "cd {} && cd {} && cat {}",
+        tmp.path().display(),
+        mem_root.file_name().unwrap().to_string_lossy(),
+        rel.to_string_lossy(),
+    );
+    let decision =
+        before_tool_with_runtime(&runtime, "t1", "exec_command", &json!({ "cmd": command }));
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "cd-chain relative guarded read must be blocked: {command} → {decision:?}"
+    );
+}
+
+#[test]
+fn blocks_relative_guarded_read_after_unresolvable_cd() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decrypted = runtime.decrypted_dirs("t1").pop().unwrap();
+    let name = decrypted.file_name().unwrap().to_string_lossy();
+    let command = format!("cd $WORK && cat {name}/SKILL.md");
+    let decision =
+        before_tool_with_runtime(&runtime, "t1", "exec_command", &json!({ "cmd": command }));
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "relative guarded read after an unresolvable cd must be blocked: {command} → {decision:?}"
+    );
+}
+
+#[test]
+fn cd_chain_absolute_skill_script_execution_still_allowed() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decrypted = runtime.decrypted_dirs("t1").pop().unwrap();
+    let command = format!(
+        "cd /tmp && cd work && bash {}/scripts/run.sh",
+        decrypted.to_string_lossy()
+    );
+    let decision =
+        before_tool_with_runtime(&runtime, "t1", "exec_command", &json!({ "cmd": command }));
+    assert!(
+        matches!(decision, GuardDecision::Allow),
+        "cd chain followed by an absolute skill script execution must stay allowed: {decision:?}"
+    );
+}
+
+#[test]
+fn cd_chain_relative_skill_script_execution_still_allowed() {
+    let (runtime, _tmp) = loaded_runtime();
+    let decrypted = runtime.decrypted_dirs("t1").pop().unwrap();
+    let name = decrypted.file_name().unwrap().to_string_lossy();
+    let command = format!("cd $WORK && python {name}/scripts/run.py");
+    let decision =
+        before_tool_with_runtime(&runtime, "t1", "exec_command", &json!({ "cmd": command }));
+    assert!(
+        matches!(decision, GuardDecision::Allow),
+        "relative skill script execution after an unresolvable cd must stay allowed (D9): {decision:?}"
+    );
 }
 
 #[test]
@@ -632,310 +679,6 @@ fn redacts_plaintext_in_agent_messages() {
 }
 
 #[test]
-fn redacts_turn_item_agent_message_text() {
-    let (runtime, _tmp) = loaded_runtime();
-    let item = TurnItem::AgentMessage(codex_protocol::items::AgentMessageItem {
-        id: "msg-1".to_string(),
-        content: vec![AgentMessageContent::Text {
-            text: "the skill says: # Guarded content".to_string(),
-        }],
-        phase: None,
-        memory_citation: None,
-        delivery: None,
-        questions: None,
-    });
-
-    let redacted = redact_turn_item(&runtime, "t1", item);
-
-    let TurnItem::AgentMessage(agent_message) = redacted else {
-        panic!("expected agent message turn item");
-    };
-    let [AgentMessageContent::Text { text }] = agent_message.content.as_slice() else {
-        panic!("expected one text content");
-    };
-    assert_eq!(text.as_str(), "the skill says: [REDACTED]");
-}
-
-#[test]
-fn redacts_turn_item_reasoning_text() {
-    let (runtime, _tmp) = loaded_runtime();
-    let item = TurnItem::Reasoning(codex_protocol::items::ReasoningItem {
-        id: "rsn-1".to_string(),
-        summary_text: vec!["summary: # Guarded content".to_string()],
-        raw_content: vec!["raw: # Guarded content".to_string()],
-    });
-
-    let redacted = redact_turn_item(&runtime, "t1", item);
-
-    let TurnItem::Reasoning(reasoning) = redacted else {
-        panic!("expected reasoning turn item");
-    };
-    assert_eq!(reasoning.summary_text, vec!["summary: [REDACTED]"]);
-    assert_eq!(reasoning.raw_content, vec!["raw: [REDACTED]"]);
-}
-
-#[test]
-fn redacts_turn_item_plan_text() {
-    let (runtime, _tmp) = loaded_runtime();
-    let item = TurnItem::Plan(codex_protocol::items::PlanItem {
-        id: "plan-1".to_string(),
-        text: "step: # Guarded content".to_string(),
-    });
-
-    let redacted = redact_turn_item(&runtime, "t1", item);
-
-    let TurnItem::Plan(plan) = redacted else {
-        panic!("expected plan turn item");
-    };
-    assert_eq!(plan.text.as_str(), "step: [REDACTED]");
-}
-
-#[test]
-fn redacts_turn_item_command_execution_output() {
-    let (runtime, _tmp) = loaded_runtime();
-    let decrypted = runtime.mem_root().to_string_lossy();
-    let item = TurnItem::CommandExecution(CommandExecutionItem {
-        id: "exec-1".to_string(),
-        plugin_id: None,
-        script_path: None,
-        process_id: None,
-        command: vec!["bash".to_string(), "run.sh".to_string()],
-        cwd: PathUri::from_host_native_path(PathBuf::from("/tmp")).unwrap(),
-        parsed_cmd: Vec::new(),
-        source: ExecCommandSource::Agent,
-        interaction_input: Some("input: # Guarded content".to_string()),
-        status: CommandExecutionStatus::Completed,
-        stdout: Some("output: # Guarded content".to_string()),
-        stderr: Some(format!("error: {decrypted}/p1/skill/SKILL.md")),
-        aggregated_output: Some("aggregated: # Guarded content".to_string()),
-        exit_code: Some(0),
-        duration: None,
-        formatted_output: Some(format!("formatted: {decrypted}/p1/skill/SKILL.md")),
-    });
-
-    let redacted = redact_turn_item(&runtime, "t1", item);
-
-    let TurnItem::CommandExecution(command_execution) = redacted else {
-        panic!("expected command execution turn item");
-    };
-    assert_eq!(
-        command_execution.interaction_input.as_deref(),
-        Some("input: [REDACTED]")
-    );
-    assert_eq!(
-        command_execution.stdout.as_deref(),
-        Some("output: [REDACTED]")
-    );
-    assert_eq!(
-        command_execution.stderr.as_deref(),
-        Some("error: [REDACTED]")
-    );
-    assert_eq!(
-        command_execution.aggregated_output.as_deref(),
-        Some("aggregated: [REDACTED]")
-    );
-    assert_eq!(
-        command_execution.formatted_output.as_deref(),
-        Some("formatted: [REDACTED]")
-    );
-}
-
-#[test]
-fn redacts_turn_item_file_change_output() {
-    let (runtime, _tmp) = loaded_runtime();
-    let item = TurnItem::FileChange(FileChangeItem {
-        id: "file-1".to_string(),
-        changes: HashMap::new(),
-        status: None,
-        auto_approved: None,
-        stdout: Some("stdout: # Guarded content".to_string()),
-        stderr: Some("stderr: # Guarded content".to_string()),
-    });
-
-    let redacted = redact_turn_item(&runtime, "t1", item);
-
-    let TurnItem::FileChange(file_change) = redacted else {
-        panic!("expected file change turn item");
-    };
-    assert_eq!(file_change.stdout.as_deref(), Some("stdout: [REDACTED]"));
-    assert_eq!(file_change.stderr.as_deref(), Some("stderr: [REDACTED]"));
-}
-
-#[test]
-fn redacts_turn_item_web_search_and_tool_call_text() {
-    let (runtime, _tmp) = loaded_runtime();
-    let item = TurnItem::WebSearch(WebSearchItem {
-        id: "web-1".to_string(),
-        query: "query: # Guarded content".to_string(),
-        action: WebSearchAction::Search {
-            query: None,
-            queries: None,
-        },
-        results: None,
-    });
-    let redacted = redact_turn_item(&runtime, "t1", item);
-    let TurnItem::WebSearch(web_search) = redacted else {
-        panic!("expected web search turn item");
-    };
-    assert_eq!(web_search.query.as_str(), "query: [REDACTED]");
-
-    let item = TurnItem::DynamicToolCall(DynamicToolCallItem {
-        id: "dyn-1".to_string(),
-        namespace: None,
-        tool: "demo".to_string(),
-        arguments: serde_json::json!({}),
-        status: DynamicToolCallStatus::Failed,
-        content_items: Some(vec![
-            codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem::InputText {
-                text: "content: # Guarded content".to_string(),
-            },
-        ]),
-        success: None,
-        error: Some("error: # Guarded content".to_string()),
-        duration: None,
-    });
-    let redacted = redact_turn_item(&runtime, "t1", item);
-    let TurnItem::DynamicToolCall(dynamic_tool_call) = redacted else {
-        panic!("expected dynamic tool call turn item");
-    };
-    assert!(
-        dynamic_tool_call
-            .content_items
-            .as_ref()
-            .is_some_and(|items| items.iter().any(|item| matches!(
-                item,
-                codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem::InputText { text }
-                    if text == "content: [REDACTED]"
-            )))
-    );
-    assert_eq!(
-        dynamic_tool_call.error.as_deref(),
-        Some("error: [REDACTED]")
-    );
-
-    let item = TurnItem::McpToolCall(McpToolCallItem {
-        id: "mcp-1".to_string(),
-        server: "server".to_string(),
-        tool: "tool".to_string(),
-        arguments: serde_json::json!({}),
-        connector_id: None,
-        mcp_app_resource_uri: None,
-        link_id: None,
-        app_name: None,
-        action_name: None,
-        plugin_id: None,
-        read_only_hint: None,
-        status: McpToolCallStatus::Failed,
-        result: None,
-        error: Some(McpToolCallError {
-            message: "error: # Guarded content".to_string(),
-        }),
-        duration: None,
-    });
-    let redacted = redact_turn_item(&runtime, "t1", item);
-    let TurnItem::McpToolCall(mcp_tool_call) = redacted else {
-        panic!("expected mcp tool call turn item");
-    };
-    assert_eq!(
-        mcp_tool_call
-            .error
-            .as_ref()
-            .map(|error| error.message.as_str()),
-        Some("error: [REDACTED]")
-    );
-}
-
-#[test]
-fn redacts_turn_item_collab_agent_tool_call_prompt() {
-    let (runtime, _tmp) = loaded_runtime();
-    let item = TurnItem::CollabAgentToolCall(CollabAgentToolCallItem {
-        id: "collab-1".to_string(),
-        tool: CollabAgentTool::SpawnAgent,
-        status: CollabAgentToolCallStatus::InProgress,
-        sender_thread_id: ThreadId::default(),
-        receiver_thread_ids: Vec::new(),
-        receiver_agents: Vec::new(),
-        prompt: Some("prompt: # Guarded content".to_string()),
-        model: None,
-        reasoning_effort: None,
-        agents_states: HashMap::new(),
-    });
-
-    let redacted = redact_turn_item(&runtime, "t1", item);
-
-    let TurnItem::CollabAgentToolCall(collab) = redacted else {
-        panic!("expected collab agent tool call turn item");
-    };
-    assert_eq!(collab.prompt.as_deref(), Some("prompt: [REDACTED]"));
-}
-
-#[test]
-fn redacts_tool_output_plaintext_for_durable_surfaces() {
-    let (runtime, _tmp) = loaded_runtime();
-    let text_item = ResponseItem::FunctionCallOutput {
-        id: None,
-        call_id: Some("call-1".to_string()),
-        name: None,
-        namespace: None,
-        output: FunctionCallOutputPayload {
-            body: FunctionCallOutputBody::Text("the skill says: # Guarded content".to_string()),
-            ..Default::default()
-        },
-        internal_chat_message_metadata_passthrough: None,
-    };
-
-    let redacted = redact_tool_output_plaintext_for_persistence(&runtime, "t1", text_item);
-
-    let ResponseItem::FunctionCallOutput { output, .. } = redacted else {
-        panic!("expected function call output");
-    };
-    assert_eq!(
-        output.body,
-        FunctionCallOutputBody::Text("the skill says: [REDACTED]".to_string())
-    );
-
-    let content_item = ResponseItem::CustomToolCallOutput {
-        id: None,
-        call_id: "call-1".to_string(),
-        name: None,
-        output: FunctionCallOutputPayload {
-            body: FunctionCallOutputBody::ContentItems(vec![
-                codex_protocol::models::FunctionCallOutputContentItem::InputText {
-                    text: "notes: # Guarded content".to_string(),
-                },
-                codex_protocol::models::FunctionCallOutputContentItem::InputText {
-                    text: "safe note".to_string(),
-                },
-            ]),
-            ..Default::default()
-        },
-        internal_chat_message_metadata_passthrough: None,
-    };
-
-    let redacted = redact_tool_output_plaintext_for_persistence(&runtime, "t1", content_item);
-
-    let ResponseItem::CustomToolCallOutput { output, .. } = redacted else {
-        panic!("expected custom tool output");
-    };
-    let FunctionCallOutputBody::ContentItems(items) = &output.body else {
-        panic!("expected content items");
-    };
-    assert_eq!(items.len(), 2);
-    let codex_protocol::models::FunctionCallOutputContentItem::InputText { text: first } =
-        &items[0]
-    else {
-        panic!("expected input text");
-    };
-    let codex_protocol::models::FunctionCallOutputContentItem::InputText { text: second } =
-        &items[1]
-    else {
-        panic!("expected input text");
-    };
-    assert_eq!(first, "notes: [REDACTED]");
-    assert_eq!(second, "safe note");
-}
-
-#[test]
 fn redact_text_redacts_plaintext_and_decrypted_paths() {
     let (runtime, _tmp) = loaded_runtime();
     let mem_root = runtime.mem_root().display().to_string();
@@ -945,35 +688,6 @@ fn redact_text_redacts_plaintext_and_decrypted_paths() {
     assert!(!out.contains("# Guarded content"));
     assert!(!out.contains(&mem_root));
     assert!(out.contains("[REDACTED]"));
-}
-
-#[test]
-fn persistence_redacts_developer_messages() {
-    let (runtime, _tmp) = loaded_runtime();
-    let mem_root = runtime.mem_root().display().to_string();
-    let item = ResponseItem::Message {
-        id: None,
-        role: "developer".to_string(),
-        content: vec![ContentItem::InputText {
-            text: format!("# Guarded content at {mem_root}/fm_skill_security_abc/SKILL.md"),
-        }],
-        phase: None,
-        internal_chat_message_metadata_passthrough: None,
-    };
-    let out = redact_tool_output_plaintext_for_persistence(&runtime, "t1", item);
-    let ResponseItem::Message { content, .. } = out else {
-        panic!("expected message item");
-    };
-    let text = content
-        .iter()
-        .find_map(|item| match item {
-            ContentItem::InputText { text } => Some(text.as_str()),
-            _ => None,
-        })
-        .unwrap();
-    assert!(!text.contains("# Guarded content"));
-    assert!(!text.contains(&mem_root));
-    assert!(text.contains("[REDACTED]"));
 }
 
 #[test]
@@ -1086,76 +800,6 @@ fn blocks_sed_and_head_on_decrypted_storage() {
             "sed/head/tail reads of decrypted storage must be blocked: {decision:?}"
         );
     }
-}
-
-#[test]
-fn persistence_redacts_function_call_arguments() {
-    let (runtime, _tmp) = loaded_runtime();
-    let function_call = ResponseItem::FunctionCall {
-        id: None,
-        name: "shell".to_string(),
-        namespace: None,
-        arguments: json!({ "command": "echo \"# Guarded content\"" }).to_string(),
-        encrypted_function_args: None,
-        call_id: "call-1".to_string(),
-        internal_chat_message_metadata_passthrough: None,
-    };
-    let out = redact_tool_output_plaintext_for_persistence(&runtime, "t1", function_call);
-    let ResponseItem::FunctionCall { arguments, .. } = out else {
-        panic!("expected function call item");
-    };
-    assert!(!arguments.contains("# Guarded content"));
-    assert!(arguments.contains("[REDACTED]"));
-}
-
-#[test]
-fn persistence_redacts_middle_fragments_in_tool_output() {
-    let (runtime, _tmp) = loaded_long_runtime();
-    let line = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJ";
-    let middle = &line[8..28];
-    let item = ResponseItem::FunctionCallOutput {
-        id: None,
-        call_id: Some("call-1".to_string()),
-        name: None,
-        namespace: None,
-        output: FunctionCallOutputPayload {
-            body: FunctionCallOutputBody::Text(format!("script printed: {middle}")),
-            success: None,
-        },
-        internal_chat_message_metadata_passthrough: None,
-    };
-    let out = redact_tool_output_plaintext_for_persistence(&runtime, "t1", item);
-    let ResponseItem::FunctionCallOutput { output, .. } = out else {
-        panic!("expected function call output item");
-    };
-    let text = output.body.to_text().unwrap();
-    assert!(!text.contains(middle));
-    assert!(text.contains("[REDACTED]"));
-}
-
-#[test]
-fn redact_turn_item_leaves_user_messages_untouched() {
-    let (runtime, _tmp) = loaded_runtime();
-    let item = TurnItem::UserMessage(codex_protocol::items::UserMessageItem {
-        id: "user-1".to_string(),
-        client_id: None,
-        content: vec![codex_protocol::user_input::UserInput::Text {
-            text: "user says: # Guarded content".to_string(),
-            text_elements: Vec::new(),
-        }],
-    });
-
-    let redacted = redact_turn_item(&runtime, "t1", item);
-
-    let TurnItem::UserMessage(user_message) = redacted else {
-        panic!("expected user message turn item");
-    };
-    let [codex_protocol::user_input::UserInput::Text { text, .. }] =
-        user_message.content.as_slice()
-    else {
-        panic!("expected one text content");
-    };
-    assert_eq!(text.as_str(), "user says: # Guarded content");
 }
 
 #[test]
@@ -1387,22 +1031,6 @@ fn redaction_helpers_pass_through_when_known_plaintext_is_empty() {
     let items = std::borrow::Cow::Owned(vec![item.clone()]);
     let redacted = redact_assistant_reply_items(&runtime, "t1", items);
     assert_eq!(redacted[0], item);
-
-    let output = ResponseItem::FunctionCallOutput {
-        id: None,
-        call_id: Some("call-1".to_string()),
-        name: None,
-        namespace: None,
-        output: FunctionCallOutputPayload {
-            body: FunctionCallOutputBody::Text("# Guarded content".to_string()),
-            ..Default::default()
-        },
-        internal_chat_message_metadata_passthrough: None,
-    };
-    assert_eq!(
-        redact_tool_output_plaintext_for_persistence(&runtime, "t1", output.clone()),
-        output
-    );
 }
 
 #[test]

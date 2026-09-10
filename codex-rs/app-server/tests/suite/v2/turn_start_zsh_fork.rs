@@ -98,6 +98,7 @@ async fn turn_start_shell_zsh_fork_executes_command_v2() -> Result<()> {
             (Feature::ShellZshFork, true),
             (Feature::ShellSnapshot, false),
         ]),
+        Some("danger-full-access"),
     )?;
 
     let mut mcp = create_zsh_test_mcp_process(&codex_home, &workspace, &zsh_path).await?;
@@ -122,7 +123,6 @@ async fn turn_start_shell_zsh_fork_executes_command_v2() -> Result<()> {
             }],
             cwd: Some(workspace.clone()),
             approval_policy: Some(codex_app_server_protocol::AskForApproval::Never),
-            sandbox_policy: Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
             model: Some("mock-model".to_string()),
             effort: Some(codex_protocol::openai_models::ReasoningEffort::Medium),
             summary: Some(codex_protocol::config_types::ReasoningSummary::Auto),
@@ -212,6 +212,7 @@ async fn turn_start_shell_zsh_fork_exec_approval_decline_v2() -> Result<()> {
             (Feature::ShellZshFork, true),
             (Feature::ShellSnapshot, false),
         ]),
+        None,
     )?;
 
     let mut mcp = create_zsh_test_mcp_process(&codex_home, &workspace, &zsh_path).await?;
@@ -340,6 +341,7 @@ async fn turn_start_shell_zsh_fork_exec_approval_cancel_v2() -> Result<()> {
             (Feature::ShellZshFork, true),
             (Feature::ShellSnapshot, false),
         ]),
+        None,
     )?;
 
     let mut mcp = create_zsh_test_mcp_process(&codex_home, &workspace, &zsh_path).await?;
@@ -494,6 +496,7 @@ async fn turn_start_shell_zsh_fork_subcommand_decline_marks_parent_declined_v2()
             (Feature::ShellZshFork, true),
             (Feature::ShellSnapshot, false),
         ]),
+        Some("danger-full-access"),
     )?;
 
     let mut mcp = create_zsh_test_mcp_process(&codex_home, &workspace, &zsh_path).await?;
@@ -519,10 +522,8 @@ async fn turn_start_shell_zsh_fork_subcommand_decline_marks_parent_declined_v2()
             cwd: Some(workspace.clone()),
             approval_policy: Some(codex_app_server_protocol::AskForApproval::UnlessTrusted),
             // This test is about execve-intercept approval propagation, not
-            // workspace sandboxing. Using full access avoids macOS sandbox
-            // setup failures that can terminate the parent shell before the
-            // second subcommand approval is observed.
-            sandbox_policy: Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
+            // workspace sandboxing. Full access is configured server-side
+            // because request-level full access is disabled by product policy.
             model: Some("mock-model".to_string()),
             effort: Some(codex_protocol::openai_models::ReasoningEffort::Medium),
             summary: Some(codex_protocol::config_types::ReasoningSummary::Auto),
@@ -777,12 +778,16 @@ fn create_config_toml(
     server_uri: &str,
     approval_policy: &str,
     feature_flags: &BTreeMap<Feature, bool>,
+    sandbox_mode: Option<&str>,
 ) -> std::io::Result<()> {
-    MockResponsesConfig::new(server_uri)
+    let mut config = MockResponsesConfig::new(server_uri)
         .with_approval_policy(approval_policy)
         .disable_feature(Feature::RemoteModels)
-        .with_features(feature_flags)
-        .write(codex_home)
+        .with_features(feature_flags);
+    if let Some(sandbox_mode) = sandbox_mode {
+        config = config.with_sandbox_mode(sandbox_mode);
+    }
+    config.write(codex_home)
 }
 
 fn find_test_zsh_path() -> Result<Option<std::path::PathBuf>> {

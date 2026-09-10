@@ -1,0 +1,44 @@
+"""Additive BUILD file for the lmclient-rust-sdk crate.
+
+Provides the vendored Ubuntu static library through Bazel's cc_import so
+that rules_rust can wire it via CcInfo instead of relying on the build
+script's `cargo:rustc-link-search` output, which points into the build
+script's ephemeral sandbox runfiles tree and is invisible to the separate
+rustc compilation action.
+
+The cc_library wrapper adds the system libraries that liblmclient.a
+transitively depends on. lmclient-rust-sdk v1.4.0 ships Debug/Release Ubuntu
+builds; Bazel links the Release build. The Cargo path statically links
+vendored curl/ssl/z instead (Bazel keeps the dynamic -lcurl here).
+
+The hermetic LLVM linker (lld) does not search system library paths by
+default, so we must provide explicit -L flags.  We cover both common layouts:
+  - Arch Linux / multiarch-agnostic: /usr/lib, /usr/lib/gcc/<triple>/<ver>
+  - Debian/Ubuntu multiarch:         /usr/lib/x86_64-linux-gnu
+"""
+
+load("@rules_cc//cc:defs.bzl", "cc_import", "cc_library")
+
+cc_import(
+    name = "lmclient_static",
+    static_library = "lmclient/lib/Release/liblmclient.a",
+    alwayslink = True,
+)
+
+cc_library(
+    name = "lmclient_native",
+    linkopts = [
+        # Debian/Ubuntu multiarch
+        "-L/usr/lib/x86_64-linux-gnu",
+        # Arch / generic
+        "-L/usr/lib",
+        "-lcurl",
+        "-lstdc++",
+        "-lpthread",
+        "-ldl",
+        "-lrt",
+        "-lm",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [":lmclient_static"],
+)

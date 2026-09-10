@@ -1,3 +1,4 @@
+use super::rpc_guard;
 use super::thread_input::ensure_direct_input_allowed;
 use super::*;
 use codex_agent_extension::AgentInvocation;
@@ -171,6 +172,18 @@ impl TurnRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        if !self.config.product_policy.allow_sandbox_bypass
+            && fm_product_policy::full_access_requested(
+                params.sandbox_policy
+                    == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
+                params.permissions.as_deref()
+                    == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS),
+            )
+        {
+            return Err(crate::error_code::invalid_request(
+                fm_product_policy::SANDBOX_BYPASS_DISABLED_MESSAGE,
+            ));
+        }
         validate_user_input_image_urls(&params.input)?;
         self.turn_start_inner(
             request_id,
@@ -187,6 +200,7 @@ impl TurnRequestProcessor {
         request_id: &ConnectionRequestId,
         params: ThreadInjectItemsParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        rpc_guard::ensure_serializable_args_not_guarded(&params, "invalid inject items params")?;
         self.thread_inject_items_response_inner(request_id, params)
             .await
             .map(|response| Some(response.into()))
@@ -197,6 +211,18 @@ impl TurnRequestProcessor {
         request_id: &ConnectionRequestId,
         params: ThreadSettingsUpdateParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        if !self.config.product_policy.allow_sandbox_bypass
+            && fm_product_policy::full_access_requested(
+                params.sandbox_policy
+                    == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
+                params.permissions.as_deref()
+                    == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS),
+            )
+        {
+            return Err(crate::error_code::invalid_request(
+                fm_product_policy::SANDBOX_BYPASS_DISABLED_MESSAGE,
+            ));
+        }
         self.thread_settings_update_inner(request_id, params)
             .await
             .map(|response| Some(response.into()))

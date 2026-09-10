@@ -137,6 +137,7 @@ pub(super) async fn spawn_review_thread(
     extension_data.insert(parent_turn_context.skills_snapshot().as_ref().clone());
 
     let review_turn_context = TurnContext {
+        agent_security: parent_turn_context.agent_security.clone(),
         sub_id: review_turn_id.clone(),
         trace_id: current_span_trace_id(),
         realtime_active: parent_turn_context.realtime_active,

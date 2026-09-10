@@ -31,6 +31,30 @@ platform(
     parents = ["@platforms//host"],
 )
 
+# Linux musl release platforms. LLVM's musl platforms only set
+# @llvm//constraints/libc:musl, not @rules_rs//rs/platforms/constraints:musl.
+# Since rules_rs' linux_libc constraint defaults to glibc, an LLVM musl
+# platform silently matches both the glibc and musl V8 config_settings.
+# These wrappers add the missing rules_rs constraint so selects resolve
+# unambiguously for local musl cross-compilation.
+platform(
+    name = "linux_amd64_musl",
+    constraint_values = [
+        "@rules_rs//rs/platforms/constraints:musl",
+    ],
+    parents = ["@llvm//platforms:linux_amd64_musl"],
+    visibility = ["//visibility:public"],
+)
+
+platform(
+    name = "linux_arm64_musl",
+    constraint_values = [
+        "@rules_rs//rs/platforms/constraints:musl",
+    ],
+    parents = ["@llvm//platforms:linux_arm64_musl"],
+    visibility = ["//visibility:public"],
+)
+
 platform(
     name = "windows_x86_64_gnullvm",
     constraint_values = [

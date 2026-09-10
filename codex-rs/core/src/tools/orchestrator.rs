@@ -164,17 +164,41 @@ impl ToolOrchestrator {
         let workspace_roots = environment.workspace_roots();
         let executor_managed_process_sandbox = tool.uses_executor_managed_process_sandbox(req);
         let permission_profile = environment.permission_profile();
-        let permissions = if executor_managed_process_sandbox {
+        let mut permissions = if executor_managed_process_sandbox {
             // Executor-native roots remain symbolic until the executor applies its own sandbox.
             permission_profile.clone()
         } else {
             environment.permission_profile_with_workspace_roots()
         };
+        // An engaged encrypted skill has its plaintext under the memory root,
+        // outside every workspace root: grant the sandbox read access to the
+        // session's decrypted directories so skill scripts can execute there.
+        // The tool guard still blocks every non-execution use of those paths.
+        grant_encrypted_skill_read_access(
+            &mut permissions,
+            &tool_ctx
+                .session
+                .encrypted_skills_guard()
+                .guarded_read_dirs(),
+        );
         let file_system_sandbox_policy = permissions.file_system_sandbox_policy();
         let requirement = tool.exec_approval_requirement(req).unwrap_or_else(|| {
             default_exec_approval_requirement(approval_policy, &file_system_sandbox_policy)
         });
         match &requirement {
+            ExecApprovalRequirement::Forbidden { reason } => {
+                return Err(ToolError::Rejected(reason.clone()));
+            }
+            // Packaged FMSH FPGA plugin skill scripts are pre-approved: they
+            // are turn-internal, so neither the user nor a reviewer sees them.
+            _ if tool.should_auto_approve(req, tool_ctx) => {
+                otel.tool_decision(
+                    &tool_ctx.tool_name,
+                    otel_ci,
+                    &ReviewDecision::Approved,
+                    Some(ToolDecisionSource::Config),
+                );
+            }
             ExecApprovalRequirement::Skip { .. } => {
                 if strict_auto_review {
                     let action = tool
@@ -205,9 +229,6 @@ impl ToolOrchestrator {
                         Some(ToolDecisionSource::Config),
                     );
                 }
-            }
-            ExecApprovalRequirement::Forbidden { reason } => {
-                return Err(ToolError::Rejected(reason.clone()));
             }
             ExecApprovalRequirement::NeedsApproval { reason, .. } => {
                 let action = tool
@@ -284,6 +305,20 @@ impl ToolOrchestrator {
         } else {
             SandboxType::None
         };
+        // Product policy (I6): an engaged encrypted-skill session must execute
+        // under a sandbox, so decrypted plaintext never runs unsandboxed.
+        if let Err(message) = fm_encrypted_skills::sandbox_policy::ensure_encrypted_skill_sandbox(
+            tool_ctx.session.encrypted_skills_guard().is_engaged(),
+            initial_sandbox != SandboxType::None,
+            tool_ctx
+                .step_context
+                .turn
+                .config
+                .product_policy
+                .allow_sandbox_bypass,
+        ) {
+            return Err(ToolError::Rejected(message.to_string()));
+        }
 
         let sandbox_policy_cwd = tool
             .sandbox_cwd(req)
@@ -410,9 +445,10 @@ impl ToolOrchestrator {
 
                 // Strict auto-review approval covers the sandboxed attempt only;
                 // retrying without the sandbox requires a fresh guardian review.
-                let bypass_retry_approval = !strict_auto_review
-                    && tool.should_bypass_approval(approval_policy, already_approved)
-                    && network_approval_context.is_none();
+                let bypass_retry_approval = network_approval_context.is_none()
+                    && (tool.should_auto_approve(req, tool_ctx)
+                        || (!strict_auto_review
+                            && tool.should_bypass_approval(approval_policy, already_approved)));
                 if !bypass_retry_approval {
                     let approval_reason = match &requirement {
                         ExecApprovalRequirement::NeedsApproval { reason, .. } => reason.clone(),
@@ -547,4 +583,42 @@ fn build_denial_reason_from_output(_output: &ExecToolCallOutput) -> String {
     // Keep approval reason terse and stable for UX/tests, but accept the
     // output so we can evolve heuristics later without touching call sites.
     "command failed; retry without sandbox?".to_string()
+}
+
+/// Adds read entries for `dirs` to a restricted permission profile.
+///
+/// No-op for unrestricted/external profiles: they already admit these paths,
+/// and widening a profile the caller did not restrict would be a privilege
+/// escalation.
+fn grant_encrypted_skill_read_access(
+    permissions: &mut codex_protocol::models::PermissionProfile,
+    dirs: &[std::path::PathBuf],
+) {
+    use codex_protocol::models::ManagedFileSystemPermissions;
+    use codex_protocol::models::PermissionProfile;
+    use codex_protocol::permissions::FileSystemAccessMode;
+    use codex_protocol::permissions::FileSystemPath;
+    use codex_protocol::permissions::FileSystemSandboxEntry;
+    use codex_utils_path_uri::PathUri;
+
+    if dirs.is_empty() {
+        return;
+    }
+    let PermissionProfile::Managed { file_system, .. } = permissions else {
+        return;
+    };
+    let ManagedFileSystemPermissions::Restricted { entries, .. } = file_system else {
+        return;
+    };
+    for dir in dirs {
+        let Ok(dir) = codex_utils_absolute_path::AbsolutePathBuf::try_from(dir.clone()) else {
+            continue;
+        };
+        entries.push(FileSystemSandboxEntry::new(
+            FileSystemPath::Path {
+                path: PathUri::from_abs_path(&dir),
+            },
+            FileSystemAccessMode::Read,
+        ));
+    }
 }

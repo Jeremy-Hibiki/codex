@@ -201,6 +201,12 @@ pub struct BackgroundTerminalInfo {
 /// Conduit for the bidirectional stream of messages that compose a thread
 /// (formerly called a conversation) in Codex.
 impl CodexThread {
+    /// Immediately wipes this thread's decrypted encrypted-skill state
+    /// (directories, content cache, and registry entries).
+    pub fn clear_encrypted_skills(&self) {
+        self.session.encrypted_skills_guard().clear_thread();
+    }
+
     pub(crate) fn new(
         session: Arc<Session>,
         io: SessionIo,

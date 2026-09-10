@@ -149,10 +149,141 @@ pub struct OrchestratorFeatureToml {
     pub enabled: Option<bool>,
 }
 
+/// Envelope SDK selection for encrypted skills. Defaults to fail-closed
+/// (no decryption possible).
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EncryptedSkillsSdkToml {
+    /// Auto-detect the envelope backend per package from the skill
+    /// `metadata.encryption.mode` (upstream `detect_mode`). The default, so
+    /// deployments do not need to configure a global SDK.
+    #[default]
+    #[serde(rename = "auto")]
+    Auto,
+    /// Explicitly disable encrypted-skill decryption (fail closed).
+    #[serde(rename = "unavailable")]
+    Unavailable,
+    /// Test-only SDK that decrypts plain ZIP `.zip.enc` packages.
+    TestZip,
+    /// Identity transform: the `.enc` package is the plain ZIP renamed.
+    #[serde(rename = "noop")]
+    Noop,
+    /// Software digital envelope (HPKE-X25519-AES256-GCM default or
+    /// standard CMS SM2-SM4-CBC). Compiled on Linux x86_64 gnu.
+    #[serde(rename = "software")]
+    Software,
+    /// Real FMSH UKey backend (CMS SM2/SM4 envelope). Compiled on Linux
+    /// x86_64 gnu; needs `FMSH_UKEY_PROVIDER`/`FMSH_UKEY_CONTAINER` (and the
+    /// hardware) at runtime.
+    #[serde(rename = "ukey")]
+    UKey,
+    /// UKey two-phase: one UKey call unwraps a per-skill `key.enc`, then
+    /// every package is decrypted in software AES-256-GCM with the in-memory
+    /// key. Compiled on Linux x86_64 gnu.
+    #[serde(rename = "ukey-two-phase")]
+    UKeyTwoPhase,
+}
+
+/// Selectable algorithm for the software envelope.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq, Eq, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum SoftwareAlgorithmToml {
+    /// HPKE (RFC 9180) base mode: X25519 + HKDF-SHA256 + AES-256-GCM.
+    #[default]
+    HpkeX25519Aes256Gcm,
+    /// Standard CMS EnvelopedData (SM2 key transport + SM4-CBC, GM/T 0010).
+    Sm2Sm4Cbc,
+}
+
+/// Encrypted-skill settings.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct EncryptedSkillsToml {
+    /// Envelope SDK used to decrypt encrypted skills.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sdk: Option<EncryptedSkillsSdkToml>,
+    /// Skill-level idle TTL in seconds before a skill's decrypted content is
+    /// unloaded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_idle_ttl_secs: Option<u64>,
+    /// Lifetime of an unwrapped two-phase key in memory. After it expires,
+    /// the next decryption unwraps the key envelope through UKey again.
+    /// Defaults to 300 seconds beyond the configured skill idle TTL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_cache_ttl_secs: Option<u64>,
+    /// Audit log path for encrypted-skill security events. Defaults to the
+    /// process temp directory (ephemeral); persistent deployments should set
+    /// this to a path on a mounted volume.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audit_path: Option<String>,
+    /// Static private key (PEM) for the `software` envelope backend.
+    /// Only used when `sdk = "software"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub software_privkey: Option<String>,
+    /// Software envelope algorithm. Only used when `sdk = "software"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub software_algorithm: Option<SoftwareAlgorithmToml>,
+    /// Per-skill key envelope file name for `sdk = "ukey-two-phase"`.
+    /// The file lives next to the skill package (default `key.enc`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_envelope: Option<String>,
+    /// External guardrail (prompt sanitizer) settings for user prompts.
+    #[serde(default)]
+    pub guardrail: GuardrailToml,
+}
+
+impl EncryptedSkillsToml {
+    /// True when every field is unset, used to drop empty `[encrypted_skills]`
+    /// tables from requirements layers.
+    pub(crate) fn is_empty_for_requirements(&self) -> bool {
+        self.sdk.is_none()
+            && self.skill_idle_ttl_secs.is_none()
+            && self.key_cache_ttl_secs.is_none()
+            && self.audit_path.is_none()
+            && self.software_privkey.is_none()
+            && self.software_algorithm.is_none()
+            && self.key_envelope.is_none()
+            && self.guardrail.enabled.is_none()
+            && self.guardrail.base_url.is_none()
+    }
+}
+
+/// Settings for the external guardrail (prompt sanitizer) service, nested
+/// under `[encrypted_skills.guardrail]` in `config.toml`.
+///
+/// When enabled, each user prompt is checked against the service; a flagged
+/// input gets a `<reminder>` fragment injected so the model handles it
+/// cautiously.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct GuardrailToml {
+    /// Whether user prompts are checked against the guardrail service.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// Base URL of the guardrail service, e.g. `http://192.168.131.51:8080`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+}
+
 /// Base config deserialized from ~/.codex/config.toml.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct ConfigToml {
+    /// Encrypted-skill settings (SDK selection and skill TTL).
+    #[serde(default)]
+    pub encrypted_skills: EncryptedSkillsToml,
+
+    /// Whether plugin management is allowed (defaults to `true`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_managed_plugins_only: Option<bool>,
+    /// Whether marketplace management is allowed (defaults to `true`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_managed_marketplaces_only: Option<bool>,
+    /// Whether full-access execution may bypass the forced sandbox policy
+    /// (defaults to `true`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_sandbox_bypass: Option<bool>,
+
     /// Optional override of model selection.
     pub model: Option<String>,
     /// Review model override used by the `/review` feature.
@@ -1058,5 +1189,119 @@ command = "   "
                 "model_providers.amazon-bedrock: provider auth.command must not be empty"
             )
         );
+    }
+
+    #[test]
+    fn encrypted_skills_toml_defaults_are_unset() {
+        let parsed: EncryptedSkillsToml = toml::from_str("").unwrap();
+        assert_eq!(parsed.sdk, None);
+        assert_eq!(parsed.skill_idle_ttl_secs, None);
+        assert_eq!(parsed.key_cache_ttl_secs, None);
+    }
+
+    #[test]
+    fn encrypted_skills_sdk_defaults_to_auto_detection() {
+        assert_eq!(
+            EncryptedSkillsSdkToml::default(),
+            EncryptedSkillsSdkToml::Auto,
+            "no sdk configured must auto-detect the backend per package"
+        );
+    }
+
+    #[test]
+    fn encrypted_skills_toml_parses_auto_sdk() {
+        let parsed: EncryptedSkillsToml = toml::from_str("sdk = \"auto\"").unwrap();
+        assert_eq!(parsed.sdk, Some(EncryptedSkillsSdkToml::Auto));
+    }
+
+    #[test]
+    fn encrypted_skills_toml_parses_sdk_and_ttls() {
+        let parsed: EncryptedSkillsToml = toml::from_str(
+            "sdk = \"test_zip\"\nskill_idle_ttl_secs = 120\nkey_cache_ttl_secs = 900\naudit_path = \"/var/log/codex/encrypted-skills.log\"\n",
+        )
+        .unwrap();
+        assert_eq!(parsed.sdk, Some(EncryptedSkillsSdkToml::TestZip));
+        assert_eq!(parsed.skill_idle_ttl_secs, Some(120));
+        assert_eq!(parsed.key_cache_ttl_secs, Some(900));
+        assert_eq!(
+            parsed.audit_path.as_deref(),
+            Some("/var/log/codex/encrypted-skills.log")
+        );
+    }
+
+    #[test]
+    fn guardrail_toml_defaults_are_disabled() {
+        let parsed: EncryptedSkillsToml = toml::from_str("").unwrap();
+        assert_eq!(parsed.guardrail.enabled, None);
+        assert_eq!(parsed.guardrail.base_url, None);
+    }
+
+    #[test]
+    fn guardrail_toml_parses_nested_encrypted_skills_config() {
+        let parsed: ConfigToml = toml::from_str(
+            r#"
+[encrypted_skills.guardrail]
+enabled = true
+base_url = "http://192.168.131.51:8080"
+"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.encrypted_skills.guardrail.enabled, Some(true));
+        assert_eq!(
+            parsed.encrypted_skills.guardrail.base_url.as_deref(),
+            Some("http://192.168.131.51:8080")
+        );
+    }
+
+    #[test]
+    fn encrypted_skills_toml_parses_all_sdk_modes() {
+        let ukey: EncryptedSkillsToml = toml::from_str("sdk = \"ukey\"").unwrap();
+        assert_eq!(ukey.sdk, Some(EncryptedSkillsSdkToml::UKey));
+
+        let noop: EncryptedSkillsToml = toml::from_str("sdk = \"noop\"").unwrap();
+        assert_eq!(noop.sdk, Some(EncryptedSkillsSdkToml::Noop));
+
+        let software: EncryptedSkillsToml = toml::from_str(
+            "sdk = \"software\"\nsoftware_privkey = \"/keys/enc.priv.pem\"\nsoftware_algorithm = \"sm2-sm4-cbc\"\n",
+        )
+        .unwrap();
+        assert_eq!(software.sdk, Some(EncryptedSkillsSdkToml::Software));
+        assert_eq!(
+            software.software_privkey.as_deref(),
+            Some("/keys/enc.priv.pem")
+        );
+        assert_eq!(
+            software.software_algorithm,
+            Some(SoftwareAlgorithmToml::Sm2Sm4Cbc)
+        );
+
+        let two_phase: EncryptedSkillsToml =
+            toml::from_str("sdk = \"ukey-two-phase\"\nkey_envelope = \"key.enc\"").unwrap();
+        assert_eq!(two_phase.sdk, Some(EncryptedSkillsSdkToml::UKeyTwoPhase));
+        assert_eq!(two_phase.key_envelope.as_deref(), Some("key.enc"));
+    }
+
+    #[test]
+    fn encrypted_skills_toml_rejects_unknown_sdk_mode() {
+        assert!(toml::from_str::<EncryptedSkillsToml>("sdk = \"quantum\"").is_err());
+    }
+
+    #[test]
+    fn product_policy_fields_default_open() {
+        let parsed: ConfigToml = toml::from_str("").unwrap();
+        assert_eq!(parsed.allow_managed_plugins_only, None);
+        assert_eq!(parsed.allow_managed_marketplaces_only, None);
+        assert_eq!(parsed.allow_sandbox_bypass, None);
+    }
+
+    #[test]
+    fn product_policy_fields_parse() {
+        let parsed: ConfigToml = toml::from_str(
+            "allow_managed_plugins_only = true\nallow_managed_marketplaces_only = true\nallow_sandbox_bypass = false\n",
+        )
+        .unwrap();
+        assert_eq!(parsed.allow_managed_plugins_only, Some(true));
+        assert_eq!(parsed.allow_managed_marketplaces_only, Some(true));
+        assert_eq!(parsed.allow_sandbox_bypass, Some(false));
     }
 }

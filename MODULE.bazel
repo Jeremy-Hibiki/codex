@@ -2,7 +2,7 @@ module(name = "codex")
 
 bazel_dep(name = "bazel_lib", version = "3.2.2")
 bazel_dep(name = "bazel_skylib", version = "1.9.0")
-bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "platforms", version = "1.1.0")
 
 # Expose the public protobuf rules already used transitively by rules_rs.
 bazel_dep(name = "protobuf", version = "34.0.bcr.1", repo_name = "com_google_protobuf")
@@ -140,7 +140,7 @@ use_repo(osx, "macos_sdk")
 
 # Needed to disable xcode...
 bazel_dep(name = "apple_support", version = "2.1.0")
-bazel_dep(name = "rules_cc", version = "0.2.18")
+bazel_dep(name = "rules_cc", version = "0.2.20")
 single_version_override(
     module_name = "rules_cc",
     patch_strip = 1,
@@ -184,6 +184,10 @@ single_version_override(
         "//patches:rules_rs_build_script_deps_annotation.patch",
         "//patches:rules_rs_windows_msvc_linker.patch",
         "//patches:rules_rs_zlib_snapshot_urls.patch",
+        # fm: fetch the rust toolchain archive through the GitHub mirror and
+        # dedupe build-script deps that break crate_universe resolution.
+        "//patches:rules_rs_rust_archive_url.patch",
+        "//patches:rules_rs_dedupe_build_script_deps.patch",
     ],
     version = "0.0.96",
 )
@@ -405,7 +409,41 @@ crate.annotation(
 
 inject_repo(crate, "bzip2")
 
-bazel_dep(name = "zlib", version = "1.3.1.bcr.8")
+# fm: internal FMSH/LMCLIENT SDK crates. Their build scripts vendored the
+# native libraries inside git-checkout trees that Bazel's sandbox cannot see,
+# so the build scripts are disabled and cc_import supplies the archives from
+# third_party/ instead.
+crate.annotation(
+    additive_build_file = "//third_party/lmclient:additive.BUILD.bazel",
+    # lmclient-rust-sdk vendors liblmclient.a inside its own source tree and
+    # emits `cargo:rustc-link-search` pointing into the build script's
+    # ephemeral runfiles tree (`.crf/m/`), which is invisible to the separate
+    # rustc compilation action in a sandboxed build.  Disable the build script
+    # and provide the static library via cc_import instead, then declare the
+    # system libraries it transitively needs.
+    crate = "lmclient-rust-sdk",
+    extra_aliased_targets = {"lmclient_native": "lmclient_native"},
+    gen_build_script = "off",
+    deps = ["@crates//:lmclient_native"],
+)
+crate.annotation(
+    additive_build_file = "//third_party/fmsh-ukey:additive.BUILD.bazel",
+    # fmsh-ukey-sdk-wrapper's build.rs expects the vendored SDK under its own
+    # repo root (`vendor/fmsh-ukey-sdk`), which is not part of the
+    # build-script sandbox. Disable the build script and link the shared
+    # library via cc_import instead (mirrors lmclient-rust-sdk); the patch
+    # marks the vendored SDK directory as a Bazel package. Since SDK 0.3.1
+    # the .so NEEDs the host's libcrypto.so.3 (Ubuntu 22.04+ / libssl3), so
+    # no vendored libcrypto is bundled anymore.
+    crate = "fmsh-ukey-sdk-wrapper",
+    extra_aliased_targets = {"fmsh_ukey_native": "fmsh_ukey_native"},
+    gen_build_script = "off",
+    patch_args = ["-p1"],
+    patches = ["//patches:fmsh_ukey_vendor_build.patch"],
+    deps = ["@crates//:fmsh_ukey_native"],
+)
+
+bazel_dep(name = "zlib", version = "1.3.2")
 
 crate.annotation(
     crate = "libz-sys",
@@ -429,7 +467,7 @@ crate.annotation(
     deps = ["@xz//:lzma"],
 )
 
-bazel_dep(name = "openssl", version = "3.5.4.bcr.0")
+bazel_dep(name = "openssl", version = "3.5.5.bcr.0")
 
 inject_repo(crate, "xz")
 
@@ -750,7 +788,10 @@ archive_override(
         "//patches:v8_source_portability.patch",
     ],
     strip_prefix = "v8-15.0.245.2",
-    urls = ["https://github.com/v8/v8/archive/refs/tags/15.0.245.2.tar.gz"],
+    urls = [
+        "https://github.com/v8/v8/archive/refs/tags/15.0.245.2.tar.gz",
+        "https://ghfast.top/github.com/v8/v8/archive/refs/tags/15.0.245.2.tar.gz",
+    ],
 )
 
 http_archive(
@@ -759,7 +800,10 @@ http_archive(
     sha256 = "42a978ff11f15b24e5c05a7123cf2b68f41e763546699781a924ef4e2cf43a49",
     strip_prefix = "v8-150.4.0",
     type = "tar.gz",
-    urls = ["https://static.crates.io/crates/v8/v8-150.4.0.crate"],
+    urls = [
+        "https://static.crates.io/crates/v8/v8-150.4.0.crate",
+        "https://rsproxy.cn/api/v1/crates/v8/150.4.0/download",
+    ],
 )
 
 git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
@@ -791,6 +835,7 @@ http_file(
     sha256 = "54722842af36b74248c403ff531254efac6ff65d281198bab0c6350fc1188ad4",
     urls = [
         "https://github.com/openai/codex/releases/download/rusty-v8-v150.4.0/rusty_v8_ptrcomp_sandbox_release_aarch64-pc-windows-msvc.lib.gz",
+        "https://ghfast.top/github.com/openai/codex/releases/download/rusty-v8-v150.4.0/rusty_v8_ptrcomp_sandbox_release_aarch64-pc-windows-msvc.lib.gz",
     ],
 )
 
@@ -800,6 +845,7 @@ http_file(
     sha256 = "732ec5da4243aa166799780c8519a5eea6f32f6e47657a323342794dc3c239d6",
     urls = [
         "https://github.com/openai/codex/releases/download/rusty-v8-v150.4.0/rusty_v8_ptrcomp_sandbox_release_x86_64-pc-windows-msvc.lib.gz",
+        "https://ghfast.top/github.com/openai/codex/releases/download/rusty-v8-v150.4.0/rusty_v8_ptrcomp_sandbox_release_x86_64-pc-windows-msvc.lib.gz",
     ],
 )
 

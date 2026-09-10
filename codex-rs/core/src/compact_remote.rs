@@ -280,10 +280,19 @@ async fn run_remote_compact_task_inner_impl(
     // Install is the semantic boundary where the compact endpoint's output becomes live
     // thread history. Keep it distinct from the later inference request so the reducer can
     // still represent repeated developer/context prefix items exactly as the model saw them.
+    // Trace payloads may contain model output derived from rehydrated skill content, so
+    // redact known plaintext and decrypted paths before recording them.
+    let trace_input_history = trace_input_history.map(|items| {
+        sess.encrypted_skills_guard()
+            .redact_all_response_item_text(&items)
+    });
+    let trace_replacement_history = sess
+        .encrypted_skills_guard()
+        .redact_all_response_item_text(&new_history);
     if let Some(trace_input_history) = trace_input_history.as_deref() {
         compaction_trace.record_installed(&CompactionCheckpointTracePayload {
             input_history: trace_input_history,
-            replacement_history: &new_history,
+            replacement_history: &trace_replacement_history,
         });
     }
     // Legacy `/responses/compact` returns provider-normalized items without a stable link to their

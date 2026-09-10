@@ -1,0 +1,17 @@
+--- a/rs/rules_rust.bzl
++++ b/rs/rules_rust.bzl
+@@ -36,1 +36,1 @@
+-        url = "https://github.com/hermeticbuild/rules_rust/archive/f19661ba71f77c993ce1eb082053692610fe4313.tar.gz",
++        url = "https://ghfast.top/github.com/hermeticbuild/rules_rust/archive/f19661ba71f77c993ce1eb082053692610fe4313.tar.gz",
+
+--- a/rs/rules_rust_bindgen.bzl
++++ b/rs/rules_rust_bindgen.bzl
+@@ -182,1 +182,1 @@
+-            url = "https://github.com/hermeticbuild/bindgen/releases/download/v0.0.2/bindgen_{}.tar.zst".format(prebuilt.name),
++            url = "https://ghfast.top/github.com/hermeticbuild/bindgen/releases/download/v0.0.2/bindgen_{}.tar.zst".format(prebuilt.name),
+
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -42,1 +42,1 @@
+-        url = "https://github.com/hermeticbuild/toml2json/releases/download/v0.0.26/toml2json_" + name + ext,
++        url = "https://ghfast.top/github.com/hermeticbuild/toml2json/releases/download/v0.0.26/toml2json_" + name + ext,

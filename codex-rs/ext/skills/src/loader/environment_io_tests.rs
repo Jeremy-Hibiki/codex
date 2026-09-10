@@ -71,6 +71,7 @@ async fn loads_nearest_plugin_namespaces_without_reading_unused_sibling_manifest
                 short_description: None,
                 dependencies: None,
                 policy: None,
+                encryption: None,
             },
             EnvironmentSkillMetadata {
                 path_to_skills_md: PathUri::from_host_native_path(&outer_skill).unwrap(),
@@ -79,6 +80,7 @@ async fn loads_nearest_plugin_namespaces_without_reading_unused_sibling_manifest
                 short_description: None,
                 dependencies: None,
                 policy: None,
+                encryption: None,
             },
             EnvironmentSkillMetadata {
                 path_to_skills_md: PathUri::from_host_native_path(&standalone_skill).unwrap(),
@@ -87,6 +89,7 @@ async fn loads_nearest_plugin_namespaces_without_reading_unused_sibling_manifest
                 short_description: None,
                 dependencies: None,
                 policy: None,
+                encryption: None,
             },
         ]
     );
@@ -150,6 +153,7 @@ async fn reuses_walk_inventory_for_missing_skill_metadata() {
             short_description: None,
             dependencies: None,
             policy: None,
+            encryption: None,
         })
         .collect::<Vec<_>>();
     expected_skills.sort_by(|left, right| {
@@ -219,6 +223,7 @@ async fn reads_skill_files_while_resolving_plugin_namespaces() {
             short_description: None,
             dependencies: None,
             policy: None,
+            encryption: None,
         }]
     );
 }

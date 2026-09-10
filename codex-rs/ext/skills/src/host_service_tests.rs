@@ -415,6 +415,7 @@ async fn snapshot_for_config_preserves_host_precedence_for_symlinked_plugin_root
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
+            encryption: None,
         }]
     );
 }

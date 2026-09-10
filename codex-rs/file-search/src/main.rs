@@ -8,8 +8,16 @@ use codex_file_search::Reporter;
 use codex_file_search::run_main;
 use serde_json::json;
 
+#[cfg(target_os = "linux")]
+#[cfg(not(debug_assertions))]
+use debugoff;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    #[cfg(target_os = "linux")]
+    #[cfg(not(debug_assertions))]
+    debugoff::multi_ptraceme_or_die();
+
     let cli = Cli::parse();
     let reporter = StdioReporter {
         write_output_as_json: cli.json,

@@ -10,6 +10,9 @@ use tempfile::TempDir;
 fn codex_command(codex_home: &Path) -> Result<assert_cmd::Command> {
     let mut cmd = assert_cmd::Command::new(codex_utils_cargo_bin::cargo_bin("codex")?);
     cmd.env("CODEX_HOME", codex_home);
+    // Debug/test-only bypass so the suite does not need a live FMSH license
+    // server; release binaries never honor this.
+    cmd.env("FMSH_CODEX_LIC_TEST_BYPASS", "1");
     Ok(cmd)
 }
 

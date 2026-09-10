@@ -1,0 +1,10 @@
+"""FMSH UKey SDK native libraries for Bazel.
+
+The additive BUILD file for fmsh-ukey-wrapper lives in
+`additive.BUILD.bazel`; this file only marks the directory as a Bazel
+package so `//third_party/fmsh-ukey:additive.BUILD.bazel` resolves.
+"""
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(glob(["linux/lib/*"]))

@@ -181,6 +181,7 @@ async fn compact_uses_bearer_after_agent_identity_session_fallback() -> anyhow::
             text: "base instructions".to_string(),
             provenance: None,
         },
+        encrypted_skills: None,
         ..Default::default()
     };
     let responses_metadata = test_responses_metadata_for_client(

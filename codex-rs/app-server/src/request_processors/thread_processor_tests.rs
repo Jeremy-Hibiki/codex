@@ -36,6 +36,70 @@ mod thread_list_cwd_filter_tests {
     }
 }
 
+mod reasoning_history_tests {
+    use super::super::hide_reasoning_from_sensitive_entries;
+    use super::super::hide_reasoning_from_sensitive_items;
+    use codex_app_server_protocol::ThreadItem;
+    use codex_app_server_protocol::ThreadItemEntry;
+    use codex_app_server_protocol::UserInput;
+
+    fn token_message() -> ThreadItem {
+        ThreadItem::UserMessage {
+            id: "user-1".to_string(),
+            client_id: None,
+            content: vec![UserInput::Text {
+                text: "use [SENSITIVE_SKILL_TOKEN:abc:ff00]".to_string(),
+                text_elements: Vec::new(),
+            }],
+        }
+    }
+
+    fn reasoning() -> ThreadItem {
+        ThreadItem::Reasoning {
+            id: "rsn-1".to_string(),
+            summary: vec!["HIDDEN_REASONING_MARKER".to_string()],
+            content: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn sensitive_items_hide_reasoning() {
+        let mut items = vec![token_message(), reasoning()];
+        hide_reasoning_from_sensitive_items(&mut items);
+        assert!(
+            items
+                .iter()
+                .all(|item| !matches!(item, ThreadItem::Reasoning { .. })),
+            "sensitive thread items must hide reasoning: {items:?}"
+        );
+    }
+
+    #[test]
+    fn plain_items_keep_reasoning() {
+        let mut items = vec![reasoning()];
+        hide_reasoning_from_sensitive_items(&mut items);
+        assert_eq!(items.len(), 1);
+        assert!(matches!(items[0], ThreadItem::Reasoning { .. }));
+    }
+
+    #[test]
+    fn sensitive_entries_hide_reasoning() {
+        let mut entries = vec![
+            ThreadItemEntry {
+                turn_id: "turn-1".to_string(),
+                item: token_message(),
+            },
+            ThreadItemEntry {
+                turn_id: "turn-1".to_string(),
+                item: reasoning(),
+            },
+        ];
+        hide_reasoning_from_sensitive_entries(&mut entries);
+        assert_eq!(entries.len(), 1);
+        assert!(matches!(entries[0].item, ThreadItem::UserMessage { .. }));
+    }
+}
+
 mod background_terminal_pagination_tests {
     use super::super::paginate_background_terminals;
     use codex_app_server_protocol::ThreadBackgroundTerminal;

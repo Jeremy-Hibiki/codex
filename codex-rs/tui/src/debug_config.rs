@@ -975,7 +975,10 @@ interrupt_message = false
             default_permissions: None,
             remote_sandbox_config: None,
             allowed_web_search_modes: Some(vec![WebSearchModeRequirement::Cached]),
+            allow_sandbox_bypass: Some(true),
             allow_managed_hooks_only: Some(true),
+            allow_managed_marketplaces_only: Some(false),
+            allow_managed_plugins_only: Some(false),
             allow_appshots: Some(false),
             allow_remote_control: Some(false),
             allow_browser_and_computer_use: None,
@@ -1009,6 +1012,8 @@ interrupt_message = false
             permissions: None,
             auto_review: None,
             models: None,
+            developer_instructions: None,
+            encrypted_skills: None,
         };
 
         let user_file = if cfg!(windows) {

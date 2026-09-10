@@ -16,6 +16,10 @@ use codex_exec::Cli;
 use codex_exec::run_main;
 use codex_utils_cli::CliConfigOverrides;
 
+#[cfg(target_os = "linux")]
+#[cfg(not(debug_assertions))]
+use debugoff;
+
 #[derive(Parser, Debug)]
 struct TopCli {
     #[clap(flatten)]
@@ -26,8 +30,16 @@ struct TopCli {
 }
 
 fn main() -> anyhow::Result<()> {
+    #[cfg(target_os = "linux")]
+    #[cfg(not(debug_assertions))]
+    debugoff::multi_ptraceme_or_die();
     arg0_dispatch_or_else(|arg0_paths: Arg0DispatchPaths| async move {
         let top_cli = TopCli::parse();
+        // The standalone `codex-exec` binary is a product entry point that can
+        // start Codex work; it must hold a license for the process lifetime.
+        // Helper dispatches (apply_patch, sandbox) exit inside
+        // `arg0_dispatch_or_else` before this closure runs.
+        let _license_guard = fm_license::init_entry()?;
         // Merge root-level overrides into inner CLI struct so downstream logic remains unchanged.
         let mut inner = top_cli.inner;
         inner

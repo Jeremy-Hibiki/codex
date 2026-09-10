@@ -312,6 +312,12 @@ pub(crate) trait Approvable<Req> {
         SandboxPermissions::UseDefault
     }
 
+    /// Returns whether this exact request is trusted independently of the
+    /// ambient approval policy. Forbidden policy decisions still take priority.
+    fn should_auto_approve(&self, _req: &Req, _ctx: &ToolCtx) -> bool {
+        false
+    }
+
     fn should_bypass_approval(&self, policy: AskForApproval, already_approved: bool) -> bool {
         if already_approved {
             // We do not ask one more time

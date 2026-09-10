@@ -12,6 +12,7 @@ use codex_otel::sanitize_metric_tag_value;
 use codex_protocol::protocol::SkillScope;
 use codex_skills::SkillMetadata;
 use codex_skills_extension::HostSkillsLoadInput;
+use codex_skills_extension::HostSkillsSnapshot;
 use codex_skills_extension::InjectedHostSkillPrompts;
 use codex_skills_extension::detect_implicit_skill_invocation;
 use codex_skills_extension::record_plugin_turn_usage;
@@ -136,6 +137,9 @@ pub(crate) async fn maybe_emit_implicit_skill_invocation(
         return;
     };
     let skill_name = invocation.skill_name.clone();
+    if let SkillInvocationLocation::Host { path, .. } = &invocation.location {
+        register_implicit_skill_package(sess, turn_context, path.as_path());
+    }
     let (skill_resource, seen_key) = match &invocation.location {
         SkillInvocationLocation::Host { path, scope } => {
             let skill_scope = match scope {
@@ -205,5 +209,49 @@ pub(crate) async fn maybe_emit_implicit_skill_invocation(
                 turn_context.originator.clone(),
             ),
             vec![invocation],
+        );
+}
+
+/// Records the encrypted package path for an implicitly invoked skill.
+///
+/// The session is deliberately not engaged here: decryption happens later, at
+/// request build time, after the model's shell read of the on-disk stub has
+/// already executed (see `EncryptedSkillRuntime::rehydrate_framed`).
+fn register_implicit_skill_package(
+    sess: &Session,
+    turn_context: &TurnContext,
+    skill_path: &std::path::Path,
+) {
+    let Some(snapshot) = turn_context.extension_data.get::<HostSkillsSnapshot>() else {
+        return;
+    };
+    let Some(skill) = snapshot
+        .outcome()
+        .skills
+        .iter()
+        .find(|skill| skill.path_to_skills_md.as_path() == skill_path)
+    else {
+        return;
+    };
+    if !skill.is_encrypted() {
+        return;
+    }
+    let Some(skill_dir) = skill.path_to_skills_md.parent() else {
+        return;
+    };
+    let default_package = format!("{}.zip.enc", skill.name);
+    let package_name = skill
+        .encryption
+        .as_ref()
+        .and_then(|encryption| encryption.package.as_deref())
+        .filter(|package| !package.is_empty())
+        .unwrap_or(&default_package);
+    let session_id = sess.thread_id().to_string();
+    sess.services
+        .encrypted_skills_runtime
+        .register_implicit_skill_package(
+            &session_id,
+            &skill.name,
+            skill_dir.join(package_name).to_path_buf(),
         );
 }

@@ -35,6 +35,7 @@ fn test_skill_metadata(skill_doc_path: AbsolutePathBuf) -> SkillMetadata {
         scope: codex_protocol::protocol::SkillScope::User,
         plugin_id: None,
         remote_plugin_id: None,
+        encryption: None,
     }
 }
 
@@ -122,6 +123,69 @@ fn windows_executor_skill_reads_share_powershell_classification() {
             "command: {command}"
         );
     }
+}
+
+#[test]
+fn script_run_detection_matches_tclsh_script() {
+    let tokens = vec!["tclsh".to_string(), "scripts/run.tcl".to_string()];
+
+    assert_eq!(script_run_token(&tokens), Some("scripts/run.tcl"));
+}
+
+#[test]
+fn script_run_detection_matches_versioned_tclsh() {
+    let tokens = vec!["tclsh8.6".to_string(), "scripts/run.tcl".to_string()];
+
+    assert_eq!(script_run_token(&tokens), Some("scripts/run.tcl"));
+}
+
+#[test]
+fn script_run_detection_matches_tclsh_script_after_flag_value() {
+    let tokens = vec![
+        "tclsh".to_string(),
+        "-encoding".to_string(),
+        "utf-8".to_string(),
+        "scripts/run.tcl".to_string(),
+    ];
+
+    assert_eq!(script_run_token(&tokens), Some("scripts/run.tcl"));
+}
+
+#[test]
+fn script_run_detection_matches_vivado_source_flag() {
+    let tokens = vec![
+        "vivado".to_string(),
+        "-mode".to_string(),
+        "batch".to_string(),
+        "-source".to_string(),
+        "scripts/run.tcl".to_string(),
+    ];
+
+    assert_eq!(script_run_token(&tokens), Some("scripts/run.tcl"));
+}
+
+#[test]
+fn script_run_detection_matches_synopsys_shell_f_flag() {
+    let tokens = vec![
+        "dc_shell".to_string(),
+        "-64bit".to_string(),
+        "-f".to_string(),
+        "scripts/run.tcl".to_string(),
+    ];
+
+    assert_eq!(script_run_token(&tokens), Some("scripts/run.tcl"));
+}
+
+#[test]
+fn script_run_detection_requires_script_for_eda_tool() {
+    let tokens = vec![
+        "vivado".to_string(),
+        "-mode".to_string(),
+        "batch".to_string(),
+        "-version".to_string(),
+    ];
+
+    assert_eq!(script_run_token(&tokens), None);
 }
 
 #[test]

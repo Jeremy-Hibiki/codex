@@ -47,6 +47,14 @@ impl RemoteControlCommand {
             Some(RemoteControlSubcommand::Pair) => "remote-control pair",
         }
     }
+
+    /// Returns true when this invocation runs an app-server in this process
+    /// (as opposed to managing an existing daemon). Only used by the license
+    /// gate on Linux x86_64 glibc.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    pub(crate) fn starts_app_server(&self) -> bool {
+        self.subcommand.is_none()
+    }
 }
 
 #[derive(Debug, Clone, Copy, clap::Subcommand)]

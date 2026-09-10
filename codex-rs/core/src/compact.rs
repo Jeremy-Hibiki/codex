@@ -285,6 +285,7 @@ async fn run_compact_task_inner_impl(
         let prompt = Prompt {
             input: turn_input,
             base_instructions: sess.get_prompt_base_instructions().await,
+            encrypted_skills: Some(sess.encrypted_skill_rehydrator()),
             ..Default::default()
         };
         let attempt_result = drain_to_completed(

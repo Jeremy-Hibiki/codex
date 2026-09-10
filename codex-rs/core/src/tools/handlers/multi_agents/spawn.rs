@@ -83,7 +83,7 @@ async fn handle_spawn_agent(
                 receiver_thread_ids: Vec::new(),
                 receiver_agents: Vec::new(),
                 prompt: Some(prompt.clone()),
-                model: Some(args.model.clone().unwrap_or_default()),
+                model: None,
                 reasoning_effort: Some(args.reasoning_effort.clone().unwrap_or_default()),
                 agents_states: Default::default(),
             }),
@@ -94,11 +94,13 @@ async fn handle_spawn_agent(
     if args.fork_context {
         reject_full_fork_agent_type_override(role_name)?;
     }
+    // fm: model dispatch is not supported — spawned agents always inherit
+    // the parent thread's model.
     apply_requested_spawn_agent_model_overrides(
         &session,
         turn.as_ref(),
         &mut config,
-        args.model.as_deref(),
+        /*requested_model*/ None,
         args.reasoning_effort.clone(),
     )
     .await?;
@@ -163,10 +165,6 @@ async fn handle_spawn_agent(
             ),
             (None, None) => (None, None, None),
         };
-    let effective_model = agent_snapshot
-        .as_ref()
-        .map(|snapshot| snapshot.model.clone())
-        .unwrap_or_else(|| args.model.clone().unwrap_or_default());
     let effective_reasoning_effort = agent_snapshot
         .as_ref()
         .and_then(|snapshot| snapshot.reasoning_effort.clone())
@@ -195,7 +193,7 @@ async fn handle_spawn_agent(
                 receiver_thread_ids,
                 receiver_agents,
                 prompt: Some(prompt),
-                model: Some(effective_model),
+                model: None,
                 reasoning_effort: Some(effective_reasoning_effort),
                 agents_states,
             }),
@@ -226,7 +224,6 @@ struct SpawnAgentArgs {
     message: Option<String>,
     items: Option<Vec<UserInput>>,
     agent_type: Option<String>,
-    model: Option<String>,
     reasoning_effort: Option<ReasoningEffort>,
     #[serde(default)]
     fork_context: bool,

@@ -273,6 +273,7 @@ fn load_test_skill_root(root: &PluginSkillRoot) -> LoadedSkillRoot {
                         scope: SkillScope::User,
                         plugin_id: Some(root.plugin_identity.plugin_id.clone()),
                         remote_plugin_id: root.plugin_identity.remote_plugin_id.clone(),
+                        encryption: None,
                     });
                 }
                 Err(message) => errors.push(SkillError {

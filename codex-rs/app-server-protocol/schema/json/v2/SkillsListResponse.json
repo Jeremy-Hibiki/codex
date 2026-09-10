@@ -19,6 +19,44 @@
       ],
       "type": "object"
     },
+    "SkillEncryption": {
+      "description": "Encryption metadata declared in a skill's `SKILL.md` frontmatter under `metadata.encryption`.",
+      "properties": {
+        "algorithm": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "keyId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "package": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "SkillErrorInfo": {
       "properties": {
         "message": {
@@ -114,6 +152,17 @@
         },
         "enabled": {
           "type": "boolean"
+        },
+        "encryption": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SkillEncryption"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Encryption metadata from the skill's frontmatter, when the skill is encrypted. Absent for plaintext skills."
         },
         "interface": {
           "anyOf": [

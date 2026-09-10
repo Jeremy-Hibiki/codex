@@ -2,6 +2,7 @@ use super::step_settings::ResolvedStepSettings;
 use super::token_budget::has_explicit_settings;
 use super::token_budget::resolve_token_budget;
 use super::*;
+use crate::agent_security::AgentSecurityContext;
 use crate::config::TokenBudgetConfig;
 use crate::environment_selection::EnvironmentConfigOrigin;
 use crate::environment_selection::TurnEnvironmentSnapshot;
@@ -213,6 +214,8 @@ pub struct TurnContext {
     pub(crate) session_telemetry: SessionTelemetry,
     pub(crate) provider: SharedModelProvider,
     pub(crate) session_source: SessionSource,
+    /// Encrypted-skill context for this turn, when a sensitive skill is engaged.
+    pub(crate) agent_security: Option<AgentSecurityContext>,
     pub(crate) history_mode: ThreadHistoryMode,
     pub(crate) parent_thread_id: Option<ThreadId>,
     pub(crate) originator: String,
@@ -522,6 +525,7 @@ impl TurnContext {
             session_telemetry,
             provider: self.provider.clone(),
             session_source: self.session_source.clone(),
+            agent_security: self.agent_security.clone(),
             history_mode: self.history_mode,
             parent_thread_id: self.parent_thread_id,
             originator: self.originator.clone(),
@@ -794,6 +798,7 @@ impl Session {
             session_telemetry: session_telemetry_for_context,
             provider,
             session_source,
+            agent_security: None,
             history_mode: session_configuration.history_mode,
             parent_thread_id: session_configuration.parent_thread_id,
             originator: session_configuration.originator.clone(),
@@ -1033,6 +1038,15 @@ impl Session {
         );
         turn_context.code_mode_available = self.services.code_mode_service.is_available();
         turn_context.extension_data.insert(trusted_plugin_roots);
+        turn_context.agent_security = {
+            let runtime = &self.services.encrypted_skills_runtime;
+            let session_id = self.thread_id().to_string();
+            if runtime.is_engaged(&session_id) {
+                Some(AgentSecurityContext::new(Arc::clone(runtime), session_id))
+            } else {
+                None
+            }
+        };
         turn_context.realtime_active = self.conversation.running_state().await.is_some();
 
         turn_context.final_output_json_schema = options.final_output_json_schema;

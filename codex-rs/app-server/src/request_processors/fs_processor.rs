@@ -1,3 +1,4 @@
+use super::rpc_guard;
 use crate::error_code::internal_error;
 use crate::error_code::invalid_request;
 use crate::fs_watch::FsWatchManager;
@@ -65,6 +66,7 @@ impl FsRequestProcessor {
         &self,
         params: FsReadFileParams,
     ) -> Result<FsReadFileResponse, JSONRPCErrorError> {
+        rpc_guard::ensure_path_not_guarded(params.path.as_path())?;
         let path = PathUri::from_abs_path(&params.path);
         let bytes = self
             .file_system()?
@@ -80,6 +82,7 @@ impl FsRequestProcessor {
         &self,
         params: FsWriteFileParams,
     ) -> Result<FsWriteFileResponse, JSONRPCErrorError> {
+        rpc_guard::ensure_path_not_guarded(params.path.as_path())?;
         let bytes = STANDARD.decode(params.data_base64).map_err(|err| {
             invalid_request(format!(
                 "fs/writeFile requires valid base64 dataBase64: {err}"
@@ -97,6 +100,7 @@ impl FsRequestProcessor {
         &self,
         params: FsCreateDirectoryParams,
     ) -> Result<FsCreateDirectoryResponse, JSONRPCErrorError> {
+        rpc_guard::ensure_path_not_guarded(params.path.as_path())?;
         let path = PathUri::from_abs_path(&params.path);
         self.file_system()?
             .create_directory(
@@ -116,6 +120,7 @@ impl FsRequestProcessor {
         &self,
         params: FsGetMetadataParams,
     ) -> Result<FsGetMetadataResponse, JSONRPCErrorError> {
+        rpc_guard::ensure_path_not_guarded(params.path.as_path())?;
         let path = PathUri::from_abs_path(&params.path);
         let metadata = self
             .file_system()?
@@ -135,6 +140,7 @@ impl FsRequestProcessor {
         &self,
         params: FsReadDirectoryParams,
     ) -> Result<FsReadDirectoryResponse, JSONRPCErrorError> {
+        rpc_guard::ensure_path_not_guarded(params.path.as_path())?;
         let path = PathUri::from_abs_path(&params.path);
         let entries = self
             .file_system()?
@@ -157,6 +163,7 @@ impl FsRequestProcessor {
         &self,
         params: FsRemoveParams,
     ) -> Result<FsRemoveResponse, JSONRPCErrorError> {
+        rpc_guard::ensure_path_not_guarded(params.path.as_path())?;
         let path = PathUri::from_abs_path(&params.path);
         self.file_system()?
             .remove(
@@ -177,6 +184,8 @@ impl FsRequestProcessor {
         &self,
         params: FsCopyParams,
     ) -> Result<FsCopyResponse, JSONRPCErrorError> {
+        rpc_guard::ensure_path_not_guarded(params.source_path.as_path())?;
+        rpc_guard::ensure_path_not_guarded(params.destination_path.as_path())?;
         let source_path = PathUri::from_abs_path(&params.source_path);
         let destination_path = PathUri::from_abs_path(&params.destination_path);
         self.file_system()?
@@ -198,6 +207,7 @@ impl FsRequestProcessor {
         connection_id: ConnectionId,
         params: FsWatchParams,
     ) -> Result<FsWatchResponse, JSONRPCErrorError> {
+        rpc_guard::ensure_path_not_guarded(params.path.as_path())?;
         self.file_system()?;
         self.fs_watch_manager.watch(connection_id, params).await
     }

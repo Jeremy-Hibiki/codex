@@ -564,6 +564,47 @@ impl ToolRegistry {
             return Err(err);
         }
 
+        // Encrypted-skill guard: block or rewrite the call before any hook or
+        // approval sees it, so plaintext never reaches a reviewer surface.
+        if let Some(pre_tool_use_payload) = tool.pre_tool_use_payload(&invocation) {
+            match invocation.session.encrypted_skills_guard().before_tool(
+                pre_tool_use_payload.tool_name.name(),
+                &pre_tool_use_payload.tool_input,
+            ) {
+                crate::encrypted_skills_guard::GuardDecision::Blocked { message, .. } => {
+                    let err = FunctionCallError::RespondToModel(message);
+                    dispatch_trace.record_failed(&err);
+                    notify_tool_finish_if_unclaimed(
+                        &invocation,
+                        terminal_outcome_reached.as_deref(),
+                        ToolCallOutcome::Blocked,
+                    )
+                    .await;
+                    return Err(err);
+                }
+                crate::encrypted_skills_guard::GuardDecision::Updated(updated_input) => {
+                    match tool.with_updated_hook_input(invocation.clone(), updated_input) {
+                        Ok(updated_invocation) => {
+                            invocation = updated_invocation;
+                        }
+                        Err(err) => {
+                            dispatch_trace.record_failed(&err);
+                            notify_tool_finish_if_unclaimed(
+                                &invocation,
+                                terminal_outcome_reached.as_deref(),
+                                ToolCallOutcome::Failed {
+                                    handler_executed: false,
+                                },
+                            )
+                            .await;
+                            return Err(err);
+                        }
+                    }
+                }
+                crate::encrypted_skills_guard::GuardDecision::Allow => {}
+            }
+        }
+
         if let Some(pre_tool_use_payload) = tool.pre_tool_use_payload(&invocation) {
             match run_pre_tool_use_hooks(
                 &invocation.session,
@@ -643,6 +684,18 @@ impl ToolRegistry {
 
         let log_payload = tool_log_payload(&invocation.payload, &invocation.source);
 
+        // Redaction must wrap the tool output before any surface reads it:
+        // telemetry previews, response items, and hooks all route through the
+        // same value.
+        let redaction_runtime = Arc::clone(&invocation.session.services.encrypted_skills_runtime);
+        let redaction_session_id = invocation.session.thread_id.to_string();
+        let redaction_engaged = invocation
+            .turn
+            .agent_security
+            .as_ref()
+            .map(crate::agent_security::AgentSecurityContext::engaged)
+            .unwrap_or_else(|| redaction_runtime.is_engaged(&redaction_session_id));
+
         let result = otel
             .log_tool_result_with_tags(
                 &tool_name,
@@ -652,13 +705,32 @@ impl ToolRegistry {
                 &extra_trace_fields,
                 || handle_any_tool(tool.as_ref(), invocation.clone()),
                 |result| {
-                    (
-                        result.result.log_output(),
-                        result.result.success_for_logging(),
-                    )
+                    let preview = result.result.log_output();
+                    let preview = if redaction_engaged {
+                        crate::encrypted_skills_guard::redact_text_for(
+                            &redaction_runtime,
+                            &redaction_session_id,
+                            &preview,
+                        )
+                    } else {
+                        preview
+                    };
+                    (preview, result.result.success_for_logging())
                 },
             )
             .await;
+        let result = match result {
+            Ok(mut result) => {
+                result.result = Box::new(crate::encrypted_skills_guard::RedactingToolOutput {
+                    inner: result.result,
+                    runtime: Arc::clone(&redaction_runtime),
+                    session_id: redaction_session_id.clone(),
+                    engaged: redaction_engaged,
+                });
+                Ok(result)
+            }
+            Err(err) => Err(err),
+        };
         let success = match &result {
             Ok(result) => result.result.success_for_logging(),
             Err(_) => false,

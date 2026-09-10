@@ -604,6 +604,38 @@ impl Session {
         self.services.agent_control.session_id()
     }
 
+    /// Rehydrator for encrypted skill tokens scoped to this thread.
+    pub(crate) fn encrypted_skill_rehydrator(
+        &self,
+    ) -> crate::client_common::EncryptedSkillRehydrator {
+        crate::client_common::EncryptedSkillRehydrator {
+            runtime: Arc::clone(&self.services.encrypted_skills_runtime),
+            session_id: self.thread_id.to_string(),
+        }
+    }
+
+    /// Session-scoped encrypted-skill guard for this thread.
+    pub(crate) fn encrypted_skills_guard(
+        &self,
+    ) -> fm_encrypted_skills::session_guard::SessionGuard<'_> {
+        self.services
+            .encrypted_skills_runtime
+            .guard(self.thread_id.to_string())
+    }
+
+    /// Rewrites decrypted skill paths back to original skill paths in a
+    /// guardian approval request before a reviewer model sees it.
+    pub(crate) fn redact_guardian_request(
+        &self,
+        request: crate::guardian::GuardianApprovalRequest,
+    ) -> crate::guardian::GuardianApprovalRequest {
+        crate::encrypted_skills_guard::redact_guardian_request(
+            &self.services.encrypted_skills_runtime,
+            &self.thread_id.to_string(),
+            request,
+        )
+    }
+
     pub(crate) async fn originator(&self) -> String {
         let state = self.state.lock().await;
         state.session_configuration.originator.clone()
@@ -674,6 +706,18 @@ impl Session {
         git_enrichment_policy: GitEnrichmentPolicy,
         windows_sandbox_proxy_settings_mode: codex_sandboxing::WindowsSandboxProxySettingsMode,
     ) -> anyhow::Result<Arc<Self>> {
+        // Process-level encrypted-skill memory root: wipe stale decrypted
+        // directories once per process, then recreate with mode 0700.
+        let encrypted_skills_mem_root = fm_encrypted_skills::mem_root::resolve_default_mem_root();
+        if let Err(error) =
+            fm_encrypted_skills::mem_root::init_mem_root_once(encrypted_skills_mem_root.as_path())
+        {
+            tracing::warn!(
+                error = %error,
+                root = %encrypted_skills_mem_root.display(),
+                "failed to initialize encrypted-skill memory root; encrypted skills will fail to load"
+            );
+        }
         debug!(
             "Configuring session: model={}; provider={:?}",
             session_configuration
@@ -1390,6 +1434,22 @@ impl Session {
             let session_extension_data =
                 codex_extension_api::ExtensionData::new(session_id.to_string());
             session_extension_data.insert(analytics_events_client.clone());
+            let encrypted_skills_sdk =
+                fm_encrypted_skills::sdk::sdk_for(config.encrypted_skills.into_sdk());
+            let encrypted_skills_audit_path = config.encrypted_skills.audit_path();
+            let encrypted_skills_audit: Option<Arc<dyn fm_encrypted_skills::audit::AuditSink>> =
+                match fm_encrypted_skills::audit::shared_file_sink(encrypted_skills_audit_path.clone())
+                {
+                    Ok(sink) => Some(sink),
+                    Err(error) => {
+                        tracing::warn!(
+                            error = %error,
+                            path = %encrypted_skills_audit_path.display(),
+                            "failed to open encrypted-skill audit log; security events will not be persisted"
+                        );
+                        None
+                    }
+                };
             let mcp_resource_client = Arc::new(McpResourceClient::new(Arc::clone(&mcp_runtime)));
             let extension_metrics =
                 extension_metrics::from_session_telemetry(session_telemetry.clone());
@@ -1440,6 +1500,13 @@ impl Session {
                 guardian_rejection_circuit_breaker: Mutex::new(Default::default()),
                 runtime_handle: tokio::runtime::Handle::current(),
                 skills_service,
+                encrypted_skills_runtime:
+                    fm_encrypted_skills::runtime::EncryptedSkillRuntime::new_shared_with_audit(
+                        encrypted_skills_sdk,
+                        config.encrypted_skills.ttl.clone(),
+                        encrypted_skills_mem_root.clone(),
+                        encrypted_skills_audit,
+                    ),
                 agents_md_manager,
                 plugins_manager: Arc::clone(&plugins_manager),
                 mcp_manager: Arc::clone(&mcp_manager),
@@ -1499,6 +1566,14 @@ impl Session {
                 tool_search_handler_cache: Default::default(),
                 turn_environments: Arc::clone(&turn_environments),
             };
+            // Backstop sweep for long-lived processes: covers the idle window
+            // where the process stays up but receives no requests. A suspended
+            // process still needs the deployment's healthcheck/restart.
+            crate::encrypted_skills_periodic::spawn_periodic_sweep(
+                services.runtime_handle.clone(),
+                Arc::downgrade(&services.encrypted_skills_runtime),
+                crate::encrypted_skills_periodic::PERIODIC_SWEEP_INTERVAL,
+            );
             let (mcp_prewarm_tx, mcp_prewarm_rx) = async_channel::bounded(1);
             let sess = Arc::new(Session {
                 thread_id,

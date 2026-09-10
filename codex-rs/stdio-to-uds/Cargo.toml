@@ -20,6 +20,7 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 codex-uds = { workspace = true }
+debugoff = { workspace = true }
 tokio = { workspace = true, features = [
     "io-std",
     "io-util",

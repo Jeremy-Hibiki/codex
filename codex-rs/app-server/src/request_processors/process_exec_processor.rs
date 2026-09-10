@@ -3,6 +3,7 @@ use std::collections::hash_map::Entry;
 use std::sync::Arc;
 use std::time::Duration;
 
+use super::rpc_guard;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use codex_app_server_protocol::ClientResponsePayload;
@@ -71,6 +72,7 @@ impl ProcessExecRequestProcessor {
         request_id: ConnectionRequestId,
         params: ProcessSpawnParams,
     ) -> Result<(), JSONRPCErrorError> {
+        rpc_guard::ensure_not_engaged_unsandboxed()?;
         self.require_local_environment()?;
         let ProcessSpawnParams {
             command,
@@ -149,6 +151,19 @@ impl ProcessExecRequestProcessor {
         request_id: ConnectionRequestId,
         params: ProcessWriteStdinParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        // Stdin written to a running process is command text the spawn-time
+        // guard never inspected. A process spawned while no session was engaged
+        // survives into an engaged window, so re-check the decoded input here
+        // (closes the spawn/write TOCTOU).
+        if let Some(delta_b64) = params.delta_base64.as_deref()
+            && !delta_b64.is_empty()
+        {
+            let delta = STANDARD.decode(delta_b64).unwrap_or_default();
+            if !delta.is_empty() {
+                let text = String::from_utf8_lossy(&delta);
+                rpc_guard::ensure_command_not_guarded(&text)?;
+            }
+        }
         self.process_exec_manager
             .write_stdin(request_id, params)
             .await

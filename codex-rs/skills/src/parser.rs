@@ -1,3 +1,4 @@
+use crate::model::SkillEncryption;
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -17,6 +18,25 @@ struct SkillFrontmatter {
 struct SkillFrontmatterMetadata {
     #[serde(default, rename = "short-description")]
     short_description: Option<String>,
+    #[serde(default)]
+    encrypted: bool,
+    #[serde(default)]
+    encryption: Option<SkillEncryptionFrontmatter>,
+}
+
+/// Encryption metadata as written in `SKILL.md` frontmatter.
+#[derive(Debug, Default, Deserialize)]
+struct SkillEncryptionFrontmatter {
+    #[serde(default)]
+    version: Option<u64>,
+    #[serde(default)]
+    key_id: Option<String>,
+    #[serde(default)]
+    algorithm: Option<String>,
+    #[serde(default)]
+    mode: Option<String>,
+    #[serde(default)]
+    package: Option<String>,
 }
 
 /// Validated metadata parsed from a `SKILL.md` frontmatter block.
@@ -25,6 +45,11 @@ pub struct ParsedSkillFrontmatter {
     pub name: String,
     pub description: String,
     pub short_description: Option<String>,
+    /// Encryption metadata, when the frontmatter declares the skill encrypted.
+    ///
+    /// `Some` (possibly default-valued) means `metadata.encrypted: true` was
+    /// set; `None` means a plaintext skill.
+    pub encryption: Option<SkillEncryption>,
 }
 
 /// Error produced while parsing or validating `SKILL.md` metadata.
@@ -78,6 +103,35 @@ pub fn parse_skill_frontmatter_metadata(
         .as_deref()
         .map(sanitize_single_line)
         .filter(|value| !value.is_empty());
+    // `metadata.encrypted: true` is the authoritative marker; a missing or
+    // partial `metadata.encryption` block still yields default-valued metadata.
+    let encryption = parsed
+        .metadata
+        .encrypted
+        .then(|| parsed.metadata.encryption.unwrap_or_default())
+        .map(|encryption| SkillEncryption {
+            version: encryption.version,
+            key_id: encryption
+                .key_id
+                .as_deref()
+                .map(sanitize_single_line)
+                .filter(|value| !value.is_empty()),
+            algorithm: encryption
+                .algorithm
+                .as_deref()
+                .map(sanitize_single_line)
+                .filter(|value| !value.is_empty()),
+            mode: encryption
+                .mode
+                .as_deref()
+                .map(sanitize_single_line)
+                .filter(|value| !value.is_empty()),
+            package: encryption
+                .package
+                .as_deref()
+                .map(sanitize_single_line)
+                .filter(|value| !value.is_empty()),
+        });
 
     validate_len(&name, MAX_NAME_LEN, "name")?;
     if description.is_empty() {
@@ -88,6 +142,7 @@ pub fn parse_skill_frontmatter_metadata(
         name,
         description,
         short_description,
+        encryption,
     })
 }
 

@@ -75,6 +75,7 @@ policy:
                 allow_implicit_invocation: Some(false),
                 products: vec![Product::Codex, Product::Atlas],
             }),
+            encryption: None,
         }]
     );
     let atlas =

@@ -802,3 +802,72 @@ fn test_invocation(
         },
     }
 }
+
+struct TelemetryRedactionTestSdk;
+
+impl fm_encrypted_skills::sdk::EnvelopeSdk for TelemetryRedactionTestSdk {
+    fn decrypt_package(
+        &self,
+        _package_path: &std::path::Path,
+    ) -> Result<Vec<fm_encrypted_skills::sdk::PackageEntry>, fm_encrypted_skills::sdk::EnvelopeError>
+    {
+        Ok(vec![fm_encrypted_skills::sdk::PackageEntry {
+            rel_path: std::path::PathBuf::from("SKILL.md"),
+            contents: b"TOPSECRET-PLAINTEXT-CONTENT".to_vec(),
+        }])
+    }
+}
+
+#[test]
+fn telemetry_redaction_unrewrites_decrypted_paths_and_plaintext() {
+    let tmp = tempfile::tempdir().expect("temp dir");
+    let runtime = Arc::new(fm_encrypted_skills::runtime::EncryptedSkillRuntime::new(
+        Arc::new(TelemetryRedactionTestSdk),
+        fm_encrypted_skills::registry::TtlConfig::default(),
+        tmp.path().join("mem-root"),
+    ));
+    runtime
+        .load_or_register(
+            "t1",
+            "secret",
+            std::path::Path::new("/skills/secret.zip.enc"),
+        )
+        .expect("test sdk should decrypt the skill package");
+    let decrypted = runtime
+        .decrypted_dirs("t1")
+        .pop()
+        .expect("loaded skill should register a decrypted dir");
+    let mem_root = runtime.mem_root().to_string_lossy().into_owned();
+
+    let input = format!(
+        "ran {} and {} and {}",
+        decrypted.join("run.sh").to_string_lossy(),
+        mem_root,
+        "TOPSECRET-PLAINTEXT-CONTENT"
+    );
+    let redacted = super::redact_telemetry_text(&runtime, "t1", &input);
+
+    assert!(
+        !redacted.contains(decrypted.to_string_lossy().as_ref()),
+        "telemetry text must not contain the decrypted /dev/shm path: {redacted}"
+    );
+    assert!(
+        !redacted.contains(&mem_root),
+        "telemetry text must not contain the memory root: {redacted}"
+    );
+    assert!(
+        !redacted.contains("TOPSECRET-PLAINTEXT-CONTENT"),
+        "telemetry text must not contain known skill plaintext: {redacted}"
+    );
+    assert!(
+        redacted.contains("/skills/run.sh"),
+        "decrypted dir should unrewrite to the original skill path: {redacted}"
+    );
+
+    // Unengaged sessions pass telemetry text through untouched.
+    let plain = "nothing to redact";
+    assert_eq!(
+        super::redact_telemetry_text(&runtime, "other", plain),
+        plain
+    );
+}

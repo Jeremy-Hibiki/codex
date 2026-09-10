@@ -2750,6 +2750,10 @@ async fn try_run_sampling_request(
                         )
                         .await;
                     } else {
+                        // fm (M7): non-agent-message deltas bypass the
+                        // assistant-message redaction path; keep skill
+                        // plaintext out of client events.
+                        let delta = sess.encrypted_skills_guard().redact_text_streaming(&delta);
                         let event = AgentMessageContentDeltaEvent {
                             thread_id: sess.thread_id.to_string(),
                             turn_id: turn_context.sub_id.clone(),
@@ -2792,6 +2796,9 @@ async fn try_run_sampling_request(
                     if !active_item_is_streaming_to_client {
                         continue;
                     }
+                    // fm (M7): reasoning summaries can quote rehydrated skill
+                    // content; redact before the client sees them.
+                    let delta = sess.encrypted_skills_guard().redact_text_streaming(&delta);
                     let event = ReasoningContentDeltaEvent {
                         thread_id: sess.thread_id.to_string(),
                         turn_id: turn_context.sub_id.clone(),
@@ -2847,6 +2854,9 @@ async fn try_run_sampling_request(
                     )
                     .await;
                 }
+                // fm (M7): reasoning summaries can quote rehydrated skill
+                // content; redact before the client sees them.
+                let text = sess.encrypted_skills_guard().redact_text_streaming(&text);
                 let event = ReasoningContentDeltaEvent {
                     thread_id: sess.thread_id.to_string(),
                     turn_id: turn_context.sub_id.clone(),
@@ -2865,6 +2875,9 @@ async fn try_run_sampling_request(
                     if !active_item_is_streaming_to_client {
                         continue;
                     }
+                    // fm (M7): raw reasoning content can quote rehydrated
+                    // skill content; redact before the client sees it.
+                    let delta = sess.encrypted_skills_guard().redact_text_streaming(&delta);
                     let event = ReasoningRawContentDeltaEvent {
                         thread_id: sess.thread_id.to_string(),
                         turn_id: turn_context.sub_id.clone(),

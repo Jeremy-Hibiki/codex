@@ -89,6 +89,27 @@ pub fn before_tool(
     decision
 }
 
+/// The guarded directory set used for command classification: the session's
+/// decrypted directories, the runtime memory root, and the original skill
+/// directories. Shell commands are rewritten to decrypted paths before this
+/// set is consulted, while stdin input and script detection may see either
+/// form — one shared definition keeps all three judges consistent.
+fn guarded_paths_for_session(runtime: &EncryptedSkillRuntime, session_id: &str) -> Vec<String> {
+    let mut guarded: Vec<String> = runtime
+        .decrypted_dirs(session_id)
+        .into_iter()
+        .map(|dir| dir.to_string_lossy().into_owned())
+        .collect();
+    guarded.push(runtime.mem_root().to_string_lossy().into_owned());
+    guarded.extend(
+        runtime
+            .path_mappings(session_id)
+            .into_iter()
+            .map(|(_, original)| original.to_string_lossy().into_owned()),
+    );
+    guarded
+}
+
 fn guard_shell(
     runtime: &EncryptedSkillRuntime,
     session_id: &str,
@@ -118,12 +139,7 @@ fn guard_shell(
             };
         }
     }
-    let mut guarded_paths: Vec<String> = runtime
-        .decrypted_dirs(session_id)
-        .into_iter()
-        .map(|dir| dir.to_string_lossy().into_owned())
-        .collect();
-    guarded_paths.push(runtime.mem_root().to_string_lossy().into_owned());
+    let guarded_paths = guarded_paths_for_session(runtime, session_id);
     // Split at unquoted chain operators (`;`, `|`, `&&`, `&`) and judge each
     // segment independently. This closes the smuggle vector where a forbidden
     // read hides after an allowed execution (`bash run.sh; cat SKILL.md`).
@@ -190,12 +206,19 @@ fn guard_read(
         return GuardDecision::Allow;
     };
     // Match guard_shell semantics: block any path under the session's
-    // registered decrypted dirs or under the memory root (runtime root or the
-    // default constant), so unknown/other-session subpaths are also covered.
+    // registered decrypted dirs, under the memory root, or under the memory
+    // root's parent `/dev/shm` (any reference there can reach decrypted
+    // storage — `find /dev/shm` lists the real plaintext tree).
     let mut guarded = runtime.decrypted_dirs(session_id);
     guarded.push(runtime.mem_root().to_path_buf());
-    guarded.push(PathBuf::from(paths::MEM_ROOT));
-    if path_under_dirs(file_path, &guarded) {
+    guarded.push(PathBuf::from(paths::MEM_ROOT_PARENT));
+    // Alias shapes (`/dev/./shm`, `/run/shm`) hold no literal guarded prefix;
+    // check the lexically normalized path as well. Images cannot be
+    // text-redacted, so the path gate is the only line of defense here.
+    let normalized = paths::normalize_path_token(file_path);
+    if path_under_dirs(file_path, &guarded)
+        || (normalized != file_path && path_under_dirs(&normalized, &guarded))
+    {
         GuardDecision::Blocked {
             message: BLOCK_MESSAGE.to_string(),
             reason: "file_view",
@@ -278,20 +301,7 @@ pub fn guard_stdin_input(
             };
         }
     }
-    let mut guarded_paths: Vec<String> = runtime
-        .decrypted_dirs(session_id)
-        .into_iter()
-        .map(|dir| dir.to_string_lossy().into_owned())
-        .collect();
-    guarded_paths.push(runtime.mem_root().to_string_lossy().into_owned());
-    // Include original skill paths too: a shell spawned with sandbox binds
-    // active sees the original path bound to the decrypted directory.
-    guarded_paths.extend(
-        runtime
-            .path_mappings(session_id)
-            .into_iter()
-            .map(|(_, original)| original.to_string_lossy().into_owned()),
-    );
+    let guarded_paths = guarded_paths_for_session(runtime, session_id);
     for segment in paths::split_command_segments(chars) {
         if paths::command_references_dir(&segment, &guarded_paths) {
             let script_execution = paths::is_script_execution(&segment);
@@ -323,18 +333,7 @@ pub fn is_skill_script_execution(
     if !runtime.is_engaged(session_id) {
         return false;
     }
-    let mut guarded_paths: Vec<String> = runtime
-        .decrypted_dirs(session_id)
-        .into_iter()
-        .map(|dir| dir.to_string_lossy().into_owned())
-        .collect();
-    guarded_paths.push(runtime.mem_root().to_string_lossy().into_owned());
-    guarded_paths.extend(
-        runtime
-            .path_mappings(session_id)
-            .into_iter()
-            .map(|(_, original)| original.to_string_lossy().into_owned()),
-    );
+    let guarded_paths = guarded_paths_for_session(runtime, session_id);
     let rewritten = runtime.rewrite_paths(session_id, command);
     paths::split_command_segments(&rewritten)
         .into_iter()
@@ -1045,8 +1044,24 @@ pub fn redact_response_item(
         | ResponseInputItem::CustomToolCallOutput { output, .. } => {
             redact_payload(runtime, session_id, output);
         }
-        ResponseInputItem::McpToolCallOutput { .. }
-        | ResponseInputItem::ToolSearchOutput { .. } => {}
+        ResponseInputItem::McpToolCallOutput { output, .. } => {
+            // Same treatment as FunctionCallOutput: every text-bearing field
+            // (content items, structured content, metadata) is redacted.
+            for value in &mut output.content {
+                redact_json(runtime, session_id, value);
+            }
+            if let Some(structured_content) = &mut output.structured_content {
+                redact_json(runtime, session_id, structured_content);
+            }
+            if let Some(meta) = &mut output.meta {
+                redact_json(runtime, session_id, meta);
+            }
+        }
+        ResponseInputItem::ToolSearchOutput { tools, .. } => {
+            for tool in tools {
+                redact_json(runtime, session_id, tool);
+            }
+        }
     }
 }
 

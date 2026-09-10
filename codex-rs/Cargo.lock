@@ -4758,6 +4758,7 @@ dependencies = [
  "diffy",
  "dirs",
  "dunce",
+ "fm-license",
  "futures",
  "http 1.4.0",
  "image",

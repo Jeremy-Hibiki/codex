@@ -6,6 +6,7 @@ use app_test_support::create_mock_responses_server_sequence_unchecked;
 use codex_app_server_protocol::AskForApproval;
 use codex_app_server_protocol::CommandExecParams;
 use codex_app_server_protocol::FsReadFileParams;
+use codex_app_server_protocol::FsWriteFileParams;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::ProcessSpawnParams;
 use codex_app_server_protocol::RequestId;
@@ -350,6 +351,36 @@ async fn rpc_guard_blocks_config_mutation_when_engaged() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rpc_guard_blocks_config_file_write_when_engaged() -> Result<()> {
+    let (mut mcp, _server, codex_home, _workspace, _thread_id) = build_engaged_server().await?;
+
+    let request_id = mcp
+        .send_fs_write_file_request(FsWriteFileParams {
+            path: AbsolutePathBuf::try_from(codex_home.path().join("config.toml"))?,
+            data_base64: "bW9kZWwgPSAiZXZpbCI=".to_string(),
+        })
+        .await?;
+    assert_eq!(
+        read_error_message(&mut mcp, request_id).await?,
+        CONFIG_MUTATION_POLICY_ERROR
+    );
+
+    let request_id = mcp
+        .send_raw_request(
+            "externalAgentConfig/import",
+            Some(serde_json::json!({ "migrationItems": [] })),
+        )
+        .await?;
+    assert_eq!(
+        read_error_message(&mut mcp, request_id).await?,
+        CONFIG_MUTATION_POLICY_ERROR
+    );
+
+    wait_for_turn_completed(&mut mcp).await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn rpc_guard_allows_config_mutation_when_unengaged() -> Result<()> {
     let server = create_mock_responses_server_sequence_unchecked(Vec::new()).await;
     let codex_home = TempDir::new()?;
@@ -367,6 +398,16 @@ async fn rpc_guard_allows_config_mutation_when_unengaged() -> Result<()> {
         .await?;
     let message = read_error_message(&mut mcp, request_id).await?;
     assert_ne!(message, CONFIG_MUTATION_POLICY_ERROR);
+
+    // Guarded-name config files under codex_home stay writable while unengaged.
+    let request_id = mcp
+        .send_fs_write_file_request(FsWriteFileParams {
+            path: AbsolutePathBuf::try_from(codex_home.path().join("requirements.toml"))?,
+            data_base64: "a2V5ID0gInZhbHVlIg==".to_string(),
+        })
+        .await?;
+    let _: codex_app_server_protocol::FsWriteFileResponse =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
 
     Ok(())
 }

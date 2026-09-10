@@ -22,8 +22,13 @@ impl EnvelopeSdk for TestSdk {
     }
 }
 
+// These tests assert on the process-global engagement registry, so they must
+// not run concurrently with each other (they flip the shared any_engaged bit).
+static RPC_TESTS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn rpc_guard_blocks_guarded_paths_when_engaged() {
+    let _serial = RPC_TESTS_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let tmp = tempfile::tempdir().unwrap();
     let runtime = Arc::new(EncryptedSkillRuntime::new_shared(
         Arc::new(TestSdk),
@@ -61,6 +66,7 @@ fn rpc_guard_blocks_guarded_paths_when_engaged() {
 
 #[test]
 fn rpc_guard_allows_unengaged_paths() {
+    let _serial = RPC_TESTS_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let tmp = tempfile::tempdir().unwrap();
     let runtime = Arc::new(EncryptedSkillRuntime::new_shared(
         Arc::new(TestSdk),

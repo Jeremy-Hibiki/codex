@@ -671,7 +671,14 @@ async fn apply_external_guardrail(session: &Session, request: &mut TurnInputRequ
             })
             .collect::<Vec<_>>()
             .join("\n"),
-        SubmittedTurnInput::ResponseItem(_) | SubmittedTurnInput::InterAgentCommunication(_) => {
+        SubmittedTurnInput::InterAgentCommunication(communication) => communication.content.clone(),
+        SubmittedTurnInput::ResponseItem(item) => {
+            // fm: injected response items do not pass the guardrail text scan;
+            // log the channel use so unvetted input stays auditable.
+            tracing::info!(
+                item_id = item.id().map(codex_protocol::ResponseItemId::as_str),
+                "guardrail scan does not cover injected response items"
+            );
             return;
         }
     };

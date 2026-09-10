@@ -61,10 +61,56 @@ pub const TEST_FORCE_LOST_ENV_VAR: &str = "FMSH_CODEX_LIC_TEST_FORCE_LOST";
 
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
 pub fn is_active() -> bool {
+    warn_stub_once();
     true
 }
 
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
 pub fn ensure_active() -> Result<(), anyhow::Error> {
+    warn_stub_once();
     Ok(())
+}
+
+/// Set after the no-op-stub warning was emitted once. Declared outside the
+/// stub cfg so unit tests on glibc hosts can exercise the latch logic too.
+#[cfg(any(
+    test,
+    not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))
+))]
+static STUB_WARNING_EMITTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Warns once per process that the license gate is a no-op on this platform.
+///
+/// Non-glibc builds cannot link the FMSH SDK, so [`is_active`] always returns
+/// true and [`ensure_active`] always succeeds; the missing gate must be loud
+/// instead of silent. Both `tracing::warn` (for log collectors) and stderr
+/// (guaranteed visible even without a tracing subscriber installed) fire.
+#[cfg(any(
+    test,
+    not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))
+))]
+fn warn_stub_once() {
+    use std::sync::atomic::Ordering;
+
+    if STUB_WARNING_EMITTED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    let message = "FMSH license gate disabled: this build targets a platform without the FMSH LicenseService SDK; is_active() always returns true";
+    tracing::warn!("{message}");
+    eprintln!("warning: {message}");
+}
+
+#[cfg(test)]
+mod stub_tests {
+    use std::sync::atomic::Ordering;
+
+    use super::{STUB_WARNING_EMITTED, warn_stub_once};
+
+    #[test]
+    fn stub_warning_latches_after_first_call() {
+        warn_stub_once();
+        warn_stub_once();
+        assert!(STUB_WARNING_EMITTED.load(Ordering::Relaxed));
+    }
 }

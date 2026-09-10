@@ -62,5 +62,19 @@
 - write_stdin 不触发 PreToolUse hooks 是上游语义(fork 的 stdin 守卫需自行接线,即 F1-sec)。
 - bwrap 全盘只读分支的 `--bind-try /dev/shm` 疑为上游所有;full-read 分支带 fm 注释的为 fork 增补。
 
-### 修复状态
-- F1:待开始 F2:待开始 F3:待开始 F4:待开始 F5:待开始
+### 修复状态(Round 1 完成)
+- F1(fm guard/paths):F2-sec ✓(paths 归一化:点段/`/run/shm`/`$VAR`;guard_read 加 MEM_ROOT_PARENT)、M8 ✓(McpToolCallOutput/ToolSearchOutput 脱敏)、L3 ✓(guarded_paths_for_session 统一)、L1 ✓(0600)。测试 6 新增全过;套件 211/211(serial)。
+- F2(core tools):F1-sec ✓(write_stdin 接 guard_stdin_input,Blocked 拒绝)、M5 ✓(D9 改为全分段均为 skill-script 才放行,混合命令不再免审)、M6 ✓(I6 判据改 sandbox_requested)、M10 ✓(遥测 log_payload+preview 走 unrewrite→redact)、M11 ✓(V1 spec expose=false 并真正门控 model 属性;config 默认 false)。新增 6 测试全过;core tools 442 过。
+- F3(core 请求/compaction):F3-sec ✓(inference/v1-compaction trace 记录 rehydrate 前 token 版;v2 路径本就安全)、F4-sec ✓(compaction drain 入 rollout 前脱敏)、F6-sec ✓(tui/exec 提交边界 ensure_active,FORCE_LOST 拒绝启动)、M4 ✓(InterAgentCommunication 文本过 guardrail;ResponseItem 注入记审计)、M7 ✓(非 AgentMessage delta + Reasoning 三种 delta 过 redact_text_streaming)。新增 6 测试全过。
+- F4(app-server):F5-sec ✓(timeline 路径挂 hide_reasoning)、M1 ✓(补 Queue/Compact/RealtimeAppend* 变体)、M2 ✓(engaged 时 ExternalAgentConfigImport 拒、fs/writeFile 写 codex_home 配置拒;unengaged 不变)、M9 ✓(guardian request 的 cwd/guardian_cwd/justification 脱敏)。新增 4 测试全过。
+- F5(license):M3 ✓(check_in_now 后 mark_license_lost,门禁即时关闭;幂等)、F7-sec ✓(非 glibc stub 首次调用告警一次)、M11 ✓(config 默认 false 断言钉死;spec_plan/multi_agents_spec V1 部分由 F2 完成)。
+
+### Round 1 附带修复
+- fm-encrypted-skills rpc_tests 两个用例断言进程级 any_engaged,并行必炸(基线即有,40 次中 26 次):加 RPC_TESTS_LOCK 串行化。
+- config_tests `multi_agent_v2_exposes_model_overrides_by_default`:上游旧默认(true)的测试 → 按 D5 改为断言默认 false + 显式开启时门禁机制仍工作。
+- M7③ 残留:`tools/events.rs` dispatch 路径的 "unsupported call" 回显仍记录未脱敏错误文本(F2 所有权外) → **Round 2 处理**。
+
+### Round 1 验证
+- workspace check 0 error;clippy(全部涉及 crate)0 error;fmt 干净
+- fm-encrypted-skills 211/211(serial);fm-license 12/12(bypass,skip child);codex-core lib 2467 过/10 败(7 基线 + 3 负载 flake,隔离全过);codex-app-server 失败集 ⊆ 基线
+- tui composer 333 过;codex-exec 78 过

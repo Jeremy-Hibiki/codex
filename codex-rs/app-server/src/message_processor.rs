@@ -1004,6 +1004,11 @@ impl MessageProcessor {
                     | ClientRequest::TurnSteer { .. }
                     | ClientRequest::ThreadInjectItems { .. }
                     | ClientRequest::ThreadRealtimeStart { .. }
+                    | ClientRequest::ThreadQueueStart { .. }
+                    | ClientRequest::ThreadCompactStart { .. }
+                    | ClientRequest::ThreadRealtimeAppendAudio { .. }
+                    | ClientRequest::ThreadRealtimeAppendText { .. }
+                    | ClientRequest::ThreadRealtimeAppendSpeech { .. }
                     | ClientRequest::ReviewStart { .. }
             )
         {

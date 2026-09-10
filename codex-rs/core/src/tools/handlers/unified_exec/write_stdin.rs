@@ -79,6 +79,16 @@ impl WriteStdinHandler {
         };
 
         let args: WriteStdinArgs = parse_arguments(&arguments)?;
+        // fm F1-sec: `write_stdin` never runs a PreToolUse hook (empty writes
+        // are polls), so interactive stdin bypasses the shell guard wired into
+        // the registry. Guard the written text directly: an engaged session
+        // must not read decrypted skill content through a running shell.
+        if let crate::encrypted_skills_guard::GuardDecision::Blocked { message, .. } = session
+            .encrypted_skills_guard()
+            .guard_stdin_input(&args.chars)
+        {
+            return Err(FunctionCallError::RespondToModel(message));
+        }
         let context =
             UnifiedExecContext::new(session.clone(), step_context, cancellation_token, call_id);
         let response = session

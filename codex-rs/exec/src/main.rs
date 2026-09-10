@@ -40,6 +40,9 @@ fn main() -> anyhow::Result<()> {
         // Helper dispatches (apply_patch, sandbox) exit inside
         // `arg0_dispatch_or_else` before this closure runs.
         let _license_guard = fm_license::init_entry()?;
+        // Request boundary: if the runtime heartbeat lost the license, refuse
+        // to start the run (see `fm-license` lib.rs documentation).
+        fm_license::ensure_active()?;
         // Merge root-level overrides into inner CLI struct so downstream logic remains unchanged.
         let mut inner = top_cli.inner;
         inner

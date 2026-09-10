@@ -144,6 +144,49 @@ fn command_references_parent_directory() {
 }
 
 #[test]
+fn command_references_lexical_path_aliases() {
+    let dirs = vec!["/dev/shm/fm-agent-security/fm_skill_security_abc".to_string()];
+    // 点段与符号链接别名不含字面 `/dev/shm`，但词法归一后必须命中。
+    for command in [
+        "cat /dev/shm/./fm-agent-security/p1/fm_skill_security_abc/SKILL.md",
+        "cat /dev//shm/fm-agent-security/p1/fm_skill_security_abc/SKILL.md",
+        "cat /run/shm/fm-agent-security/p1/fm_skill_security_abc/SKILL.md",
+        "cat /dev/shm/fm-agent-security/./p1/fm_skill_security_abc/SKILL.md",
+        // `$VAR` 开头的路径无法词法解析，保守视为可能命中。
+        "cat $ROOT/fm_skill_security_abc/SKILL.md",
+    ] {
+        assert!(
+            command_references_dir(command, &dirs),
+            "must flag lexical alias: {command}"
+        );
+    }
+    // 归一不得扩大边界匹配。
+    assert!(!command_references_dir("cat /dev/shmx/foo", &dirs));
+    assert!(!command_references_dir("cat /run/shmx/foo", &dirs));
+    assert!(!command_references_dir("bash /tmp/run.sh", &dirs));
+    // 非路径形状的变量引用（不含 `/`）不视为路径引用。
+    assert!(!command_references_dir("echo $HOME", &dirs));
+}
+
+#[test]
+fn script_execution_blocks_alias_io_channels() {
+    let dir = format!("{MEM_ROOT}/p1/fm_skill_security_abc");
+    let guarded = vec![dir.clone()];
+    // 点段别名使重定向目标不含字面 guarded 目录。
+    let dot_alias = format!("/dev/shm/./fm-agent-security/p1/fm_skill_security_abc");
+    let cases = [
+        format!("bash {dir}/scripts/build.sh < {dot_alias}/SKILL.md"),
+        format!("bash {dir}/scripts/build.sh \"$(cat {dot_alias}/SKILL.md)\""),
+    ];
+    for command in cases {
+        assert!(
+            !script_execution_avoids_guarded_io(&command, &guarded),
+            "alias-shaped guarded io channel must be blocked: {command}"
+        );
+    }
+}
+
+#[test]
 fn split_at_chain_operators() {
     for (command, expected) in [
         ("cat /a; cat /b", vec!["cat /a", "cat /b"]),

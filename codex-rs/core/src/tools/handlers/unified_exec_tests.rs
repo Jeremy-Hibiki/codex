@@ -606,3 +606,85 @@ async fn write_stdin_post_tool_use_payload_keeps_parallel_session_metadata_separ
         ]
     );
 }
+
+struct DecryptionTestSdk;
+
+impl fm_encrypted_skills::sdk::EnvelopeSdk for DecryptionTestSdk {
+    fn decrypt_package(
+        &self,
+        _package_path: &std::path::Path,
+    ) -> Result<Vec<fm_encrypted_skills::sdk::PackageEntry>, fm_encrypted_skills::sdk::EnvelopeError>
+    {
+        Ok(vec![fm_encrypted_skills::sdk::PackageEntry {
+            rel_path: std::path::PathBuf::from("SKILL.md"),
+            contents: b"# Encrypted skill".to_vec(),
+        }])
+    }
+}
+
+/// Installs a working encrypted-skills runtime and loads one skill for the
+/// session's thread, mirroring `crate::encrypted_skills_guard` test fixtures.
+fn engaged_encrypted_skills_session(
+    session: &mut crate::session::session::Session,
+    tmp: &tempfile::TempDir,
+) -> Arc<fm_encrypted_skills::runtime::EncryptedSkillRuntime> {
+    let runtime = fm_encrypted_skills::runtime::EncryptedSkillRuntime::new(
+        Arc::new(DecryptionTestSdk),
+        fm_encrypted_skills::registry::TtlConfig::default(),
+        tmp.path().join("mem-root"),
+    );
+    runtime
+        .load_or_register(
+            &session.thread_id.to_string(),
+            "secret",
+            std::path::Path::new("/skills/secret.zip.enc"),
+        )
+        .expect("test sdk should decrypt the skill package");
+    let runtime = Arc::new(runtime);
+    session.services.encrypted_skills_runtime = Arc::clone(&runtime);
+    runtime
+}
+
+#[tokio::test]
+async fn write_stdin_rejects_reads_of_decrypted_skill_paths_when_engaged() {
+    let (mut session, turn) = make_session_and_context().await;
+    let tmp = tempfile::tempdir().expect("temp dir");
+    let runtime = engaged_encrypted_skills_session(&mut session, &tmp);
+    let session = Arc::new(session);
+    let turn = Arc::new(turn);
+    let decrypted = runtime
+        .decrypted_dirs(&session.thread_id.to_string())
+        .pop()
+        .expect("loaded skill should register a decrypted dir");
+
+    let write_stdin = WriteStdinHandler;
+    for chars in [
+        "cat /skills/SKILL.md".to_string(),
+        format!("cat {}/SKILL.md", decrypted.to_string_lossy()),
+    ] {
+        let invocation = ToolInvocation {
+            session: Arc::clone(&session),
+            step_context: StepContext::for_test(Arc::clone(&turn)),
+            turn: Arc::clone(&turn),
+            cancellation_token: tokio_util::sync::CancellationToken::new(),
+            tracker: Arc::new(Mutex::new(TurnDiffTracker::new())),
+            call_id: "write-stdin-call".to_string(),
+            tool_name: codex_tools::ToolName::plain("write_stdin"),
+            source: ToolCallSource::Direct,
+            payload: ToolPayload::Function {
+                arguments: serde_json::json!({ "session_id": 45, "chars": chars }).to_string(),
+            },
+        };
+
+        match write_stdin.handle(invocation).await {
+            Ok(_) => {
+                panic!("engaged stdin read of decrypted skill path must be rejected: {chars}")
+            }
+            Err(FunctionCallError::RespondToModel(message)) => assert!(
+                message.contains(fm_encrypted_skills::guard::BLOCK_MESSAGE),
+                "expected guard rejection for {chars}, got: {message}"
+            ),
+            Err(other) => panic!("expected guard rejection for {chars}, got: {other:?}"),
+        }
+    }
+}

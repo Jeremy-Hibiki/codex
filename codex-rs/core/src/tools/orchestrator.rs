@@ -307,9 +307,12 @@ impl ToolOrchestrator {
         };
         // Product policy (I6): an engaged encrypted-skill session must execute
         // under a sandbox, so decrypted plaintext never runs unsandboxed.
+        // fm M6: consult `sandbox_requested`, not the selected wrapper —
+        // executor-managed sandboxes (remote environments, shell snapshots)
+        // leave `initial_sandbox` unset even though execution is sandboxed.
         if let Err(message) = fm_encrypted_skills::sandbox_policy::ensure_encrypted_skill_sandbox(
             tool_ctx.session.encrypted_skills_guard().is_engaged(),
-            initial_sandbox != SandboxType::None,
+            sandbox_requested,
             tool_ctx
                 .step_context
                 .turn
@@ -622,3 +625,7 @@ fn grant_encrypted_skill_read_access(
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "orchestrator_tests.rs"]
+mod tests;

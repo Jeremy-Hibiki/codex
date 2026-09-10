@@ -25,6 +25,7 @@ use codex_protocol::items::McpToolCallItem;
 use codex_protocol::items::McpToolCallStatus;
 use codex_protocol::items::TurnItem;
 use codex_protocol::items::WebSearchItem;
+use codex_protocol::mcp::CallToolResult;
 use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputBody;
@@ -458,6 +459,28 @@ fn guards_view_image_paths() {
         &json!({ "path": "/tmp/workspace/image.png" }),
     );
     assert!(matches!(decision, GuardDecision::Allow));
+}
+
+#[test]
+fn guards_view_image_mem_root_parent_paths() {
+    let (runtime, _tmp) = loaded_runtime();
+    for path in [
+        "/dev/shm/other/image.png",
+        "/dev/shm",
+        // 点段别名不含字面 `/dev/shm`，词法归一后必须命中。
+        "/dev/./shm/other/image.png",
+    ] {
+        let decision = before_tool_with_runtime(
+            &runtime,
+            "t1",
+            VIEW_IMAGE_TOOL_NAME,
+            &json!({ "path": path }),
+        );
+        assert!(
+            matches!(decision, GuardDecision::Blocked { .. }),
+            "view_image under the mem-root parent must be blocked: {path}"
+        );
+    }
 }
 
 #[test]
@@ -1419,6 +1442,49 @@ fn redact_payload_response_item_and_json_redact_paths() {
 }
 
 #[test]
+fn redacts_mcp_tool_call_and_tool_search_outputs() {
+    let (runtime, _tmp) = loaded_runtime();
+    let dir = runtime.decrypted_dirs("t1")[0]
+        .to_string_lossy()
+        .into_owned();
+
+    let mut mcp_item = ResponseInputItem::McpToolCallOutput {
+        call_id: "call-1".to_string(),
+        output: CallToolResult {
+            content: vec![json!({ "type": "text", "text": format!("script at {dir}/run.sh") })],
+            structured_content: Some(json!({ "path": format!("{dir}/SKILL.md") })),
+            is_error: None,
+            meta: None,
+        },
+    };
+    redact_response_item(&runtime, "t1", &mut mcp_item);
+    let ResponseInputItem::McpToolCallOutput { output, .. } = mcp_item else {
+        panic!("expected mcp tool call output");
+    };
+    let serialized = serde_json::to_string(&output).unwrap();
+    assert!(
+        !serialized.contains(&dir),
+        "mcp tool call output must be redacted: {serialized}"
+    );
+
+    let mut search_item = ResponseInputItem::ToolSearchOutput {
+        call_id: "search-1".to_string(),
+        status: "completed".to_string(),
+        execution: "client".to_string(),
+        tools: vec![json!({ "description": format!("reads {dir}/SKILL.md") })],
+    };
+    redact_response_item(&runtime, "t1", &mut search_item);
+    let ResponseInputItem::ToolSearchOutput { tools, .. } = search_item else {
+        panic!("expected tool search output");
+    };
+    let serialized = serde_json::to_string(&tools).unwrap();
+    assert!(
+        !serialized.contains(&dir),
+        "tool search output must be redacted: {serialized}"
+    );
+}
+
+#[test]
 fn blocks_bypass_shaped_commands() {
     // Corpus from the tree-sitter differential suite (`paths_tests.rs`):
     // shell shapes that attempt to hide a guarded path behind quoting,
@@ -1455,6 +1521,33 @@ fn blocks_bypass_shaped_commands() {
         assert!(
             matches!(decision, GuardDecision::Blocked { .. }),
             "bypass-shaped command must be blocked: {command}"
+        );
+    }
+}
+
+#[test]
+fn blocks_alias_normalized_guarded_reads() {
+    let (runtime, _tmp) = loaded_runtime();
+    let dir = runtime.decrypted_dirs("t1")[0]
+        .to_string_lossy()
+        .into_owned();
+    // 点段别名使命令文本不含字面 decrypted 目录前缀。
+    let dot_alias = dir.replace("/mem-root/", "/./mem-root/");
+    let cases = [
+        format!("cat {dot_alias}/SKILL.md"),
+        // 点段别名引用 /dev/shm 父目录。
+        "cat /dev/./shm/p1/fm_skill_x/SKILL.md".to_string(),
+        // /run/shm 是 /dev/shm 的符号链接。
+        "cat /run/shm/p1/fm_skill_x/SKILL.md".to_string(),
+        // `$VAR` 开头的路径保守视为可能命中。
+        "cat $ROOT/fm_skill_x/SKILL.md".to_string(),
+    ];
+    for command in cases {
+        let decision =
+            before_tool_with_runtime(&runtime, "t1", "exec_command", &json!({ "cmd": command }));
+        assert!(
+            matches!(decision, GuardDecision::Blocked { .. }),
+            "alias-shaped guarded read must be blocked: {command}"
         );
     }
 }

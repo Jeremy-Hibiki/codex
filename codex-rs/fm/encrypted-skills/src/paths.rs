@@ -60,12 +60,14 @@ fn unquote_token(token: &str) -> String {
 
 fn collect_literal_tokens(node: Node, src: &str, out: &mut Vec<String>) {
     // Literal-bearing nodes: unquoted `word`, double-quoted `string`,
-    // single-quoted `raw_string`, their `string_content`, and heredoc bodies.
+    // single-quoted `raw_string`, their `string_content`, heredoc bodies, and
+    // `concatenation` (word+expansion juxtaposition, e.g. `$ROOT/x`, whose
+    // full text exposes variable-led path shapes).
     // Comments, operators, expansions and redirection syntax carry no literal
     // path and are deliberately excluded.
     if matches!(
         node.kind(),
-        "word" | "string" | "raw_string" | "string_content" | "heredoc_body"
+        "word" | "string" | "raw_string" | "string_content" | "heredoc_body" | "concatenation"
     ) {
         out.push(unquote_token(node_text(node, src)));
     }
@@ -110,7 +112,74 @@ fn is_top_level(node: Node) -> bool {
 }
 
 fn contains_guarded(text: &str, guarded: &[String]) -> bool {
-    text.contains(MEM_ROOT) || guarded.iter().any(|dir| text.contains(dir.as_str()))
+    if text.contains(MEM_ROOT) || guarded.iter().any(|dir| text.contains(dir.as_str())) {
+        return true;
+    }
+    // Alias shapes (`/dev/./shm`, `/run/shm`) hold no literal guarded prefix;
+    // fall back to the lexically normalized form of each path-like word.
+    text.split_whitespace().any(|word| {
+        let normalized = normalize_path_token(word);
+        normalized != word
+            && (normalized.contains(MEM_ROOT)
+                || guarded.iter().any(|dir| normalized.contains(dir.as_str())))
+    })
+}
+
+/// Lexically normalizes an absolute path for guarded-prefix matching: drops
+/// empty and `.` components and maps the `/run/shm` symlink prefix onto
+/// `/dev/shm`. Only absolute paths are normalized, so relative words and
+/// URLs (`http://...`) pass through unchanged.
+pub(crate) fn normalize_path_token(token: &str) -> String {
+    if !token.starts_with('/') {
+        return token.to_string();
+    }
+    let mut components: Vec<&str> = token
+        .split('/')
+        .filter(|component| !component.is_empty() && *component != ".")
+        .collect();
+    if components.len() >= 2 && components[0] == "run" && components[1] == "shm" {
+        components[0] = "dev";
+        components[1] = "shm";
+    }
+    format!("/{}", components.join("/"))
+}
+
+/// A literal token led by a variable expansion (`$VAR/...`) cannot be
+/// resolved lexically: the variable may hold a guarded path at runtime, so
+/// the token is conservatively treated as a guarded reference. Tokens without
+/// a `/` are not path-shaped and are never flagged.
+fn is_variable_led_path(token: &str) -> bool {
+    token.starts_with('$') && token.contains('/')
+}
+
+/// True when a literal path token references the memory root, its parent, or
+/// any known decrypted dir, matching both the raw text and its lexical
+/// normalization (dot segments, `//`, `/run/shm` aliases).
+fn literal_token_references_guarded(token: &str, dirs: &[String]) -> bool {
+    if is_variable_led_path(token) {
+        return true;
+    }
+    if contains_path_prefix(token, MEM_ROOT_PARENT)
+        || token.contains(MEM_ROOT)
+        || dirs.iter().any(|dir| token.contains(dir.as_str()))
+    {
+        return true;
+    }
+    let normalized = normalize_path_token(token);
+    normalized != token
+        && (contains_path_prefix(&normalized, MEM_ROOT_PARENT)
+            || normalized.contains(MEM_ROOT)
+            || dirs.iter().any(|dir| normalized.contains(dir.as_str())))
+}
+
+/// Collapses `/./` dot segments so the legacy fallback scanner sees the same
+/// normalized path text as the tree-sitter implementation.
+fn collapse_dot_segments(text: &str) -> String {
+    let mut out = text.to_string();
+    while out.contains("/./") {
+        out = out.replace("/./", "/");
+    }
+    out
 }
 
 /// Replaces every occurrence of each original directory with its decrypted
@@ -231,6 +300,9 @@ pub fn script_execution_avoids_guarded_io(command: &str, guarded: &[String]) -> 
 /// Legacy hand-written IO-channel scanner, kept as the fallback when the
 /// command cannot be parsed by tree-sitter.
 pub(crate) fn legacy_script_execution_avoids_guarded_io(command: &str, guarded: &[String]) -> bool {
+    // Dot-segment aliases would evade the char-level prefix matching below;
+    // scan the lexically collapsed text instead.
+    let command = &collapse_dot_segments(command);
     let chars: Vec<char> = command.chars().collect();
     let mut index = 0usize;
     let mut single_quote = false;
@@ -295,7 +367,7 @@ pub(crate) fn legacy_script_execution_avoids_guarded_io(command: &str, guarded: 
                     end += 1;
                 }
                 let target = redirect_target(&chars, end);
-                if guarded.iter().any(|dir| target.contains(dir.as_str())) {
+                if contains_guarded(&target, guarded) {
                     return false;
                 }
                 index = end;
@@ -428,25 +500,29 @@ pub fn command_references_dir(cmd: &str, decrypted_dirs: &[String]) -> bool {
     }
     let mut tokens = Vec::new();
     collect_literal_tokens(tree.root_node(), cmd, &mut tokens);
-    tokens.iter().any(|token| {
-        contains_path_prefix(token, MEM_ROOT_PARENT)
-            || token.contains(MEM_ROOT)
-            || decrypted_dirs
-                .iter()
-                .any(|dir| token.contains(dir.as_str()))
-    })
+    tokens
+        .iter()
+        .any(|token| literal_token_references_guarded(token, decrypted_dirs))
 }
 
 /// Legacy substring/prefix scanner, kept as the fallback when the command
 /// cannot be parsed by tree-sitter.
 pub(crate) fn legacy_command_references_dir(cmd: &str, decrypted_dirs: &[String]) -> bool {
-    if contains_path_prefix(cmd, MEM_ROOT_PARENT) {
+    if contains_path_prefix(cmd, MEM_ROOT_PARENT)
+        || cmd.contains(MEM_ROOT)
+        || decrypted_dirs.iter().any(|dir| cmd.contains(dir.as_str()))
+    {
         return true;
     }
-    if cmd.contains(MEM_ROOT) {
-        return true;
-    }
-    decrypted_dirs.iter().any(|dir| cmd.contains(dir.as_str()))
+    // Alias shapes hold no literal guarded prefix; check each word's lexical
+    // normalization (and variable-led paths) the same way the tree-sitter
+    // implementation does.
+    cmd.split_whitespace().any(|word| {
+        literal_token_references_guarded(
+            word.trim_matches(|c| c == '\'' || c == '"'),
+            decrypted_dirs,
+        )
+    })
 }
 
 /// Splits a command into independent segments at unquoted chain operators

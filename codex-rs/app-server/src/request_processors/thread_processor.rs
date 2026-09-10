@@ -16,6 +16,7 @@ use codex_app_server_protocol::ThreadSection;
 use codex_app_server_protocol::ThreadSectionAppearance;
 use codex_app_server_protocol::ThreadSectionMoveParams;
 use codex_app_server_protocol::ThreadSectionMoveResponse;
+use codex_app_server_protocol::ThreadTimelineEntry;
 use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::ThreadIdleCause;
 use codex_protocol::SanitizedGitUrl;
@@ -936,9 +937,11 @@ impl ThreadRequestProcessor {
             })
             .await
             .map_err(paginated_history_list_error)?;
+        let mut data = page.items;
+        hide_reasoning_from_sensitive_timeline_entries(&mut data);
         Ok(Some(
             ThreadTimelineListResponse {
-                data: page.items,
+                data,
                 next_cursor: page.next_cursor,
                 active_realtime_session_at_page_start: page.active_realtime_session_at_page_start,
             }
@@ -5799,6 +5802,16 @@ fn hide_reasoning_from_sensitive_entries(entries: &mut Vec<ThreadItemEntry>) {
         .any(|entry| thread_item_contains_token(&entry.item))
     {
         entries.retain(|entry| !matches!(entry.item, ThreadItem::Reasoning { .. }));
+    }
+}
+
+fn hide_reasoning_from_sensitive_timeline_entries(entries: &mut Vec<ThreadTimelineEntry>) {
+    if entries.iter().any(|entry| {
+        matches!(entry, ThreadTimelineEntry::Item { item, .. } if thread_item_contains_token(item))
+    }) {
+        entries.retain(|entry| {
+            !matches!(entry, ThreadTimelineEntry::Item { item, .. } if matches!(item.as_ref(), ThreadItem::Reasoning { .. }))
+        });
     }
 }
 

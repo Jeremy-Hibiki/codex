@@ -682,8 +682,6 @@ impl ToolRegistry {
             tool_result_tags.push(("command_category", category));
         }
 
-        let log_payload = tool_log_payload(&invocation.payload, &invocation.source);
-
         // Redaction must wrap the tool output before any surface reads it:
         // telemetry previews, response items, and hooks all route through the
         // same value.
@@ -696,6 +694,19 @@ impl ToolRegistry {
             .map(crate::agent_security::AgentSecurityContext::engaged)
             .unwrap_or_else(|| redaction_runtime.is_engaged(&redaction_session_id));
 
+        // fm M10: the payload may carry guard-rewritten `/dev/shm` paths and
+        // known plaintext; telemetry must never see either for engaged sessions.
+        let log_payload = tool_log_payload(&invocation.payload, &invocation.source);
+        let log_payload = if redaction_engaged {
+            std::borrow::Cow::Owned(redact_telemetry_text(
+                &redaction_runtime,
+                &redaction_session_id,
+                &log_payload,
+            ))
+        } else {
+            log_payload
+        };
+
         let result = otel
             .log_tool_result_with_tags(
                 &tool_name,
@@ -707,11 +718,7 @@ impl ToolRegistry {
                 |result| {
                     let preview = result.result.log_output();
                     let preview = if redaction_engaged {
-                        crate::encrypted_skills_guard::redact_text_for(
-                            &redaction_runtime,
-                            &redaction_session_id,
-                            &preview,
-                        )
+                        redact_telemetry_text(&redaction_runtime, &redaction_session_id, &preview)
                     } else {
                         preview
                     };
@@ -826,6 +833,19 @@ impl ToolRegistry {
             }
         }
     }
+}
+
+// fm M10: telemetry surfaces must go through full runtime redaction.
+// Path unrewrite must run before the plaintext pass: redacting the memory-root
+// prefix first would mangle decrypted `/dev/shm` paths and defeat unrewrite
+// matching.
+fn redact_telemetry_text(
+    runtime: &fm_encrypted_skills::runtime::EncryptedSkillRuntime,
+    session_id: &str,
+    text: &str,
+) -> String {
+    let unrewritten = crate::encrypted_skills_guard::redact_text_for(runtime, session_id, text);
+    fm_encrypted_skills::guard::redact_text_quiet(runtime, session_id, &unrewritten)
 }
 
 async fn notify_tool_finish_if_unclaimed(

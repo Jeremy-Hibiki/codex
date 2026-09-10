@@ -271,6 +271,11 @@ impl Drop for LicenseGuard {
 /// This is the entry point used by the Ctrl-C/SIGINT/SIGTERM handler so the
 /// license is returned and the client shut down before the process terminates,
 /// without waiting for `Drop`.
+///
+/// After the seat is returned the process-wide gate is closed ([`is_active`]
+/// returns false): the host keeps draining in-flight work after the signal
+/// handler runs (no exit here), and that window must not admit new gated
+/// requests. Idempotent: without an outstanding checkout this is a no-op.
 pub fn check_in_now() {
     let license = ACTIVE_LICENSE
         .lock()
@@ -280,16 +285,24 @@ pub fn check_in_now() {
         return;
     };
     let Ok(feature) = CString::new(license.checkout.feature) else {
+        // The checkout is consumed either way, so still close the gate.
+        mark_license_lost();
         return;
     };
     // SAFETY: `feature` is a valid NUL-terminated C string for this call, and
     // the C library keeps global license state so no client handle is needed.
     // `lmExit` is called after `lmCheckIn` to stop the background heartbeat
-    // thread, matching the library's recommended shutdown sequence.
+    // thread, matching the library's recommended shutdown sequence. Unit
+    // tests skip these calls: they run without an initialized LMCLIENT
+    // client and only exercise the state transition below.
+    #[cfg(not(test))]
     unsafe {
         lmCheckIn(feature.as_ptr());
         lmExit();
     }
+    #[cfg(test)]
+    let _ = feature;
+    mark_license_lost();
 }
 
 /// Install a handler that returns the checked-out license on SIGINT/SIGTERM.

@@ -371,6 +371,13 @@ pub(crate) async fn handle_output_item_done(
         }
         // The tool request should be answered directly (or was denied); push that response into the transcript.
         Err(FunctionCallError::RespondToModel(message)) => {
+            // fm (M7): error text can quote model-provided content derived
+            // from rehydrated skill plaintext; redact it before it enters the
+            // transcript or goes back to the model.
+            let message = ctx
+                .sess
+                .encrypted_skills_guard()
+                .redact_text_streaming(&message);
             let response = ResponseInputItem::FunctionCallOutput {
                 call_id: String::new(),
                 output: FunctionCallOutputPayload {

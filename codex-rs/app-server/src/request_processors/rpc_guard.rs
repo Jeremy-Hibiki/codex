@@ -103,18 +103,51 @@ pub(crate) fn ensure_plugin_management_allowed(
 pub(crate) fn ensure_config_mutation_allowed(
     request: &ClientRequest,
 ) -> Result<(), JSONRPCErrorError> {
-    if rpc::any_engaged()
-        && matches!(
-            request,
-            ClientRequest::ConfigValueWrite { .. }
-                | ClientRequest::ConfigBatchWrite { .. }
-                | ClientRequest::ExperimentalFeatureEnablementSet { .. }
-                | ClientRequest::SkillsConfigWrite { .. }
-                | ClientRequest::SkillsExtraRootsSet { .. }
-        )
-    {
-        Err(invalid_request(CONFIG_MUTATION_POLICY_ERROR))
-    } else {
-        Ok(())
+    if !rpc::any_engaged() {
+        return Ok(());
     }
+    match request {
+        ClientRequest::ConfigValueWrite { .. }
+        | ClientRequest::ConfigBatchWrite { .. }
+        | ClientRequest::ExperimentalFeatureEnablementSet { .. }
+        | ClientRequest::SkillsConfigWrite { .. }
+        | ClientRequest::SkillsExtraRootsSet { .. }
+        // Config imports always rewrite the codex_home configuration.
+        | ClientRequest::ExternalAgentConfigImport { .. } => {
+            Err(invalid_request(CONFIG_MUTATION_POLICY_ERROR))
+        }
+        // fs/writeFile only bypasses the RPC-level config gates when it
+        // targets a configuration file directly under codex_home.
+        ClientRequest::FsWriteFile { params, .. } => {
+            let Ok(codex_home) = codex_core::config::find_codex_home() else {
+                return Ok(());
+            };
+            if is_codex_home_config_file(params.path.as_path(), codex_home.as_path()) {
+                Err(invalid_request(CONFIG_MUTATION_POLICY_ERROR))
+            } else {
+                Ok(())
+            }
+        }
+        _ => Ok(()),
+    }
+}
+
+/// True when `path` is a configuration file directly under `codex_home`
+/// (config.toml, managed_config.toml, requirements*.toml, features*.toml).
+fn is_codex_home_config_file(path: &Path, codex_home: &Path) -> bool {
+    let Ok(relative) = path.strip_prefix(codex_home) else {
+        return false;
+    };
+    if relative.parent() != Some(Path::new("")) {
+        return false;
+    }
+    let Some(name) = relative.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    let is_requirements_or_features =
+        |prefix: &str| name.starts_with(prefix) && name.ends_with(".toml");
+    name == "config.toml"
+        || name == "managed_config.toml"
+        || is_requirements_or_features("requirements")
+        || is_requirements_or_features("features")
 }

@@ -3185,6 +3185,7 @@ mod tests {
                 scope: crate::test_support::skill_scope_user(),
                 enabled: true,
                 plugin_id: None,
+                encryption: None,
             }]),
         });
 

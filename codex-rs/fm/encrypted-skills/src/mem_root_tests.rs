@@ -150,3 +150,24 @@ fn decrypted_dir_mode_is_0700() {
     let mode = fs::metadata(&target).unwrap().permissions().mode();
     assert_eq!(mode & 0o777, 0o700);
 }
+
+#[cfg(unix)]
+#[test]
+fn written_files_mode_is_0600() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let target = tmp.path().join("fm_skill_security_abc");
+    write_package_entries(
+        &[
+            entry("SKILL.md", "# x"),
+            entry("scripts/build.sh", "#!/bin/sh\n"),
+        ],
+        &target,
+    )
+    .unwrap();
+    for rel in ["SKILL.md", "scripts/build.sh"] {
+        let mode = fs::metadata(target.join(rel)).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600, "file must be 0600: {rel}");
+    }
+}

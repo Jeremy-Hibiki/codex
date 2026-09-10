@@ -1,0 +1,66 @@
+# FM Agent Security — Review/Fix 循环记录
+
+分支:`fm-0.154.0-agent-security-review`(基于 `fm-0.154.0` = 11c75bd753,rust-v0.154.0 基线)。
+每轮 Review→Fix 独立 commit。本文件是**唯一事实源**:修复前先核对本文件,避免把 By design 当问题、或重复修复同一问题。
+
+## By design(设计决定,不是问题 — 修复前必读)
+
+| # | 决定 | 原因 |
+|---|------|------|
+| D1 | 加密 skill 的 SKILL.md 在磁盘上是 stub;注入时正文替换为 sentinel token,请求构建时(`client_common::EncryptedSkillRehydrator`)才解密 rehydrate | 解密时机=请求构建,落盘只有 token;明文仅存在于内存目录(`resolve_default_mem_root()`,默认 `/dev/shm/fm-agent-security`) |
+| D2 | `readonly_binds`/`ReadonlyBind` 旧机制已删除。0.154 无 source→target bind;改为 guard 恒定改写原路径→解密路径(`guard_shell` 只有一种模式),并向沙箱 profile 追加 `FileSystemSandboxEntry{access: Read}`(`orchestrator::grant_encrypted_skill_read_access`) | 上游沙箱策略模型不支持 bind;entry + bwrap 原生 Read 处理等效 |
+| D3 | `guard_shell/guard_read/guard_export` 不再有 `binds_active` 参数 | 0.154 无 bind 概念,恒为"改写"模式 |
+| D4 | 工具输出仅在 `engaged` 时包 `RedactingToolOutput`;非 engaged 会话保持原始输出类型 | 非 engaged 时无可泄露明文;且包装会破坏下游对具体类型的检查 |
+| D5 | spawn_agent 不支持 model 派发:`SpawnAgentArgs` 无 `model` 字段、`requested_model=None`、item `model=None`、spec 门禁 `expose_spawn_agent_model_overrides` 强制 false(config 默认也 false) | 用户明确要求:不支持派不同模型去干活 |
+| D6 | license check-in 信号线程收到 SIGINT/SIGTERM 只 `check_in_now()`,**不** `process::exit`;退出交由宿主自身的优雅排空(app-server 要 drain 在飞 turn),`LicenseGuard` drop 幂等 | exit 会以 143 抢杀 app-server 的 SIGTERM drain(ACP 客户端用 SIGTERM 关闭) |
+| D7 | `codex mcp-server`、`codex-core-skills`、GREVO 品牌、spawn_agent model 覆盖均已随迁移删除,不保留 | 上游已删 / 用户明确不要 |
+| D8 | `thread_id_child_asserts_skip` 测试会移除 bypass 做**真实 checkout**(消耗席位)。本地跑 fm-license 用 `FMSH_CODEX_LIC_TEST_BYPASS=1 --skip thread_id_child` | License 服务端席位数有限 |
+| D9 | engaged 会话的 execute-only skill 脚本执行自动放行(`approvals.rs` 顶部,`ReviewDecision::ApprovedForSession`),不弹窗不进 guardian;FMSH FPGA 插件脚本额外经 `is_auto_approved_plugin` 全量预批 | fm 产品决定:turn 内部执行不对用户/审查者暴露 |
+| D10 | 测试运行方式:`fm-license` 需 `FMSH_CODEX_LIC_TEST_BYPASS=1` 且 skip thread_id_child;codex-core/app-server 需 `LD_LIBRARY_PATH` 指向 UKey SDK(本机已装 `/usr/local/lib`),guardian/agent 深栈用例需 `RUST_MIN_STACK=8388608`(或直接用 `just test`) | 环境,非代码 |
+
+## 已知上游问题(只记录,不修)
+
+(暂无 — 发现 Codex 本身严重问题时记录在此)
+
+## Round 1(评审完成 → 修复中)
+
+评审:5 个并行 scout(时机 R1Timing / 沙箱 R1Sandbox / 脱敏 R1Redact / 拦截 R1Intercept / 升级缺漏 R1Migration),transcript 见 history://R1*。
+
+### Round 1 修复项(F1-F5 分工)
+
+| ID | 严重度 | 问题 | 修复归属 |
+|----|--------|------|----------|
+| F1-sec | HIGH | write_stdin 交互式 stdin 完全绕过 shell guard(guard_stdin_input 已有实现+测试但零调用点) | F2(core tools) |
+| F2-sec | HIGH | 路径前缀文本匹配可被 `/dev/./shm`、`/run/shm` 符号链接、`$TMPDIR` 规避;guard_read(view_image)无 MEM_ROOT 兜底,图片明文直出 | F1(fm guard/paths) |
+| F3-sec | HIGH | rollout-trace / inference trace / v1 compaction trace 会把 rehydrate 后的明文落盘(CODEX_ROLLOUT_TRACE_ROOT 开启时),违反 D1 | F3(core 请求/compaction) |
+| F4-sec | HIGH | compaction `drain_to_completed` 将模型输出未经脱敏直接写 rollout | F3 |
+| F5-sec | HIGH | thread/timeline(SQLite 分页路径)缺 hide_reasoning 过滤,仅 items/list 覆盖 | F4(app-server) |
+| F6-sec | HIGH | TUI/exec 请求边界缺 `ensure_active()`(license 心跳丢失后 TUI 不阻断,违背 lib.rs 文档) | F3 |
+| F7-sec | HIGH | 非 glibc stub `is_active()` 恒 true 且无告警(musl 产物 license 门禁静默消失) | F5(license crate) |
+| M1 | MED | app-server license 门枚举缺 ThreadQueueStart/ThreadCompactStart/ThreadRealtimeAppend* | F4 |
+| M2 | MED | engaged 期间配置可经 fs/writeFile、ExternalAgentConfigImport 等旁路改写(rpc 门是名单制) | F4(最小方案:名单扩充/engaged 时守护 codex_home 配置) |
+| M3 | MED | `check_in_now()` 归还席位后 LICENSE_STATE 仍 ACTIVE,drain 期间门禁继续放行 | F5 |
+| M4 | MED | guardrail 只查 UserInput::Text;inject_items/InterAgent 通道不经过 | F3 |
+| M5 | MED | D9 自动放行用 `.any()`:混合命令(skill 脚本段 + 需审批段)整单免审 | F2 |
+| M6 | MED | I6 用 `initial_sandbox != None` 判定,executor-managed 沙箱(ShellSnapshot/remote)下误判 → 合规部署 engaged 会话全拒 | F2(改用 sandbox_requested) |
+| M7 | MED | RespondToModel 错误文本、Reasoning 三种 delta、非 AgentMessage OutputTextDelta 未脱敏 | F3 |
+| M8 | MED | redact_response_item 跳过 McpToolCallOutput/ToolSearchOutput | F1 |
+| M9 | MED | redact_guardian_request 不处理 justification/cwd/guardian_cwd | F4 |
+| M10 | MED | registry 遥测 log_payload 含改写后 /dev/shm 路径;preview 仅路径级脱敏 | F2 |
+| M11 | HIGH→MED | V1 spawn spec 仍广告 model(spec_plan V1 分支 expose=true);config 用户 true 仍被采纳(D5 只关了 V2) | F2(V1 分支)|
+| L1 | LOW | mem_root 内文件 0644,应收紧 0600 | F1 |
+| L2 | LOW | guard_stdin_input 注释残留 binds 措辞(随 F1-sec 清理) | F2 |
+| L3 | LOW | guard_shell/guard_stdin_input/is_skill_script_execution 三处 guarded 集合不一致(抽 shared helper) | F1 |
+| L4 | LOW | FMSH 预批未校验 plugin root 不在可写 root 下 | 记录,暂不修 |
+
+### By design 确认(评审提出但维持原设计)
+- `FMSH_CODEX_LIC_TEST_BYPASS` release 生效:部署文档明示的产品级开关(无 LicenseServer 环境用)。**已知接受**;`CODEX_THREAD_ID` 仅存在性检查属同一信任模型,记录为已知限制。
+- guardrail fail-open(3s 超时放行):软缓解语义,合理;strict 模式列为后续可选项。
+- CLI plugin 门对只读 list 也封锁:产品从宽拦截,维持。
+
+### 上游观察(只记录,不修)
+- write_stdin 不触发 PreToolUse hooks 是上游语义(fork 的 stdin 守卫需自行接线,即 F1-sec)。
+- bwrap 全盘只读分支的 `--bind-try /dev/shm` 疑为上游所有;full-read 分支带 fm 注释的为 fork 增补。
+
+### 修复状态
+- F1:待开始 F2:待开始 F3:待开始 F4:待开始 F5:待开始

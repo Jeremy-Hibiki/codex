@@ -417,3 +417,63 @@ fn completed_item_keeps_mailbox_delivery_open_for_commentary_messages() {
         &item, /*plan_mode*/ false,
     ));
 }
+
+struct PreviewRedactionTestSdk;
+
+impl fm_encrypted_skills::sdk::EnvelopeSdk for PreviewRedactionTestSdk {
+    fn decrypt_package(
+        &self,
+        _package_path: &std::path::Path,
+    ) -> Result<Vec<fm_encrypted_skills::sdk::PackageEntry>, fm_encrypted_skills::sdk::EnvelopeError>
+    {
+        Ok(vec![fm_encrypted_skills::sdk::PackageEntry {
+            rel_path: std::path::PathBuf::from("SKILL.md"),
+            contents: b"TOPSECRET-PLAINTEXT-CONTENT".to_vec(),
+        }])
+    }
+}
+
+#[test]
+fn tool_call_preview_redacts_for_engaged_session() {
+    // L2: the `ToolCall:` telemetry preview must go through fm redaction for
+    // engaged sessions, exactly like the dispatch-path telemetry.
+    let tmp = tempfile::tempdir().expect("temp dir");
+    let runtime = Arc::new(fm_encrypted_skills::runtime::EncryptedSkillRuntime::new(
+        Arc::new(PreviewRedactionTestSdk),
+        fm_encrypted_skills::registry::TtlConfig::default(),
+        tmp.path().join("mem-root"),
+    ));
+    runtime
+        .load_or_register(
+            "t1",
+            "secret",
+            std::path::Path::new("/skills/secret.zip.enc"),
+        )
+        .expect("test sdk should decrypt the skill package");
+    let decrypted = runtime
+        .decrypted_dirs("t1")
+        .pop()
+        .expect("loaded skill should register a decrypted dir");
+    let preview: std::borrow::Cow<'_, str> = std::borrow::Cow::Owned(format!(
+        "cat {}",
+        decrypted.join("SKILL.md").to_string_lossy()
+    ));
+
+    let redacted =
+        super::redacted_tool_call_preview(&runtime, "t1", /*engaged*/ true, preview.clone());
+    assert!(
+        !redacted.contains(decrypted.to_string_lossy().as_ref()),
+        "engaged ToolCall telemetry must not leak the decrypted path: {redacted}"
+    );
+    assert!(
+        redacted.contains("/skills/SKILL.md"),
+        "decrypted path should unrewrite to the original skill path: {redacted}"
+    );
+
+    // Unengaged sessions pass the preview through untouched.
+    let plain: std::borrow::Cow<'_, str> = std::borrow::Cow::Borrowed("cat /tmp/notes.txt");
+    assert_eq!(
+        super::redacted_tool_call_preview(&runtime, "t1", false, plain.clone()),
+        plain
+    );
+}

@@ -7,6 +7,7 @@ use super::ActiveLicense;
 use super::LicenseCheckout;
 use super::LicenseConfig;
 use super::LicenseEnv;
+use super::check_in_now;
 use super::ensure_active;
 use super::is_active;
 use super::mark_license_active;
@@ -111,6 +112,39 @@ fn lost_license_blocks_new_requests_until_recovery() {
     mark_license_active();
     assert!(is_active());
     assert!(ensure_active().is_ok());
+}
+
+#[test]
+fn check_in_now_closes_the_license_gate() {
+    let _guard = LICENSE_STATE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    mark_license_active();
+    *ACTIVE_LICENSE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) =
+        Some(ActiveLicense::new(LicenseCheckout {
+            feature: "PRO".to_owned(),
+            version: "2.0".to_owned(),
+        }));
+
+    check_in_now();
+
+    // The seat is returned and the heartbeat stopped, so the host's drain
+    // window must not keep admitting new gated requests.
+    assert!(!is_active());
+    assert!(ensure_active().is_err());
+
+    // Idempotent: a repeat call has no outstanding checkout and is a no-op.
+    check_in_now();
+    assert!(!is_active());
+    assert!(ensure_active().is_err());
+
+    // Restore the process-global state for the other state-touching tests.
+    mark_license_active();
+    *ACTIVE_LICENSE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
 }
 
 #[test]

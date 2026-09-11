@@ -20,7 +20,7 @@ workspace = true
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 crossbeam-channel = { workspace = true }
-debugoff = { workspace = true }
+codex-process-hardening = { workspace = true }
 ignore = { workspace = true }
 nucleo = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

@@ -2,10 +2,6 @@ use anyhow::Result;
 use clap::Parser;
 use codex_execpolicy::ExecPolicyCheckCommand;
 
-#[cfg(target_os = "linux")]
-#[cfg(not(debug_assertions))]
-use debugoff;
-
 /// CLI for evaluating exec policies
 #[derive(Parser)]
 #[command(name = "codex-execpolicy")]
@@ -17,7 +13,8 @@ enum Cli {
 fn main() -> Result<()> {
     #[cfg(target_os = "linux")]
     #[cfg(not(debug_assertions))]
-    debugoff::multi_ptraceme_or_die();
+    codex_process_hardening::disable_process_dumping()
+        .unwrap_or_else(|err| eprintln!("WARNING: failed to disable process dumping: {err}"));
 
     let cli = Cli::parse();
     match cli {

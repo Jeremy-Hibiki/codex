@@ -233,11 +233,18 @@ impl CoreShellActionProvider {
         sandbox_permissions: SandboxPermissions,
         permission_profile: &PermissionProfile,
         additional_permissions: Option<&AdditionalPermissionProfile>,
+        engaged: bool,
     ) -> EscalationExecution {
         match sandbox_permissions {
             SandboxPermissions::UseDefault => EscalationExecution::TurnDefault,
             SandboxPermissions::RequireEscalated => {
-                if unsandboxed_execution_allowed(&permission_profile.file_system_sandbox_policy()) {
+                // fm I6/G2-sec: engaged sessions never degrade to unsandboxed
+                // execution; the turn-default sandbox still applies.
+                if !engaged
+                    && unsandboxed_execution_allowed(
+                        &permission_profile.file_system_sandbox_policy(),
+                    )
+                {
                     EscalationExecution::Unsandboxed
                 } else {
                     EscalationExecution::TurnDefault
@@ -437,8 +444,11 @@ impl CoreShellActionProvider {
         // fallback function.
         let decision_driven_by_policy =
             Self::decision_driven_by_policy(&evaluation.matched_rules, evaluation.decision);
-        let unsandboxed_allowed =
-            unsandboxed_execution_allowed(&self.permission_profile.file_system_sandbox_policy());
+        // fm I6/G2-sec: engaged sessions must not run decrypted plaintext
+        // unsandboxed; escalation stays under the turn-default sandbox.
+        let engaged = self.session.encrypted_skills_guard().is_engaged();
+        let unsandboxed_allowed = !engaged
+            && unsandboxed_execution_allowed(&self.permission_profile.file_system_sandbox_policy());
         let needs_escalation = match self.sandbox_permissions {
             SandboxPermissions::UseDefault => unsandboxed_allowed && decision_driven_by_policy,
             SandboxPermissions::RequireEscalated => unsandboxed_allowed,
@@ -457,6 +467,7 @@ impl CoreShellActionProvider {
                 self.sandbox_permissions,
                 &self.permission_profile,
                 self.prompt_permissions.as_ref(),
+                engaged,
             ),
         };
         self.process_decision(

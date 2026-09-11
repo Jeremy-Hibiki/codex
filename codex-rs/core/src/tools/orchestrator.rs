@@ -255,8 +255,13 @@ impl ToolOrchestrator {
         }
 
         // 2) First attempt under the selected sandbox.
-        let unsandboxed_allowed =
-            !owner_network_policy && unsandboxed_execution_allowed(&file_system_sandbox_policy);
+        // fm I6/G2-sec: an engaged session must never execute decrypted
+        // plaintext unsandboxed — including escalation retries. A failed
+        // sandboxed attempt is expected behavior, not a bypass justification.
+        let session_is_engaged = tool_ctx.session.encrypted_skills_guard().is_engaged();
+        let unsandboxed_allowed = !session_is_engaged
+            && !owner_network_policy
+            && unsandboxed_execution_allowed(&file_system_sandbox_policy);
         let sandbox_override = if unsandboxed_allowed {
             sandbox_override_for_first_attempt(
                 tool.sandbox_permissions(req),
@@ -307,9 +312,12 @@ impl ToolOrchestrator {
         };
         // Product policy (I6): an engaged encrypted-skill session must execute
         // under a sandbox, so decrypted plaintext never runs unsandboxed.
+        // fm M6: consult `sandbox_requested`, not the selected wrapper —
+        // executor-managed sandboxes (remote environments, shell snapshots)
+        // leave `initial_sandbox` unset even though execution is sandboxed.
         if let Err(message) = fm_encrypted_skills::sandbox_policy::ensure_encrypted_skill_sandbox(
-            tool_ctx.session.encrypted_skills_guard().is_engaged(),
-            initial_sandbox != SandboxType::None,
+            session_is_engaged,
+            sandbox_requested,
             tool_ctx
                 .step_context
                 .turn
@@ -622,3 +630,7 @@ fn grant_encrypted_skill_read_access(
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "orchestrator_tests.rs"]
+mod tests;

@@ -166,7 +166,22 @@ pub fn write_package_entries(entries: &[PackageEntry], target: &Path) -> Result<
             fs::create_dir_all(parent)?;
             set_dir_mode_0700(parent)?;
         }
-        fs::write(dest, &entry.contents)?;
+        // Decrypted content is plaintext on disk: create files owner-only
+        // (0600) so other users on the machine cannot read them.
+        #[cfg(unix)]
+        {
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+
+            fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&dest)?
+                .write_all(&entry.contents)?;
+        }
+        #[cfg(not(unix))]
+        fs::write(&dest, &entry.contents)?;
     }
     Ok(())
 }

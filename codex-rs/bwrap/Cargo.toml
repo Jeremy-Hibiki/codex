@@ -12,7 +12,7 @@ path = "src/main.rs"
 workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
-debugoff = { workspace = true }
+codex-process-hardening = { workspace = true }
 libc = { workspace = true }
 
 [build-dependencies]

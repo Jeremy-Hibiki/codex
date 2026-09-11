@@ -11,6 +11,7 @@ use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::protocol::AdditionalContextEntry as CoreAdditionalContextEntry;
 use codex_protocol::protocol::AdditionalContextKind as CoreAdditionalContextKind;
+use codex_protocol::protocol::ConversationTextRole;
 use codex_protocol::protocol::TurnSettingsUpdate;
 use codex_protocol::protocol::TurnSettingsUpdateOutcome;
 use codex_skills::system_cache_root_dir;
@@ -1322,6 +1323,44 @@ impl TurnRequestProcessor {
         else {
             return Ok(None);
         };
+        // fm (G4): realtime text reaches the model directly and previously
+        // bypassed the turn-input guardrail. Mirror the soft mitigation in
+        // core's `apply_external_guardrail`: flagged text still flows, but a
+        // developer reminder is injected ahead of it and the prompt is
+        // audited.
+        if !params.text.trim().is_empty()
+            && let Some(guardrail) =
+                fm_encrypted_skills::guardrail::GuardrailClient::from_runtime_config(
+                    &thread.config().await.encrypted_skills.guardrail,
+                )
+        {
+            match guardrail.is_attack(&params.text).await {
+                Ok(true) => {
+                    record_realtime_guardrail_blocked(thread.as_ref(), &params.text).await;
+                    self.submit_core_op(
+                        request_id,
+                        thread.as_ref(),
+                        Op::RealtimeConversationText(ConversationTextParams {
+                            text: fm_encrypted_skills::guardrail::REMINDER_TEXT.to_string(),
+                            role: ConversationTextRole::Developer,
+                        }),
+                    )
+                    .await
+                    .map_err(|err| {
+                        internal_error(format!(
+                            "failed to append realtime conversation text: {err}"
+                        ))
+                    })?;
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        "guardrail check failed; proceeding without reminder"
+                    );
+                }
+            }
+        }
         self.submit_core_op(
             request_id,
             thread.as_ref(),
@@ -1695,4 +1734,27 @@ fn xcode_26_4_mcp_elicitations_auto_deny(
     // TODO: Remove this compatibility hack once Xcode 26.4 ages out.
     client_name == Some("Xcode")
         && client_version.is_some_and(|version| version.starts_with("26.4"))
+}
+
+/// fm (G4): records a guardrail-flagged realtime prompt in the encrypted-skill
+/// audit log. `SessionGuard::record_guardrail_blocked` is session-scoped and
+/// unreachable from the app-server, so emit the identical audit event through
+/// the same process-wide shared sink the session runtime uses.
+async fn record_realtime_guardrail_blocked(thread: &CodexThread, prompt: &str) {
+    let config = thread.config().await;
+    let sink =
+        match fm_encrypted_skills::audit::shared_file_sink(config.encrypted_skills.audit_path()) {
+            Ok(sink) => sink,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "failed to open encrypted-skill audit sink for guardrail event"
+                );
+                return;
+            }
+        };
+    sink.emit(fm_encrypted_skills::audit::AuditEvent::GuardrailBlocked {
+        session_id: thread.session_configured().session_id.to_string(),
+        prompt: prompt.to_string(),
+    });
 }

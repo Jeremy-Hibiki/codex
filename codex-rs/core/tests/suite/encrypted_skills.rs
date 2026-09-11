@@ -21,11 +21,16 @@ use codex_utils_path_uri::PathUri;
 use core_test_support::responses::ev_apply_patch_custom_tool_call;
 use core_test_support::responses::ev_assistant_message;
 use core_test_support::responses::ev_completed;
+use core_test_support::responses::ev_completed_with_tokens;
 use core_test_support::responses::ev_function_call;
 use core_test_support::responses::ev_message_item_added;
 use core_test_support::responses::ev_output_text_delta;
 use core_test_support::responses::ev_reasoning_item;
+use core_test_support::responses::ev_reasoning_item_added;
+use core_test_support::responses::ev_reasoning_summary_text_delta;
+use core_test_support::responses::ev_reasoning_text_delta;
 use core_test_support::responses::ev_response_created;
+use core_test_support::responses::mount_compact_json_once;
 use core_test_support::responses::mount_function_call_agent_response;
 use core_test_support::responses::mount_sse_once;
 use core_test_support::responses::mount_sse_sequence;
@@ -1039,5 +1044,373 @@ async fn export_tool_with_skill_plaintext_is_blocked() -> Result<()> {
         "export attempt should be blocked, got: {rollout}"
     );
     let _ = mock;
+    Ok(())
+}
+
+// ===== Round 1 security fixes (F3 / F4 / M7) =====
+
+/// Serializes tests that flip the process-global `CODEX_ROLLOUT_TRACE_ROOT`
+/// env var; the guard must be held across the whole test body.
+// Shared process-wide trace root: both trace tests assert on their own
+// unique markers under one root, so no per-test env locking is needed
+// (a guard held across the awaited turn body trips await_holding_invalid_type).
+static TRACE_ROOT: std::sync::OnceLock<tempfile::TempDir> = std::sync::OnceLock::new();
+
+fn init_trace_root() -> &'static std::path::Path {
+    let dir = TRACE_ROOT.get_or_init(|| tempfile::tempdir().expect("trace root tempdir"));
+    // SAFETY: single-value initialization via OnceLock; the same path is set
+    // idempotently and never changed for the process lifetime.
+    unsafe {
+        std::env::set_var("CODEX_ROLLOUT_TRACE_ROOT", dir.path());
+    }
+    dir.path()
+}
+
+fn read_trace_bundle(root: &std::path::Path) -> String {
+    let mut bundle = String::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("trace root must be readable") {
+            let entry = entry.expect("trace dir entry").path();
+            if entry.is_dir() {
+                stack.push(entry);
+            } else {
+                bundle.push_str(&std::fs::read_to_string(&entry).unwrap_or_default());
+            }
+        }
+    }
+    bundle
+}
+
+fn test_non_openai_provider(server: &MockServer) -> codex_model_provider_info::ModelProviderInfo {
+    let mut provider =
+        codex_model_provider_info::built_in_model_providers(/*openai_base_url*/ None)["openai"]
+            .clone();
+    // Non-OpenAI name forces the local compaction implementation.
+    provider.name = "OpenAI (test)".into();
+    provider.base_url = Some(format!("{}/v1", server.uri()));
+    provider.supports_websockets = false;
+    provider
+}
+
+/// F3: with `CODEX_ROLLOUT_TRACE_ROOT` enabled, the inference trace payload
+/// must carry the sentinel token, never the rehydrated plaintext (D1).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rollout_trace_keeps_skill_token_instead_of_plaintext() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let trace_root = init_trace_root();
+
+    let server = start_mock_server().await;
+    let test = build_test_with_encrypted_skill(&server).await?;
+    let _mock = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_assistant_message("msg-1", "done"),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+
+    submit_single_turn(&test, "please use $secret-skill").await?;
+    // SAFETY: see set_var above.
+    unsafe {
+        std::env::remove_var("CODEX_ROLLOUT_TRACE_ROOT");
+    }
+
+    let bundle = read_trace_bundle(trace_root);
+    assert!(
+        bundle.contains("[SENSITIVE_SKILL_TOKEN:"),
+        "trace should carry the sentinel token, got: {bundle}"
+    );
+    assert!(
+        !bundle.contains("REAL_SKILL_CONTENT_MARKER"),
+        "trace must not contain rehydrated skill plaintext, got: {bundle}"
+    );
+    Ok(())
+}
+
+/// F3: the remote (v1) compaction request trace must record the tokenized
+/// input, not the rehydrated payload. Drives an engaged mid-turn auto
+/// compaction on an OpenAI provider with remote compaction v2 disabled.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn compaction_trace_keeps_skill_token_instead_of_plaintext() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let trace_root = init_trace_root();
+
+    let server = start_mock_server().await;
+    let _responses_mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("resp-1"),
+                ev_function_call("call-1", "fm_test_unknown_tool", "{}"),
+                ev_completed_with_tokens("resp-1", /*total_tokens*/ 96),
+            ]),
+            sse(vec![
+                ev_response_created("resp-3"),
+                ev_assistant_message("msg-3", "done"),
+                ev_completed_with_tokens("resp-3", /*total_tokens*/ 10),
+            ]),
+        ],
+    )
+    .await;
+    let _compact_mock = mount_compact_json_once(
+        &server,
+        serde_json::json!({
+            "output": [{"type": "compaction", "encrypted_content": "COMPACT_SUMMARY"}]
+        }),
+    )
+    .await;
+
+    let mut builder = test_codex()
+        .with_auth(codex_login::CodexAuth::create_dummy_chatgpt_auth_for_testing())
+        .with_config(|config| {
+            config.encrypted_skills.sdk = EncryptedSkillsSdkToml::TestZip;
+            // Force the v1 remote compaction implementation.
+            let _ = config
+                .features
+                .disable(codex_features::Feature::RemoteCompactionV2);
+            config.model_context_window = Some(100);
+            config.model_auto_compact_token_limit = Some(90);
+        })
+        .with_workspace_setup(move |cwd, fs| async move { write_encrypted_skill(cwd, fs).await });
+    let test = builder.build_with_auto_env(&server).await?;
+
+    submit_single_turn(&test, "please use $secret-skill").await?;
+    // SAFETY: see set_var above.
+    unsafe {
+        std::env::remove_var("CODEX_ROLLOUT_TRACE_ROOT");
+    }
+
+    let bundle = read_trace_bundle(trace_root);
+    assert!(
+        bundle.contains("[SENSITIVE_SKILL_TOKEN:"),
+        "compaction trace should carry the sentinel token, got: {bundle}"
+    );
+    assert!(
+        !bundle.contains("REAL_SKILL_CONTENT_MARKER"),
+        "compaction trace must not contain rehydrated skill plaintext, got: {bundle}"
+    );
+    Ok(())
+}
+
+/// F4: an engaged mid-turn local compaction must redact the compaction
+/// model output before it is recorded into the rollout. Non-OpenAI provider
+/// forces the local compaction implementation (`drain_to_completed`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn engaged_midturn_compaction_redacts_model_output_before_rollout() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let _mock = mount_sse_sequence(
+        &server,
+        vec![
+            sse(vec![
+                ev_response_created("resp-1"),
+                ev_function_call("call-1", "fm_test_unknown_tool", "{}"),
+                ev_completed_with_tokens("resp-1", /*total_tokens*/ 96),
+            ]),
+            sse(vec![
+                ev_response_created("resp-2"),
+                ev_assistant_message("msg-2", "summary quotes # REAL_SKILL_CONTENT_MARKER"),
+                ev_completed_with_tokens("resp-2", /*total_tokens*/ 10),
+            ]),
+            sse(vec![
+                ev_response_created("resp-3"),
+                ev_assistant_message("msg-3", "done"),
+                ev_completed_with_tokens("resp-3", /*total_tokens*/ 10),
+            ]),
+        ],
+    )
+    .await;
+
+    let provider = test_non_openai_provider(&server);
+    let mut builder = test_codex()
+        .with_config(move |config| {
+            config.encrypted_skills.sdk = EncryptedSkillsSdkToml::TestZip;
+            config.model_provider = provider;
+            config.model_context_window = Some(100);
+            config.model_auto_compact_token_limit = Some(90);
+        })
+        .with_workspace_setup(move |cwd, fs| async move { write_encrypted_skill(cwd, fs).await });
+    let test = builder.build_with_auto_env(&server).await?;
+
+    submit_single_turn(&test, "please use $secret-skill").await?;
+
+    let rollout_path = test
+        .session_configured
+        .rollout_path
+        .as_ref()
+        .expect("rollout path");
+    let rollout = std::fs::read_to_string(rollout_path)?;
+    assert!(
+        rollout.contains("[REDACTED]"),
+        "engaged compaction output must be redacted before the rollout, got: {rollout}"
+    );
+    assert!(
+        !rollout.contains("REAL_SKILL_CONTENT_MARKER"),
+        "rollout must not contain skill plaintext from compaction output, got: {rollout}"
+    );
+    Ok(())
+}
+
+/// M7 ①/②: streamed reasoning summary deltas, raw reasoning deltas, and
+/// output-text deltas on non-AgentMessage items must all be redacted while
+/// an encrypted skill is engaged.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn streamed_reasoning_and_non_message_deltas_are_redacted() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let server = start_mock_server().await;
+    let test = build_test_with_encrypted_skill(&server).await?;
+    let _mock = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_reasoning_item_added("rsn-1", &[""]),
+            ev_reasoning_summary_text_delta("# REAL_SKILL_CONTENT_MARKER"),
+            ev_reasoning_text_delta("thinking about # REAL_SKILL_CONTENT_MARKER"),
+            // Active item is the reasoning item here, so this delta goes
+            // through the non-AgentMessage OutputTextDelta branch.
+            ev_output_text_delta("quote: # REAL_SKILL_CONTENT_MARKER"),
+            ev_assistant_message("msg-1", "done"),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+
+    // Submit without waiting so the streamed deltas can be captured live.
+    let session_model = test.session_configured.model.clone();
+    let (sandbox_policy, permission_profile) =
+        turn_permission_fields(PermissionProfile::Disabled, test.config.cwd.as_path());
+    test.codex
+        .start_or_steer_turn(
+            TurnInputRequest::user_input(vec![UserInput::Text {
+                text: "please use $secret-skill".to_string(),
+                text_elements: Vec::new(),
+            }])
+            .with_thread_settings(
+                codex_protocol::protocol::ThreadSettingsOverrides {
+                    environments: Some(local_selections(test.config.cwd.clone())),
+                    approval_policy: Some(AskForApproval::Never),
+                    sandbox_policy: Some(sandbox_policy),
+                    permission_profile,
+                    collaboration_mode: Some(codex_protocol::config_types::CollaborationMode {
+                        mode: codex_protocol::config_types::ModeKind::Default,
+                        settings: codex_protocol::config_types::Settings {
+                            model: session_model,
+                            reasoning_effort: None,
+                            developer_instructions: None,
+                        },
+                    }),
+                    ..Default::default()
+                },
+            ),
+        )
+        .await?;
+
+    let reasoning_deltas = std::cell::RefCell::new(Vec::new());
+    let raw_reasoning_deltas = std::cell::RefCell::new(Vec::new());
+    let other_item_deltas = std::cell::RefCell::new(Vec::new());
+    loop {
+        let done = core_test_support::wait_for_event_match(&test.codex, |event| match event {
+            codex_protocol::protocol::EventMsg::ReasoningContentDelta(event) => {
+                reasoning_deltas.borrow_mut().push(event.delta.clone());
+                Some(false)
+            }
+            codex_protocol::protocol::EventMsg::ReasoningRawContentDelta(event) => {
+                raw_reasoning_deltas.borrow_mut().push(event.delta.clone());
+                Some(false)
+            }
+            codex_protocol::protocol::EventMsg::AgentMessageContentDelta(event) => {
+                other_item_deltas.borrow_mut().push(event.delta.clone());
+                Some(false)
+            }
+            codex_protocol::protocol::EventMsg::TurnComplete(_) => Some(true),
+            _ => None,
+        })
+        .await;
+        if done {
+            break;
+        }
+    }
+
+    let reasoning_deltas = reasoning_deltas.into_inner();
+    let raw_reasoning_deltas = raw_reasoning_deltas.into_inner();
+    let other_item_deltas = other_item_deltas.into_inner();
+
+    assert!(
+        !reasoning_deltas.is_empty(),
+        "expected reasoning summary deltas to be streamed"
+    );
+    assert!(
+        !raw_reasoning_deltas.is_empty(),
+        "expected raw reasoning deltas to be streamed"
+    );
+    assert!(
+        !other_item_deltas.is_empty(),
+        "expected a non-agent-message output text delta to be streamed"
+    );
+    for delta in reasoning_deltas
+        .iter()
+        .chain(raw_reasoning_deltas.iter())
+        .chain(other_item_deltas.iter())
+    {
+        assert!(
+            !delta.contains("REAL_SKILL_CONTENT_MARKER"),
+            "streamed delta must be redacted before reaching the client, got {delta}"
+        );
+    }
+    Ok(())
+}
+
+/// G5: with `CODEX_ROLLOUT_TRACE_ROOT` enabled, model output quoting skill
+/// plaintext must be redacted in the inference trace (output side), mirroring
+/// the D1 request-side redaction. Before the fix the streamed output items
+/// were serialized into the trace verbatim.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rollout_trace_redacts_model_output_quoting_skill_plaintext() -> Result<()> {
+    skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
+    skip_if_no_network!(Ok(()));
+
+    let trace_root = init_trace_root();
+
+    let server = start_mock_server().await;
+    let test = build_test_with_encrypted_skill(&server).await?;
+    let _mock = mount_sse_once(
+        &server,
+        sse(vec![
+            ev_response_created("resp-1"),
+            ev_assistant_message(
+                "msg-1",
+                "the skill file starts with REAL_SKILL_CONTENT_MARKER indeed",
+            ),
+            ev_completed("resp-1"),
+        ]),
+    )
+    .await;
+
+    submit_single_turn(&test, "please use $secret-skill").await?;
+    // SAFETY: see set_var above.
+    unsafe {
+        std::env::remove_var("CODEX_ROLLOUT_TRACE_ROOT");
+    }
+
+    let bundle = read_trace_bundle(trace_root);
+    assert!(
+        !bundle.contains("REAL_SKILL_CONTENT_MARKER"),
+        "trace must not contain skill plaintext echoed by the model, got: {bundle}"
+    );
+    assert!(
+        bundle.contains("[REDACTED]"),
+        "engaged model output quoting plaintext must be redacted in trace, got: {bundle}"
+    );
     Ok(())
 }

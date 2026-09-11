@@ -11653,6 +11653,9 @@ enabled = true
         config.multi_agent_v2,
         resolve_multi_agent_v2_config(&ConfigToml::default())
     );
+    // fm: model dispatch is not supported, so the config default must keep
+    // this gate off even when the struct default is not spelled out in TOML.
+    assert!(!config.multi_agent_v2.expose_spawn_agent_model_overrides);
     assert_eq!(
         (
             config.agent_max_threads,
@@ -11747,34 +11750,44 @@ expose_spawn_agent_model_overrides = true
 }
 
 #[test]
-fn multi_agent_v2_exposes_model_overrides_by_default() {
+fn multi_agent_v2_does_not_expose_model_overrides_by_default() {
     let config_toml =
         toml::from_str(r#"[features.multi_agent_v2]"#).expect("multi-agent v2 config should parse");
 
     let mut config = resolve_multi_agent_v2_config(&config_toml);
-    assert!(config.expose_spawn_agent_model_overrides);
-    let usage_hints = resolve_usage_hints(
-        &config, /*catalog*/ None, /*omit_update_plan_instructions*/ false,
-    );
-    config.expose_spawn_agent_model_overrides = false;
-    let usage_hints_without_model_overrides = resolve_usage_hints(
+    // fm: model dispatch is not supported — spawned agents inherit the parent
+    // thread's model, so the tool spec must not advertise a `model` argument.
+    assert!(!config.expose_spawn_agent_model_overrides);
+    let hints_default = resolve_usage_hints(
         &config, /*catalog*/ None, /*omit_update_plan_instructions*/ false,
     );
 
-    for (hint, hint_without_model_overrides) in [
-        (usage_hints.root, usage_hints_without_model_overrides.root),
-        (
-            usage_hints.subagent,
-            usage_hints_without_model_overrides.subagent,
-        ),
+    // The gate still works when explicitly enabled (upstream behavior kept).
+    config.expose_spawn_agent_model_overrides = true;
+    let hints_with_overrides = resolve_usage_hints(
+        &config, /*catalog*/ None, /*omit_update_plan_instructions*/ false,
+    );
+
+    for (default_hint, override_hint) in [
+        (hints_default.root, hints_with_overrides.root),
+        (hints_default.subagent, hints_with_overrides.subagent),
     ] {
-        let hint = hint.expect("default usage hints should be present").body();
-        let hint_without_model_overrides = hint_without_model_overrides
-            .expect("default usage hints should be present without model overrides")
+        let default_body = default_hint
+            .expect("default usage hints should be present")
             .body();
-
-        let model_override_guidance = hint
-            .strip_prefix(hint_without_model_overrides.as_str())
+        // `fork_turns` is part of the base hint (the fork tool itself); only
+        // the model-override guidance is gated by the expose flag.
+        for forbidden_fragment in ["Full-history forks", "`model`", "`reasoning_effort`"] {
+            assert!(
+                !default_body.contains(forbidden_fragment),
+                "default usage hint should not contain {forbidden_fragment}"
+            );
+        }
+        let override_body = override_hint
+            .expect("default usage hints should be present")
+            .body();
+        let model_override_guidance = override_body
+            .strip_prefix(default_body.as_str())
             .expect("model-override guidance should extend the base usage hint");
         for required_fragment in [
             "Full-history forks",

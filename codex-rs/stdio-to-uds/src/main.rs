@@ -2,15 +2,12 @@ use std::env;
 use std::path::PathBuf;
 use std::process;
 
-#[cfg(target_os = "linux")]
-#[cfg(not(debug_assertions))]
-use debugoff;
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     #[cfg(target_os = "linux")]
     #[cfg(not(debug_assertions))]
-    debugoff::multi_ptraceme_or_die();
+    codex_process_hardening::disable_process_dumping()
+        .unwrap_or_else(|err| eprintln!("WARNING: failed to disable process dumping: {err}"));
 
     let mut args = env::args_os().skip(1);
     let Some(socket_path) = args.next() else {

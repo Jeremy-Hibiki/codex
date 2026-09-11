@@ -12,6 +12,7 @@ use codex_app_server_protocol::ThreadTimelineEntry;
 use codex_app_server_protocol::ThreadTimelineListParams;
 use codex_app_server_protocol::ThreadTimelineListResponse;
 use codex_protocol::ThreadId;
+use codex_protocol::items::ReasoningItem;
 use codex_protocol::items::TurnItem;
 use codex_protocol::items::UserMessageItem;
 use codex_protocol::models::BaseInstructions;
@@ -35,6 +36,8 @@ use codex_thread_store::PersistContext;
 use codex_thread_store::ThreadPersistenceMetadata;
 use codex_thread_store::ThreadStore;
 use codex_utils_absolute_path::test_support::PathExt;
+use fm_encrypted_skills::token::TOKEN_PREFIX;
+use fm_encrypted_skills::token::TOKEN_SUFFIX;
 use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -220,5 +223,127 @@ async fn timeline_pages_mix_items_and_resolve_the_opening_realtime_session() -> 
     assert_eq!(ordinary.data.len(), 1);
     assert_eq!(ordinary.data[0].turn_id, "turn-1");
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn timeline_hides_reasoning_when_thread_carries_skill_token() -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+    let codex_home = TempDir::new()?;
+    MockResponsesConfig::new(&server.uri()).write(codex_home.path())?;
+
+    let thread_id = ThreadId::default();
+    let sqlite = codex_state::SqliteConfig::new_for_testing(codex_home.path().abs());
+    let state_db =
+        codex_state::StateRuntime::init(sqlite.clone(), "mock_provider".to_string()).await?;
+    let store = LocalThreadStore::new(
+        LocalThreadStoreConfig {
+            codex_home: codex_home.path().to_path_buf(),
+            sqlite,
+            default_model_provider_id: "mock_provider".to_string(),
+        },
+        Some(state_db),
+    );
+    store
+        .create_thread(CreateThreadParams {
+            session_id: thread_id.into(),
+            thread_id,
+            extra_config: None,
+            forked_from_id: None,
+            parent_thread_id: None,
+            source: SessionSource::Cli,
+            thread_source: None,
+            originator: "test_originator".to_string(),
+            base_instructions: BaseInstructions::default(),
+            dynamic_tools: Vec::new(),
+            selected_capability_roots: Vec::new(),
+            multi_agent_version: None,
+            history_mode: ThreadHistoryMode::Paginated,
+            history_base: None,
+            subagent_history_start_ordinal: None,
+            initial_window_id: Uuid::now_v7().to_string(),
+            metadata: ThreadPersistenceMetadata {
+                cwd: Some(codex_home.path().to_path_buf()),
+                model_provider: "mock_provider".to_string(),
+                memory_mode: ThreadMemoryMode::Enabled,
+            },
+        })
+        .await?;
+    store
+        .persist_thread(thread_id, PersistContext::Standard)
+        .await?;
+    store
+        .append_items(AppendThreadItemsParams {
+            thread_id,
+            items: vec![
+                RolloutItem::EventMsg(EventMsg::ItemCompleted(ItemCompletedEvent {
+                    thread_id,
+                    turn_id: "turn-1".to_string(),
+                    item: TurnItem::UserMessage(UserMessageItem {
+                        id: "user-1".to_string(),
+                        client_id: None,
+                        content: vec![UserInput::Text {
+                            text: "hello".to_string(),
+                            text_elements: Vec::new(),
+                        }],
+                    }),
+                    started_at_ms: Some(0),
+                    completed_at_ms: 1,
+                })),
+                RolloutItem::EventMsg(EventMsg::ItemCompleted(ItemCompletedEvent {
+                    thread_id,
+                    turn_id: "turn-1".to_string(),
+                    item: TurnItem::Reasoning(ReasoningItem {
+                        id: "reasoning-1".to_string(),
+                        summary_text: vec![format!("{TOKEN_PREFIX}abc:def{TOKEN_SUFFIX} thinking")],
+                        raw_content: vec!["secret reasoning".to_string()],
+                    }),
+                    started_at_ms: Some(1),
+                    completed_at_ms: 2,
+                })),
+                RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+                    turn_id: "turn-1".to_string(),
+                    last_agent_message: None,
+                    error: None,
+                    started_at: Some(0),
+                    completed_at: Some(2),
+                    duration_ms: Some(2000),
+                    time_to_first_token_ms: None,
+                })),
+            ],
+        })
+        .await?;
+    store.shutdown_thread(thread_id).await?;
+
+    let mut app_server = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .without_auto_env()
+        .build_initialized()
+        .await?;
+    let page: ThreadTimelineListResponse = app_server
+        .request(|request_id| ClientRequest::ThreadTimelineList {
+            request_id,
+            params: ThreadTimelineListParams {
+                thread_id: thread_id.to_string(),
+                cursor: None,
+                limit: Some(10),
+            },
+        })
+        .await?;
+
+    assert!(
+        !page.data.iter().any(|entry| matches!(
+            entry,
+            ThreadTimelineEntry::Item { item, .. }
+                if matches!(item.as_ref(), ThreadItem::Reasoning { .. })
+        )),
+        "timeline must not expose reasoning items for a token-bearing thread: {:?}",
+        page.data
+    );
+    assert!(page.data.iter().any(|entry| matches!(
+        entry,
+        ThreadTimelineEntry::Item { item, .. }
+            if matches!(item.as_ref(), ThreadItem::UserMessage { .. })
+    )));
     Ok(())
 }

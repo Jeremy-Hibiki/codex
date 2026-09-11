@@ -7031,6 +7031,7 @@ mod tests {
             scope: crate::test_support::skill_scope_user(),
             enabled: true,
             plugin_id: None,
+            encryption: None,
         }
     }
 
@@ -7683,6 +7684,7 @@ mod tests {
             scope: crate::test_support::skill_scope_user(),
             enabled: true,
             plugin_id: None,
+            encryption: None,
         }]));
 
         let ActivePopup::Skill(popup) = &composer.popups.active else {
@@ -7728,6 +7730,7 @@ mod tests {
             scope: crate::test_support::skill_scope_repo(),
             enabled: true,
             plugin_id: Some("google-calendar@debug".to_string()),
+            encryption: None,
         }]));
         composer.set_plugin_mentions(Some(vec![PluginCapabilitySummary {
             config_name: "google-calendar@debug".to_string(),
@@ -8063,6 +8066,7 @@ mod tests {
                     scope: crate::test_support::skill_scope_repo(),
                     enabled: true,
                     plugin_id: None,
+                    encryption: None,
                 }]));
                 composer.set_plugin_mentions(Some(vec![PluginCapabilitySummary {
                 config_name: "google-calendar@debug".to_string(),

@@ -241,3 +241,22 @@ engaged 会话中含 `**` 分量的相对 glob 模式一律视为可能命中受
 
 ### 上游观察(新增,不修)
 - rust-v0.154.0 `core/tests/suite/unified_exec_zsh_fork_approvals.rs:61/:126` 用 `tempfile::tempdir_in(std::env::current_dir())` 把临时目录建进 crate 目录;测试进程被杀时 TempDir 析构不跑 → `.tmp*/secret.env` 残留仓库并被 git add 扫入。已从本分支删除 3 个残留并加 `codex-rs/core/.gitignore`(`.tmp*/`)防复发;上游代码不动。
+
+---
+
+## Round 6(升级后新消息通路专项,双路 security-reviewer 独立复审)
+
+背景:用户要求专项复审 0.146→0.154 升级后 App Server 新消息传递途径。R6Protocol(协议面盘点)+ R6Transport(传输/会话路径)两路独立审查,交叉确认 2 项。
+
+### 结论总览
+干净面:thread/start/resume 初始输入(guardrail ✓)、v1 legacy 面(已消亡,handle_client_request 单漏斗全过门)、出站通知全景(约 80 变体,含模型文本家族全部继承发射点脱敏)、exec-server 传输(Noise+强制 wss,无明文流)、timeline 搜索面(⊆ 可见面)。
+
+### 新发现与修复项(R7)
+| ID | 级别 | 问题 | 修复方向 |
+|----|------|------|----------|
+| R6-1 | **HIGH**(双路确认) | 0.154 新增 ext/queue 持久化队列绕过 license 门:①ThreadQueueAdd/Update/Reorder 不在 message_processor.rs:995-1016 门名单(失活仍可入队);②idle 自动派发链 on_thread_idle→dispatch_if_idle→start_turn_if_idle(ext/queue/src/service.rs:405-467,549-565)零 license 检查(全仓 is_active 仅 RPC 门/exec/tui 三处)——失活后队列被逐条自动启动为新 turn,架空 M1 | dispatch_if_idle 与 service::start 加 fm_license::is_active() 检查(失活保留队列项);ThreadQueueAdd/Update 补入门名单 |
+| R6-2 | **HIGH** | command/exec RPC(0.154 与 process/spawn 同代新面)对 fork 执行防护完全缺席:engaged 无整体门(对照 process/spawn 的 ensure_not_engaged_unsandboxed);start 仅 legacy 文本扫描(command_references_dir,非 segment 级);write 无 stdin 守卫(process/writeStdin 有);Unix 路径解构丢弃 sandbox 裸 pty spawn(command_exec.rs:148-157);输出 base64 不脱敏;不在 license 门名单。engaged 进程内任一 v2 客户端可经 start+stdin 交互读取解密目录明文(F1-sec 场景在新面重现) | engaged 时 command/exec 整体拒绝(镜像 process/spawn 同款门,最小且封 stdin/输出/沙箱全部子面);补 license 门名单;Unix 丢 sandbox 为上游 bug 记录不修 |
+| R6-3 | MED(双路确认) | realtime initialItems(thread_realtime_start_inner :1244-1252)与 appendSpeech(:1383-1400)绕过 G4 的 guardrail 扫描与审计,仅 appendText 被覆盖——同一面三类入口审计可视性不一致 | G4 助手抽公共函数,initial_items 逐条与 speech 文本复用(soft 缓解语义) |
+| R6-4 | LOW | bedrock setup 疑似旁路 engaged 配置变异门(R6P-3,细节截断) | 修复代理核实后按实修/记录 |
+| R6-5 | LOW | tracing 卫生:realtime startup context 整包 info!(realtime_context.rs:126)、客户端文本 debug!(realtime_conversation.rs:1769/1787);内容脱敏继承、本地信任域,同 L2/M10 先例 | engaged 时过 redact 或降 trace!(顺手) |
+| R6-6 | 记录 | timeline 的 realtime TranscriptSegment 不受 token-hide 约束(与 AgentMessage 同级可见,策略一致);上游 command/exec Unix 丢 sandbox | 观察项:realtime 上游若引入未脱敏内容源,session/mod.rs:2412-2420 持久化点即成泄露汇 |

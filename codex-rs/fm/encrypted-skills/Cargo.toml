@@ -52,12 +52,17 @@ zip = { workspace = true, features = ["deflate"] }
 ukey = [
     "dep:fmsh-ukey-core",
     "dep:fmsh-ukey-skill",
+    "dep:fmsh-ukey-sdk-wrapper",
 ]
 default = []
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
 fmsh-ukey-core = { workspace = true, optional = true }
 fmsh-ukey-skill = { workspace = true, optional = true }
+# Direct dependency so the wrapper's build script publishes
+# DEP_FMSH_UKEY_SDK_LIB_DIR to our own build script, which emits the link
+# directives its test targets need. It is already in the graph transitively.
+fmsh-ukey-sdk-wrapper = { workspace = true, optional = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }

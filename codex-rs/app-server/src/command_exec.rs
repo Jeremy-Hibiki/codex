@@ -233,6 +233,9 @@ impl CommandExecManager {
             cwd,
             env,
             expiration,
+            // fm R6 (upstream bug, intentionally unfixed): on Unix the selected
+            // sandbox is dropped here — pty/pipe streaming spawns unsandboxed;
+            // only the Windows restricted-token path above executes sandboxed.
             sandbox: _sandbox,
             arg0,
             ..

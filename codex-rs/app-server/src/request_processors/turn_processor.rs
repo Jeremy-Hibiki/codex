@@ -1249,15 +1249,21 @@ impl TurnRequestProcessor {
                 include_startup_context: params
                     .include_startup_context
                     .unwrap_or(!attaches_existing_call),
-                initial_items: params
-                    .initial_items
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|item| ConversationTextParams {
-                        text: item.text,
-                        role: item.role,
-                    })
-                    .collect(),
+                initial_items: {
+                    let mut items = Vec::new();
+                    for item in params.initial_items.unwrap_or_default() {
+                        // fm (G4): same soft mitigation as appendText, applied
+                        // per item before the conversation starts.
+                        if realtime_guardrail_flagged(thread.as_ref(), &item.text).await {
+                            items.push(realtime_reminder_params());
+                        }
+                        items.push(ConversationTextParams {
+                            text: item.text,
+                            role: item.role,
+                        });
+                    }
+                    items
+                },
                 realtime_start_instructions: params.realtime_start_instructions,
                 realtime_end_instructions: params.realtime_end_instructions,
                 prompt: params.prompt,
@@ -1324,42 +1330,19 @@ impl TurnRequestProcessor {
             return Ok(None);
         };
         // fm (G4): realtime text reaches the model directly and previously
-        // bypassed the turn-input guardrail. Mirror the soft mitigation in
-        // core's `apply_external_guardrail`: flagged text still flows, but a
-        // developer reminder is injected ahead of it and the prompt is
-        // audited.
-        if !params.text.trim().is_empty()
-            && let Some(guardrail) =
-                fm_encrypted_skills::guardrail::GuardrailClient::from_runtime_config(
-                    &thread.config().await.encrypted_skills.guardrail,
-                )
-        {
-            match guardrail.is_attack(&params.text).await {
-                Ok(true) => {
-                    record_realtime_guardrail_blocked(thread.as_ref(), &params.text).await;
-                    self.submit_core_op(
-                        request_id,
-                        thread.as_ref(),
-                        Op::RealtimeConversationText(ConversationTextParams {
-                            text: fm_encrypted_skills::guardrail::REMINDER_TEXT.to_string(),
-                            role: ConversationTextRole::Developer,
-                        }),
-                    )
-                    .await
-                    .map_err(|err| {
-                        internal_error(format!(
-                            "failed to append realtime conversation text: {err}"
-                        ))
-                    })?;
-                }
-                Ok(false) => {}
-                Err(error) => {
-                    tracing::warn!(
-                        error = %error,
-                        "guardrail check failed; proceeding without reminder"
-                    );
-                }
-            }
+        // bypassed the turn-input guardrail; shared soft mitigation below.
+        if realtime_guardrail_flagged(thread.as_ref(), &params.text).await {
+            self.submit_core_op(
+                request_id,
+                thread.as_ref(),
+                Op::RealtimeConversationText(realtime_reminder_params()),
+            )
+            .await
+            .map_err(|err| {
+                internal_error(format!(
+                    "failed to append realtime conversation text: {err}"
+                ))
+            })?;
         }
         self.submit_core_op(
             request_id,
@@ -1389,6 +1372,22 @@ impl TurnRequestProcessor {
         else {
             return Ok(None);
         };
+        // fm (G4): speech text shares the appendText soft mitigation — the
+        // reminder is injected as a developer conversation item ahead of the
+        // original speech.
+        if realtime_guardrail_flagged(thread.as_ref(), &params.text).await {
+            self.submit_core_op(
+                request_id,
+                thread.as_ref(),
+                Op::RealtimeConversationText(realtime_reminder_params()),
+            )
+            .await
+            .map_err(|err| {
+                internal_error(format!(
+                    "failed to append realtime conversation text: {err}"
+                ))
+            })?;
+        }
         self.submit_core_op(
             request_id,
             thread.as_ref(),
@@ -1734,6 +1733,45 @@ fn xcode_26_4_mcp_elicitations_auto_deny(
     // TODO: Remove this compatibility hack once Xcode 26.4 ages out.
     client_name == Some("Xcode")
         && client_version.is_some_and(|version| version.starts_with("26.4"))
+}
+
+/// fm (G4): soft mitigation shared by every realtime text surface
+/// (`initialItems`, `appendText`, `appendSpeech`), mirroring core's
+/// `apply_external_guardrail`: a flagged prompt is audited and a developer
+/// reminder must be injected ahead of it, but the original text still flows;
+/// guardrail failures never block the prompt.
+async fn realtime_guardrail_flagged(thread: &CodexThread, text: &str) -> bool {
+    if text.trim().is_empty() {
+        return false;
+    }
+    let Some(guardrail) = fm_encrypted_skills::guardrail::GuardrailClient::from_runtime_config(
+        &thread.config().await.encrypted_skills.guardrail,
+    ) else {
+        return false;
+    };
+    match guardrail.is_attack(text).await {
+        Ok(true) => {
+            record_realtime_guardrail_blocked(thread, text).await;
+            true
+        }
+        Ok(false) => false,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "guardrail check failed; proceeding without reminder"
+            );
+            false
+        }
+    }
+}
+
+/// The developer-role reminder injected ahead of a guardrail-flagged realtime
+/// prompt; see [`realtime_guardrail_flagged`].
+fn realtime_reminder_params() -> ConversationTextParams {
+    ConversationTextParams {
+        text: fm_encrypted_skills::guardrail::REMINDER_TEXT.to_string(),
+        role: ConversationTextRole::Developer,
+    }
 }
 
 /// fm (G4): records a guardrail-flagged realtime prompt in the encrypted-skill

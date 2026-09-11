@@ -848,6 +848,21 @@ pub(crate) fn redact_telemetry_text(
     fm_encrypted_skills::guard::redact_text_quiet(runtime, session_id, &unrewritten)
 }
 
+/// fm M10: log-site helper for telemetry surfaces that are not tool dispatches
+/// (e.g. realtime input previews) — redacts text for engaged sessions and
+/// returns it unchanged otherwise.
+pub(crate) fn redact_telemetry_text_if_engaged<'a>(
+    runtime: &fm_encrypted_skills::runtime::EncryptedSkillRuntime,
+    session_id: &str,
+    text: &'a str,
+) -> std::borrow::Cow<'a, str> {
+    if runtime.is_engaged(session_id) {
+        std::borrow::Cow::Owned(redact_telemetry_text(runtime, session_id, text))
+    } else {
+        std::borrow::Cow::Borrowed(text)
+    }
+}
+
 // fm G6: dispatch-error telemetry must apply the same redaction as the success
 // path — the payload can carry guard-rewritten `/dev/shm` paths and known
 // plaintext for engaged sessions.

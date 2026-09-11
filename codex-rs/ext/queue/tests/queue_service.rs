@@ -3,6 +3,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::sync::Weak;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Context;
@@ -450,6 +452,81 @@ async fn interrupted_turns_pause_queued_messages_but_failed_turns_drain_them() -
             .message_input_texts("user")
             .last()
             .map(String::as_str)
+    );
+    Ok(())
+}
+
+static DISPATCH_LICENSE_ACTIVE: AtomicBool = AtomicBool::new(true);
+fn dispatch_license_probe() -> bool {
+    DISPATCH_LICENSE_ACTIVE.load(Ordering::SeqCst)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn license_inactive_dispatch_retains_queue_until_recovered() -> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let _response =
+        responses::mount_sse_once(&server, responses::sse_completed("queued-turn")).await;
+    let test = test_codex().build_with_auto_env(&server).await?;
+    let thread_id = test.session_configured.thread_id;
+    let service = Arc::new(QueuedItemService::new(
+        loaded_thread_queue(&test)?,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    ));
+    DISPATCH_LICENSE_ACTIVE.store(false, Ordering::SeqCst);
+    service.set_license_active_probe(dispatch_license_probe);
+    service.enqueue(thread_id, user_input("queued")).await?;
+    emit_idle(&service, thread_id).await;
+    assert_eq!(
+        1,
+        service.list(thread_id).await?.len(),
+        "license-inactive dispatch must retain the queued submission"
+    );
+
+    // License recovery resumes dispatch without any extra action.
+    DISPATCH_LICENSE_ACTIVE.store(true, Ordering::SeqCst);
+    emit_idle(&service, thread_id).await;
+    wait_for_event_match(test.codex.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_)).then_some(())
+    })
+    .await;
+    assert!(service.list(thread_id).await?.is_empty());
+    Ok(())
+}
+
+static START_LICENSE_ACTIVE: AtomicBool = AtomicBool::new(true);
+fn start_license_probe() -> bool {
+    START_LICENSE_ACTIVE.load(Ordering::SeqCst)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn license_inactive_start_retains_queued_submission() -> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    responses::mount_sse_once(&server, responses::sse_completed("unexpected-turn")).await;
+    let test = test_codex().build_with_auto_env(&server).await?;
+    let thread_id = test.session_configured.thread_id;
+    let service = QueuedItemService::new(
+        loaded_thread_queue(&test)?,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
+    START_LICENSE_ACTIVE.store(false, Ordering::SeqCst);
+    service.set_license_active_probe(start_license_probe);
+    let item = service.enqueue(thread_id, user_input("queued")).await?;
+
+    let error = service
+        .start(
+            test.codex.as_ref(),
+            Some(item.id.clone()),
+            /*trace*/ None,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(error, QueueServiceError::LicenseInactive));
+    assert_eq!(
+        vec![item],
+        service.list(thread_id).await?,
+        "license-inactive start must retain the queued submission"
     );
     Ok(())
 }

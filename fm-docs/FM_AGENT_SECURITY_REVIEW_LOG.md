@@ -260,3 +260,16 @@ engaged 会话中含 `**` 分量的相对 glob 模式一律视为可能命中受
 | R6-4 | LOW | bedrock setup 疑似旁路 engaged 配置变异门(R6P-3,细节截断) | 修复代理核实后按实修/记录 |
 | R6-5 | LOW | tracing 卫生:realtime startup context 整包 info!(realtime_context.rs:126)、客户端文本 debug!(realtime_conversation.rs:1769/1787);内容脱敏继承、本地信任域,同 L2/M10 先例 | engaged 时过 redact 或降 trace!(顺手) |
 | R6-6 | 记录 | timeline 的 realtime TranscriptSegment 不受 token-hide 约束(与 AgentMessage 同级可见,策略一致);上游 command/exec Unix 丢 sandbox | 观察项:realtime 上游若引入未脱敏内容源,session/mod.rs:2412-2420 持久化点即成泄露汇 |
+
+### Round 7 修复状态 — 全部完成 ✓
+| ID | 修复 | 测试(先红后绿) |
+|----|------|----------------|
+| R6-1 ✓ | ext/queue dispatch_if_idle + service::start 加 license 探针(QueuedItemService 持 license_active fn-pointer,默认 fm_license::is_active,测试可注入;失活保留队列项,恢复自然续派);license 门名单补 ThreadQueueAdd/Update | ext-queue: license_inactive_dispatch_retains_queue_until_recovered、license_inactive_start_retains_queued_submission;app-server: license_lost_blocks_queue_add_and_update |
+| R6-2 ✓ | command_exec 入口加 ensure_not_engaged_unsandboxed(engaged 整体拒,同 process/spawn,封 stdin/输出/sandbox 全部子面);license 门补 command/exec 与 write | command_exec_blocked_while_engaged_even_for_benign_commands、license_lost_blocks_command_exec_and_write |
+| R6-3 ✓ | G4 guardrail+审计+REMINDER 逻辑抽公共助手,initial_items(v3)与 appendSpeech(v2)复用 | realtime_guardrail_flags_initial_items_and_injects_reminder_when_engaged、realtime_guardrail_flags_speech_and_injects_reminder_when_engaged |
+| R6-4 ✓ | 确认属实:BedrockSetup 与 account/login 的 AmazonBedrock{,AccessKeys} 变体经 configure_bedrock_provider 直写 config.toml,绕过 engaged 配置变异门 → 全部补进 ensure_config_mutation_allowed | rpc_guard_blocks_bedrock_setup_when_engaged |
+| R6-5 ✓ | realtime startup context/客户端文本日志:engaged 时过脱敏 | 随 R6-3 套件覆盖 |
+
+### Round 7 验证
+- app-server license_/rpc_guard/command_exec/realtime_ 91/91;clippy(app-server/queue-extension/core --all-targets)0 错;fmt 干净
+- **测试环境注记(2026-09-11 勘误,实验定论)**:codex-queue-extension 的 queue_service 测试在默认 2MiB 测试线程栈下栈溢出 —— **纯 upstream rust-v0.154.0 干净检出同样溢出,加 8MiB 通过**(临时 worktree 实验证实);上游三个 CI workflow 均全局设 RUST_MIN_STACK=8388608(.github/workflows/rust-ci*.yml)掩盖了它。**非 fm 造成,无 fm 侧可优化项**;此前「fm 使 future 增大」的归因有误,予以更正。动作(已落地):codex-rs/.cargo/config.toml 增 [env] RUST_MIN_STACK=8388608(与上游 CI 对齐;该文件本为上游跟踪文件,hunk 极小),本地 cargo test/just test 不再需要手工 export;guardian 深栈用例同此约定。已验证:默认 shell 环境下 queue_service 溢出用例转绿。对照实验另证:短路 apply_external_guardrail 不改变溢出,guardrail HTTP 链不在该测试的 poll 路径。

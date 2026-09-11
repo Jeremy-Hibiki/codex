@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::JSONRPCErrorError;
+use codex_app_server_protocol::LoginAccountParams;
 use fm_encrypted_skills::rpc;
 
 use crate::error_code::invalid_request;
@@ -114,7 +115,17 @@ pub(crate) fn ensure_config_mutation_allowed(
         | ClientRequest::SkillsConfigWrite { .. }
         | ClientRequest::SkillsExtraRootsSet { .. }
         // Config imports always rewrite the codex_home configuration.
-        | ClientRequest::ExternalAgentConfigImport { .. } => {
+        | ClientRequest::ExternalAgentConfigImport { .. }
+        // Bedrock setup and Bedrock login rewrite codex_home configuration
+        // (`model_provider` + `model_providers.amazon-bedrock.*`) through the
+        // same internal config-manager batch-write path.
+        | ClientRequest::BedrockSetup { .. }
+        | ClientRequest::LoginAccount {
+            params:
+                LoginAccountParams::AmazonBedrock { .. }
+                | LoginAccountParams::AmazonBedrockAccessKeys { .. },
+            ..
+        } => {
             Err(invalid_request(CONFIG_MUTATION_POLICY_ERROR))
         }
         // fs/writeFile only bypasses the RPC-level config gates when it

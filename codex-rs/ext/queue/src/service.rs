@@ -56,6 +56,8 @@ pub enum QueueServiceError {
     CoreSubmissionError(#[from] CodexErr),
     #[error("only user input can be added to the user-message queue")]
     InvalidInput,
+    #[error("license inactive; queued submission retained")]
+    LicenseInactive,
     #[error(
         "queued user input exceeds the maximum length of {MAX_USER_INPUT_TEXT_CHARS} characters ({actual_chars} provided)"
     )]
@@ -69,6 +71,10 @@ pub struct QueuedItemService {
     event_sink: Arc<dyn ExtensionEventSink>,
     dispatch_locks: Arc<StdMutex<HashMap<ThreadId, Weak<Mutex<()>>>>>,
     resumed_threads: Arc<StdMutex<HashSet<ThreadId>>>,
+    /// License gate consulted before queued work is dispatched or started.
+    /// Production always reads the process-wide fm-license state; tests
+    /// substitute a probe because that state cannot be flipped externally.
+    license_active: Arc<StdMutex<fn() -> bool>>,
 }
 
 impl QueuedItemService {
@@ -83,7 +89,25 @@ impl QueuedItemService {
             event_sink,
             dispatch_locks: Arc::new(StdMutex::new(HashMap::new())),
             resumed_threads: Arc::new(StdMutex::new(HashSet::new())),
+            license_active: Arc::new(StdMutex::new(fm_license::is_active)),
         }
+    }
+
+    /// Test seam: overrides the license gate probe (the fm-license process
+    /// state cannot be flipped from outside its crate).
+    #[doc(hidden)]
+    pub fn set_license_active_probe(&self, probe: fn() -> bool) {
+        *self
+            .license_active
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = probe;
+    }
+
+    fn license_active(&self) -> bool {
+        (self
+            .license_active
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner))()
     }
 
     // Check SQLite's inexpensive data version every 10 seconds, then use the
@@ -372,6 +396,10 @@ impl QueuedItemService {
         trace: Option<W3cTraceContext>,
     ) -> Result<StartIfIdleSubmission, QueueServiceError> {
         let thread_id = thread.session_configured().thread_id;
+        if !self.license_active() {
+            tracing::info!(%thread_id, "license-inactive; retaining queued submission");
+            return Err(QueueServiceError::LicenseInactive);
+        }
         let _dispatch_guard = self.dispatch_guard(thread_id).await;
         let item = self
             .list(thread_id)
@@ -403,6 +431,12 @@ impl QueuedItemService {
     }
 
     async fn dispatch_if_idle(&self, thread_id: ThreadId) -> Result<(), QueueServiceError> {
+        if !self.license_active() {
+            // Keep the queued entry; the idle/watch loops retry once the
+            // license recovers.
+            tracing::info!(%thread_id, "license-inactive; skipping queued user input dispatch");
+            return Ok(());
+        }
         let Some(manager) = self.thread_manager.upgrade() else {
             return Ok(());
         };

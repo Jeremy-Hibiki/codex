@@ -219,3 +219,17 @@ engaged 会话中含 `**` 分量的相对 glob 模式一律视为可能命中受
 | R4 | 盲区修复(H1/M1/M2/L1/L2) | 全部落地,fm-encrypted-skills 220/220 |
 | R5 | 收敛复审 | 全部通过;收敛 ✅ |
 | 加固 | debugoff → disable_process_dumping | 16 入口,全树零残留 |
+
+---
+
+## 分支差异三方审计(fm vs fm-0.154.0,回答「是否涵盖 0.146→0.154」)
+
+文件级集合分解(diff 内容级):
+- A = diff(0.146, fm)=338 文件;B = diff(0.146, 0.154)=4020;X = diff(fm, fm-0.154.0)=4077
+- **B ⊆ X(0 例外)**:上游 0.146→0.154 改动的每个文件,两分支间都有差异 → X 在文件级完全涵盖上游演进
+- 冲突文件 A∩B=166:逐字保留 fork 旧版而丢上游改动 = **0**;完全取上游(丢 fork 内容)= 49(全部对上 by-design:GREVO 品牌/spawn model 覆盖/mcp-server/core-skills 相关);真合并适配 = 117
+- fork 独改 172:逐字移植 122 + 适配移植 50(fm/encrypted-skills、fm/license 主体原样)
+- 两边都没动、本分支新改 = 7(orchestrator_tests、exec/main_tests、encrypted-skills/build.rs、审查日志 + 3 个测试残留已清理)
+
+### 上游观察(新增,不修)
+- rust-v0.154.0 `core/tests/suite/unified_exec_zsh_fork_approvals.rs:61/:126` 用 `tempfile::tempdir_in(std::env::current_dir())` 把临时目录建进 crate 目录;测试进程被杀时 TempDir 析构不跑 → `.tmp*/secret.env` 残留仓库并被 git add 扫入。已从本分支删除 3 个残留并加 `codex-rs/core/.gitignore`(`.tmp*/`)防复发;上游代码不动。

@@ -169,3 +169,18 @@
 已知限制确认:不可解析 cd 后无尾分量相对路径放行(Round 2 启发上限,钉死);D11/D12/D13 维持 by design。
 
 **收敛判定:不收敛(H1 HIGH 在)。Round 4 修复 H1/M1/M2/L1/L2 后做定向复审。**
+
+---
+
+## Round 4(R3 新发现修复)— 全部完成 ✓
+
+| ID | 修复 | 测试(先红后绿) |
+|----|------|----------------|
+| H1 ✓ | paths.rs split_command_segments 新增 7 种复合节点(if/while/until/for/case/subshell/function_definition)整体产 segment;is_top_level 同步放行 → 复合语句内子命令入段、cwd 链照常追踪;复合段首词为关键字/`(` 永不判 is_script_execution → 命中即 fail-closed 拒;guard 三入口零改动共享 segment 层;D9 顶层执行回归钉在位 | compound_subshell_guarded_read_is_flagged、compound_if_statement_guarded_read_is_flagged、top_level_script_execution_segments_unchanged_by_compound_support、blocks_guarded_read_inside_subshell_compound、blocks_guarded_read_inside_if_compound |
+| M1 ✓ | cwd_shift 动词加 popd → Unknown → 保守尾启发兜底 | popd_resets_tracked_cwd_conservatively |
+| M2 ✓ | glob_prefix_matches 递归锚定:`**` 吞任意多(含 0)目录分量;has_glob_meta 加 `(`(literal 先行,不放宽既有命中);extglob cd 目标保守回落本就由 cwd_shift `$`/反引号/`(` 覆盖(回归钉) | globstar_double_star_reaches_controlled_dirs、extglob_paren_cd_target_falls_back_to_tail_heuristic |
+| L1 ✓ | legacy_command_references_dir 分词后逐词 unquote_token 再判 | legacy_scanner_unquotes_backslash_escapes |
+| L2 ✓ | stream_events_utils 新增 redacted_tool_call_preview(engaged 时复用 registry redact_telemetry_text,提为 pub(crate) 一行可见性变更);非 engaged 严格透传 | tool_call_preview_redacts_for_engaged_session(core lib stream_events 13/13) |
+
+### Round 4 验证
+- fm-encrypted-skills 220/220(serial,较 Round 3 +9 测试);core check/clippy 0 错;fmt 干净

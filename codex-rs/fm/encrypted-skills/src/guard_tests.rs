@@ -405,6 +405,45 @@ fn blocks_chain_smuggled_reads() {
 }
 
 #[test]
+fn blocks_guarded_read_inside_subshell_compound() {
+    // H1 PoC 1 at the guard layer: a guarded `cd` plus relative read inside a
+    // subshell must not slip through the segment layer.
+    let (runtime, _tmp) = loaded_runtime();
+    let dir = runtime.decrypted_dirs("t1")[0]
+        .to_string_lossy()
+        .into_owned();
+    let command = format!("(cd {dir} && cat scripts/run.py)");
+    let decision =
+        before_tool_with_runtime(&runtime, "t1", "exec_command", &json!({ "cmd": command }));
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "guarded read inside a subshell must be blocked: {command}"
+    );
+}
+
+#[test]
+fn blocks_guarded_read_inside_if_compound() {
+    // H1 PoC 2 at the guard layer: an `if` compound hiding `cd /dev/shm`,
+    // chained into a relative read of a decrypted dir's tail component.
+    let (runtime, _tmp) = loaded_runtime();
+    let decrypted = runtime.decrypted_dirs("t1")[0]
+        .to_string_lossy()
+        .into_owned();
+    let mem_root = runtime.mem_root().to_string_lossy().into_owned();
+    let tail = decrypted
+        .strip_prefix(&format!("{mem_root}/"))
+        .unwrap_or(decrypted.as_str())
+        .to_string();
+    let command = format!("if true; then cd {mem_root}; fi && cat {tail}");
+    let decision =
+        before_tool_with_runtime(&runtime, "t1", "exec_command", &json!({ "cmd": command }));
+    assert!(
+        matches!(decision, GuardDecision::Blocked { .. }),
+        "guarded read hidden in an if compound must be blocked: {command}"
+    );
+}
+
+#[test]
 fn blocks_glob_probing_decrypted_storage() {
     let (runtime, _tmp) = loaded_runtime();
     let decision = before_tool_with_runtime(

@@ -724,3 +724,128 @@ fn differential_guard_block_decision() {
         mismatches.join("\n")
     );
 }
+
+// ---- Round 4 fixes ----
+
+#[test]
+fn compound_subshell_guarded_read_is_flagged() {
+    // H1 PoC 1: a guarded `cd` plus relative read inside a subshell produced
+    // no segment at all, leaving the read invisible to the token layer.
+    let dirs = vec![guarded_dir()];
+    let command = "(cd /dev/shm/fm-agent-security/p1/fm_skill_security_abc && cat scripts/run.py)";
+    let segments = split_command_segments(command);
+    assert!(
+        !segments.is_empty(),
+        "subshell body must produce segments: {segments:?}"
+    );
+    let flags = segment_guarded_flags(&segments, &dirs);
+    assert!(
+        flags.iter().any(|flag| *flag),
+        "guarded cd+read inside a subshell must be flagged: {segments:?} → {flags:?}"
+    );
+}
+
+#[test]
+fn compound_if_statement_guarded_read_is_flagged() {
+    // H1 PoC 2: an `if` compound hiding `cd /dev/shm`, chained into a
+    // relative guarded read.
+    let dirs = vec![guarded_dir()];
+    let command = "if true; then cd /dev/shm; fi && cat fm_skill_security_abc/scripts/run.py";
+    let segments = split_command_segments(command);
+    assert!(
+        !segments.is_empty(),
+        "if compound must produce segments: {segments:?}"
+    );
+    let flags = segment_guarded_flags(&segments, &dirs);
+    assert!(
+        flags.iter().any(|flag| *flag),
+        "guarded read hidden in an if compound must be flagged: {segments:?} → {flags:?}"
+    );
+}
+
+#[test]
+fn top_level_script_execution_segments_unchanged_by_compound_support() {
+    // D9 regression guard: a non-compound top-level script execution keeps
+    // its single-segment shape.
+    let dirs = vec![guarded_dir()];
+    let segments = split_command_segments("bash /skills/run.sh");
+    assert_eq!(segments, vec!["bash /skills/run.sh".to_string()]);
+    let flags = segment_guarded_flags(&segments, &dirs);
+    assert!(
+        flags.iter().all(|flag| !flag),
+        "unrelated script execution must stay allowed: {flags:?}"
+    );
+}
+
+#[test]
+fn popd_resets_tracked_cwd_conservatively() {
+    // M1: `popd` shifts the dirstack but left the tracked cwd stale, so a
+    // later relative guarded read resolved against the wrong directory.
+    let dirs = vec![guarded_dir()];
+    let segments = split_command_segments(
+        "cd /dev && pushd /tmp && popd && cat shm/fm-agent-security/x/SKILL.md",
+    );
+    let flags = segment_guarded_flags(&segments, &dirs);
+    assert!(
+        flags.last().is_some_and(|flag| *flag),
+        "relative guarded read after popd must be flagged: {segments:?} → {flags:?}"
+    );
+}
+
+#[test]
+fn globstar_double_star_reaches_controlled_dirs() {
+    // M2: `**` was matched as one component, so a globstar pattern anchored
+    // at `/dev` could never cover a controlled dir's depth.
+    let dirs = vec![guarded_dir()];
+    for token in [
+        "/dev/**/run.py",
+        "/dev/shm/**/SKILL.md",
+        "/dev/shm/fm-agent-security/**/scripts/run.sh",
+    ] {
+        assert!(
+            path_references_guarded(token, None, &dirs),
+            "globstar pattern must be flagged: {token}"
+        );
+    }
+    // HIGH-1 ① keeps working: a too-shallow breadth glob stays unflagged.
+    assert!(
+        !path_references_guarded("/dev/*", None, &dirs),
+        "breadth glob without enough depth must stay allowed"
+    );
+}
+
+#[test]
+fn extglob_paren_cd_target_falls_back_to_tail_heuristic() {
+    // M2: extglob `(...)` forms are runtime patterns; a cd target holding
+    // one must fall back to the conservative tail heuristic instead of
+    // tracking an unresolvable lexical cwd.
+    let dirs = vec![guarded_dir()];
+    let segments = split_command_segments("cd /tmp/@(a|b) && cat fm_skill_security_abc/SKILL.md");
+    let flags = segment_guarded_flags(&segments, &dirs);
+    assert!(
+        flags.iter().any(|flag| *flag),
+        "relative guarded read after an extglob cd target must be flagged: {segments:?} → {flags:?}"
+    );
+}
+
+#[test]
+fn legacy_scanner_unquotes_backslash_escapes() {
+    // L1: the legacy fallback judged raw words, so `/dev/s\hm` bypassed it.
+    let dirs = vec![guarded_dir()];
+    assert!(
+        legacy_command_references_dir("/dev/s\\hm", &dirs),
+        "backslash-escaped guarded path must be caught by the legacy scanner"
+    );
+    assert!(
+        legacy_command_references_dir(
+            "cat /dev/s\\hm/fm-agent-security/p1/fm_skill_security_abc/SKILL.md",
+            &dirs,
+        ),
+        "backslash-escaped guarded read must be caught by the legacy scanner"
+    );
+    // Unrelated escaped names must stay allowed.
+    assert!(
+        !legacy_command_references_dir("cat /tm\\p/notes.txt", &dirs),
+        "escaped unrelated path must stay allowed"
+    );
+}

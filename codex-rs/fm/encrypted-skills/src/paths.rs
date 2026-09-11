@@ -79,7 +79,10 @@ fn collect_literal_tokens(node: Node, src: &str, out: &mut Vec<String>) {
 
 fn is_top_level(node: Node) -> bool {
     // Check the node's ancestors only (a top-level `redirected_statement` is
-    // itself allowed; its descendants are not).
+    // itself allowed; its descendants are not). Compound statements
+    // (`if`/`while`/`until`/`for`/`case`/subshell/function bodies) are NOT
+    // excluded: their inner statements qualify as segments so the guard sees
+    // and cwd-tracks everything a compound can execute (H1).
     let mut current = node.parent();
     while let Some(n) = current {
         if matches!(
@@ -93,13 +96,6 @@ fn is_top_level(node: Node) -> bool {
                 | "raw_string"
                 | "string_content"
                 | "comment"
-                | "function_definition"
-                | "if_statement"
-                | "while_statement"
-                | "until_statement"
-                | "for_statement"
-                | "case_statement"
-                | "subshell"
                 | "arithmetic_expansion"
                 | "variable_expansion"
                 | "simple_expansion"
@@ -238,9 +234,10 @@ fn literal_token_guarded(token: &str, dirs: &[String]) -> bool {
 }
 
 /// Shell glob/brace metacharacters that make a word's runtime path
-/// resolution non-literal.
+/// resolution non-literal. `(` covers extglob forms (`@(x)`, `*(x)`, ...)
+/// conservatively.
 fn has_glob_meta(token: &str) -> bool {
-    token.contains(['*', '?', '[', '{'])
+    token.contains(['*', '?', '[', '{', '('])
 }
 
 /// True when a glob-metacharacter word can resolve at or beneath any
@@ -272,13 +269,29 @@ fn glob_token_references_guarded(token: &str, dirs: &[String]) -> bool {
             .chain(std::iter::once(MEM_ROOT))
             .any(|dir| {
                 let dir_comps: Vec<&str> = dir.split('/').filter(|c| !c.is_empty()).collect();
-                comps.len() >= dir_comps.len()
-                    && comps
-                        .iter()
-                        .zip(&dir_comps)
-                        .all(|(p, d)| glob_component_matches(p, d))
+                glob_prefix_matches(&comps, &dir_comps)
             })
     })
+}
+
+/// Anchored prefix match of a glob pattern's path components against a
+/// controlled directory's components. `**` swallows any number of directory
+/// components (globstar); every other component matches one component via
+/// [`glob_component_matches`]. Pattern components remaining after the last
+/// directory component continue deeper beneath the controlled dir (anchored
+/// probing); a pattern exhausted while directory components remain cannot
+/// reach the dir (HIGH-1 ①).
+fn glob_prefix_matches(pattern: &[&str], dir_comps: &[&str]) -> bool {
+    match pattern.split_first() {
+        None => dir_comps.is_empty(),
+        Some((&"**", rest)) => {
+            (0..=dir_comps.len()).any(|skip| glob_prefix_matches(rest, &dir_comps[skip..]))
+        }
+        Some((p, rest)) => match dir_comps.split_first() {
+            None => true,
+            Some((d, d_rest)) => glob_component_matches(p, d) && glob_prefix_matches(rest, d_rest),
+        },
+    }
 }
 
 /// Expands `{a,b}` brace groups into separate candidate patterns so glob
@@ -771,8 +784,12 @@ pub(crate) fn legacy_command_references_dir(cmd: &str, decrypted_dirs: &[String]
     }
     // Alias shapes, globs, and in-word quotes hold no literal guarded prefix;
     // check each word the same way the tree-sitter implementation does.
-    cmd.split_whitespace()
-        .any(|word| token_references_guarded(word, None, decrypted_dirs))
+    // Words are unquoted first (`/dev/s\hm`, `"/dev/shm"`) so escape and
+    // quote forms resolve like bash's quote-removal pass.
+    cmd.split_whitespace().any(|word| {
+        let unquoted = unquote_token(word);
+        token_references_guarded(&unquoted, None, decrypted_dirs)
+    })
 }
 
 /// Splits a command into independent segments at unquoted chain operators
@@ -799,10 +816,24 @@ pub fn split_command_segments(command: &str) -> Vec<String> {
         let inside_redirected = node
             .parent()
             .is_some_and(|parent| parent.kind() == "redirected_statement");
+        // Compound statements are emitted as one whole segment (in addition
+        // to their inner statements, which qualify via `is_top_level`): the
+        // whole-compound range keeps structural tokens (`cd /dev/shm` inside
+        // an `if`, redirects spanning the compound) visible to the token
+        // layer (H1).
         if !inside_redirected
             && matches!(
                 kind,
-                "command" | "redirected_statement" | "variable_assignment"
+                "command"
+                    | "redirected_statement"
+                    | "variable_assignment"
+                    | "if_statement"
+                    | "while_statement"
+                    | "until_statement"
+                    | "for_statement"
+                    | "case_statement"
+                    | "subshell"
+                    | "function_definition"
             )
             && is_top_level(node)
         {
@@ -931,7 +962,7 @@ fn cwd_shift(segment: &str) -> Option<CwdShift> {
         }
         break command_basename(&word).to_ascii_lowercase();
     };
-    if verb != "cd" && verb != "pushd" {
+    if verb != "cd" && verb != "pushd" && verb != "popd" {
         return None;
     }
     let target = words

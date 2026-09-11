@@ -839,7 +839,7 @@ impl ToolRegistry {
 // Path unrewrite must run before the plaintext pass: redacting the memory-root
 // prefix first would mangle decrypted `/dev/shm` paths and defeat unrewrite
 // matching.
-fn redact_telemetry_text(
+pub(crate) fn redact_telemetry_text(
     runtime: &fm_encrypted_skills::runtime::EncryptedSkillRuntime,
     session_id: &str,
     text: &str,

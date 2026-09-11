@@ -17,9 +17,16 @@ anyhow = { workspace = true }
 codex-core = { workspace = true }
 tracing = { workspace = true }
 
+[features]
+# Enables the real LMCLIENT-backed license checkout and pulls in the internal
+# GitLab dependency. Off by default: without it the crate compiles to the
+# no-op stub (license gate fully pass-through, baseline Codex behavior).
+lmclient = ["dep:lmclient-rust-sdk", "dep:signal-hook"]
+default = []
+
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
-lmclient-rust-sdk = { workspace = true }
-signal-hook = { workspace = true }
+lmclient-rust-sdk = { workspace = true, optional = true }
+signal-hook = { workspace = true, optional = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

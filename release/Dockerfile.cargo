@@ -141,10 +141,10 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     set -eu; \
     export FMSH_UKEY_SDK_LINK FMSH_UKEY_LIBSTDCPP; \
     if [ "$CARGO_PROFILE" = "debug" ]; then \
-    cargo build -p codex-cli \
+    cargo build -p codex-cli --features ukey \
     && cp target/debug/codex /codex-codex; \
     else \
-    cargo build --release -p codex-cli \
+    cargo build --release -p codex-cli --features ukey \
     && strip target/release/codex \
     && cp target/release/codex /codex-codex; \
     fi

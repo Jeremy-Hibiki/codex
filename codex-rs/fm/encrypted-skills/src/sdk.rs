@@ -80,7 +80,7 @@ pub enum SdkKind {
     /// Identity transform: the `.enc` package is the plain ZIP renamed.
     Noop,
     /// Software digital envelope (HPKE default or standard CMS SM2-SM4-CBC).
-    /// Backed by `fmsh-ukey-cipher` (compiled on Linux x86_64 gnu).
+    /// Backed by `fmsh-ukey-cipher` (Linux x86_64 gnu with the `ukey` feature).
     Software {
         algorithm: SdkSoftwareAlgorithm,
         privkey: Option<PathBuf>,
@@ -90,7 +90,7 @@ pub enum SdkKind {
     UKey,
     /// UKey two-phase: one UKey call unwraps a per-skill `key.enc`, then
     /// every package is decrypted in software AES-256-GCM with the in-memory
-    /// key (compiled on Linux x86_64 gnu).
+    /// key (Linux x86_64 gnu with the `ukey` feature).
     UKeyTwoPhase {
         key_envelope: String,
         key_cache_ttl: Duration,
@@ -112,7 +112,7 @@ pub enum SdkSoftwareAlgorithm {
 /// deployments do not need to configure a global SDK. Missing backends fail
 /// closed with a clear error; unknown/missing modes fall back to UKey per the
 /// upstream semantics.
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu", feature = "ukey"))]
 pub struct AutoSdk {
     software: Option<Arc<dyn EnvelopeSdk>>,
     ukey: Option<Arc<dyn EnvelopeSdk>>,
@@ -120,7 +120,7 @@ pub struct AutoSdk {
     mock: Arc<dyn EnvelopeSdk>,
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu", feature = "ukey"))]
 impl AutoSdk {
     pub(crate) fn new(
         software_algorithm: SdkSoftwareAlgorithm,
@@ -164,7 +164,7 @@ impl AutoSdk {
     }
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu", feature = "ukey"))]
 impl EnvelopeSdk for AutoSdk {
     fn decrypt_package(&self, package_path: &Path) -> Result<Vec<PackageEntry>, EnvelopeError> {
         let skill_dir = package_path.parent().ok_or_else(|| {
@@ -193,7 +193,7 @@ impl EnvelopeSdk for AutoSdk {
 pub fn sdk_for(kind: SdkKind) -> Arc<dyn EnvelopeSdk> {
     match kind {
         SdkKind::Unavailable => Arc::new(UnavailableSdk),
-        #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+        #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu", feature = "ukey"))]
         SdkKind::Auto {
             software_algorithm,
             software_privkey,
@@ -207,7 +207,7 @@ pub fn sdk_for(kind: SdkKind) -> Arc<dyn EnvelopeSdk> {
         )),
         SdkKind::TestZip => Arc::new(TestZipSdk),
         SdkKind::Noop => Arc::new(NoopEnvelopeSdk),
-        #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+        #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu", feature = "ukey"))]
         SdkKind::Software { algorithm, privkey } => {
             match fmsh::SoftwareSdk::new(algorithm, privkey.as_deref()) {
                 Ok(sdk) => Arc::new(sdk),
@@ -217,7 +217,7 @@ pub fn sdk_for(kind: SdkKind) -> Arc<dyn EnvelopeSdk> {
                 }
             }
         }
-        #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+        #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu", feature = "ukey"))]
         SdkKind::UKey => match fmsh::UKeySdk::new() {
             Ok(sdk) => Arc::new(sdk),
             Err(error) => {
@@ -225,7 +225,7 @@ pub fn sdk_for(kind: SdkKind) -> Arc<dyn EnvelopeSdk> {
                 Arc::new(UnavailableSdk)
             }
         },
-        #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+        #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu", feature = "ukey"))]
         SdkKind::UKeyTwoPhase {
             key_envelope,
             key_cache_ttl,
@@ -236,12 +236,12 @@ pub fn sdk_for(kind: SdkKind) -> Arc<dyn EnvelopeSdk> {
                 Arc::new(UnavailableSdk)
             }
         },
-        #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu", feature = "ukey")))]
         SdkKind::Auto { .. }
         | SdkKind::Software { .. }
         | SdkKind::UKey
         | SdkKind::UKeyTwoPhase { .. } => {
-            tracing::warn!("encrypted-skill SDK kind is not compiled in on this platform");
+            tracing::warn!("encrypted-skill SDK kind is not compiled in (ukey feature off or unsupported platform)");
             Arc::new(UnavailableSdk)
         }
     }
@@ -324,7 +324,7 @@ fn parse_zip_bytes(zip_bytes: &[u8]) -> Result<Vec<PackageEntry>, EnvelopeError>
     Ok(entries)
 }
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu", feature = "ukey"))]
 mod fmsh {
     use std::collections::HashMap;
     use std::path::Path;
@@ -561,7 +561,7 @@ mod tests {
         ));
     }
 
-    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu", feature = "ukey"))]
     mod auto_sdk_tests {
         use super::*;
 
@@ -692,10 +692,11 @@ mod tests {
                 Err(EnvelopeError::PackageNotFound(_))
             ));
         }
-        #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu", feature = "ukey")))]
         {
-            // The envelope backends are only compiled on the platform where
-            // the vendored SDK ships; elsewhere they fail closed.
+            // The envelope backends are only compiled (ukey feature on) on
+            // the platform where the vendored SDK ships; elsewhere they fail
+            // closed.
             assert!(matches!(
                 sdk_for(SdkKind::UKey).decrypt_package(Path::new("/x.zip.enc")),
                 Err(EnvelopeError::SdkUnavailable)
@@ -719,7 +720,7 @@ mod tests {
         }
     }
 
-    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu", feature = "ukey"))]
     fn software_sdk_decrypts_package(
         algorithm: fmsh_ukey_core::SoftwareAlgorithm,
         sdk_algorithm: SdkSoftwareAlgorithm,
@@ -753,7 +754,7 @@ mod tests {
         assert_eq!(entries[0].contents, b"# secret");
     }
 
-    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu", feature = "ukey"))]
     #[test]
     fn software_sdk_decrypts_hpke_and_sm2_packages() {
         use fmsh_ukey_core::SoftwareAlgorithm;
@@ -772,7 +773,7 @@ mod tests {
         }
     }
 
-    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu", feature = "ukey"))]
     #[test]
     fn two_phase_sdk_decrypts_package_with_in_memory_key() {
         use std::sync::Arc;
@@ -834,7 +835,7 @@ mod tests {
         assert_eq!(entries[0].contents, b"# secret");
     }
 
-    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu", feature = "ukey"))]
     #[test]
     fn shared_key_envelope_is_unwrapped_exactly_once_across_skills() {
         use std::sync::Arc;

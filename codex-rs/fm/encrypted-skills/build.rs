@@ -22,6 +22,13 @@ fn main() {
         return;
     }
 
+    // Without the `ukey` feature the wrapper dependency is absent (so
+    // DEP_FMSH_UKEY_SDK_LIB_DIR is unset) and no target references the SDK
+    // FFI symbols; `sdk_for` compiles to the fail-closed stub instead.
+    if std::env::var_os("CARGO_FEATURE_UKEY").is_none() {
+        return;
+    }
+
     // Published by `fmsh-ukey-sdk-wrapper` (it declares `links = "fmsh_ukey_sdk"`).
     let Ok(lib_dir) = std::env::var("DEP_FMSH_UKEY_SDK_LIB_DIR") else {
         panic!(

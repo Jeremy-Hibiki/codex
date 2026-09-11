@@ -25,6 +25,9 @@ workspace = true
 [dependencies]
 fm-license = { workspace = true }
 fm-product-policy = { workspace = true }
+# Optional: only pulled in to forward the `ukey` feature to the encrypted
+# skills backends when building the full-fat CLI binary.
+fm-encrypted-skills = { workspace = true, optional = true }
 
 anyhow = { workspace = true }
 chrono = { workspace = true }
@@ -117,8 +120,20 @@ windows-sys = { version = "0.52", features = [
     "Win32_System_Threading",
 ] }
 
+[features]
+# Full-fat build: link the FMSH UKey SDK, compile the real envelope backends
+# and the LMCLIENT license checkout. Off by default (baseline Codex behavior,
+# no internal GitLab build dependencies).
+ukey = [
+    "dep:fmsh-ukey-sdk-wrapper",
+    "dep:fm-encrypted-skills",
+    "fm-encrypted-skills/ukey",
+    "fm-license/lmclient",
+]
+default = []
+
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
-fmsh-ukey-sdk-wrapper = { workspace = true }
+fmsh-ukey-sdk-wrapper = { workspace = true, optional = true }
 
 [dev-dependencies]
 app_test_support = { workspace = true }

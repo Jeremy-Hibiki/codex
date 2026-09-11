@@ -2667,6 +2667,7 @@ dependencies = [
  "codex-windows-sandbox",
  "crossterm",
  "flate2",
+ "fm-encrypted-skills",
  "fm-license",
  "fm-product-policy",
  "fmsh-ukey-sdk-wrapper",

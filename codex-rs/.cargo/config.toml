@@ -5,6 +5,15 @@
 [env]
 RUST_MIN_STACK = "8388608"
 
+# Full-fat (internal GitLab deps enabled) check/test entry points. Default
+# builds need none of those dependencies; these aliases turn both fm feature
+# gates on. Workspace-wide only: with `-p <pkg>` the other crate's feature is
+# not in the unit graph and cargo rejects it — use direct flags instead,
+# e.g. `cargo test -p fm-license --features lmclient`.
+[alias]
+fm-check = "check --features fm-license/lmclient,fm-encrypted-skills/ukey"
+fm-test = "test --features fm-license/lmclient,fm-encrypted-skills/ukey"
+
 [target.'cfg(all(windows, target_env = "msvc"))']
 rustflags = ["-C", "link-arg=/STACK:8388608", "-C", "target-feature=+crt-static"]
 

@@ -36,3 +36,20 @@ pub mod sandbox_policy;
 pub mod sdk;
 pub mod session_guard;
 pub mod token;
+
+/// Whether the real envelope backends (`fmsh-ukey-core` / the FMSH UKey SDK)
+/// are compiled in.
+///
+/// Compile-time constant: false on non-glibc platforms and whenever the
+/// `ukey` feature is off. [`sdk_for`] then returns the fail-closed
+/// [`sdk::UnavailableSdk`] for every real backend kind, so encrypted skills
+/// fail to load and the runtime never engages. Tests that need real
+/// decryption should skip themselves when this returns false.
+pub fn ukey_available() -> bool {
+    cfg!(all(
+        target_os = "linux",
+        target_arch = "x86_64",
+        target_env = "gnu",
+        feature = "ukey"
+    ))
+}

@@ -192,7 +192,7 @@ build_local() {
     echo "== cargo build $cargo_profile_flag =="
     (
         cd "$codex_src"
-        FM_BUILD_SUFFIX="$suffix" cargo build $cargo_profile_flag -p codex-cli --timings
+        FM_BUILD_SUFFIX="$suffix" cargo build $cargo_profile_flag -p codex-cli --features ukey --timings
     )
 
     mkdir -p "$out_dir/lib"

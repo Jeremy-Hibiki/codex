@@ -31,7 +31,9 @@ zeroize = { workspace = true }
 zip = { workspace = true, features = ["deflate"] }
 
 # Real envelope backends (software / ukey / ukey-two-phase) backed by
-# `fmsh-ukey-core`, hard-bound on the platform where the vendor SDK ships.
+# `fmsh-ukey-core`, gated on the `ukey` feature (default off: builds then need
+# no internal GitLab dependencies and `sdk_for` fails closed) and hard-bound
+# to the platform where the vendor SDK ships.
 # The upstream repo vendors the SDK under vendor/ (SDK 0.3.1 ships both
 # static archives and the shared library), so no FMSH_UKEY_SDK_DIR is needed
 # at build time. The ukey modes still need FMSH_UKEY_PROVIDER /
@@ -44,13 +46,24 @@ zip = { workspace = true, features = ["deflate"] }
 # libc++abi V8 embeds on the __cxa_* ABI symbols). Target platform is
 # Ubuntu 22.04+ (LMClient itself references __libc_single_threaded, glibc
 # 2.32; tested release binaries require GLIBC_2.34).
+[features]
+# Enables the real envelope backends and pulls in the internal GitLab
+# dependencies. Off by default: without it `sdk_for` returns the fail-closed
+# stub for every real backend kind, so encrypted skills never engage.
+ukey = [
+    "dep:fmsh-ukey-core",
+    "dep:fmsh-ukey-skill",
+    "dep:fmsh-ukey-sdk-wrapper",
+]
+default = []
+
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
-fmsh-ukey-core = { workspace = true }
-fmsh-ukey-skill = { workspace = true }
+fmsh-ukey-core = { workspace = true, optional = true }
+fmsh-ukey-skill = { workspace = true, optional = true }
 # Direct dependency so the wrapper's build script publishes
 # DEP_FMSH_UKEY_SDK_LIB_DIR to our own build script, which emits the link
 # directives its test targets need. It is already in the graph transitively.
-fmsh-ukey-sdk-wrapper = { workspace = true }
+fmsh-ukey-sdk-wrapper = { workspace = true, optional = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }

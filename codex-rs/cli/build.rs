@@ -96,9 +96,14 @@ fn main() {
     //
     // rustc-link-arg-bins from dependency crates never reaches this final
     // link, so the rpath must be re-emitted here.
+    //
+    // The whole block only applies to full-fat builds: without the `ukey`
+    // feature the wrapper dependency is absent (so DEP_FMSH_UKEY_SDK_LIB_DIR
+    // is unset) and no artifact references the SDK FFI symbols.
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux")
         && std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("x86_64")
         && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("gnu")
+        && std::env::var_os("CARGO_FEATURE_UKEY").is_some()
     {
         println!("cargo:rerun-if-env-changed=FMSH_UKEY_SDK_LINK");
         let sdk_static = std::env::var("FMSH_UKEY_SDK_LINK").as_deref() == Ok("static");

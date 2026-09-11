@@ -5,6 +5,21 @@ load("//bazel/rules:e2e_benchmark.bzl", "codex_e2e_benchmark")
 codex_rust_crate(
     name = "cli",
     binaries_with_build_commit = ["codex"],
+    crate_features = select({
+        # Full-fat binary: link the FMSH UKey SDK and enable the real license
+        # gate + envelope backends (Cargo feature `ukey`, default off).
+        "@platforms//os:linux": ["ukey"],
+        "//conditions:default": [],
+    }),
+    # Feature-gated deps: `all_crate_deps()` does not follow crate_features,
+    # so list them like v8-poc does for its `sandbox` feature.
+    deps_extra = select({
+        "@platforms//os:linux": [
+            "@crates//:fmsh-ukey-sdk-wrapper",
+            "//codex-rs/fm/encrypted-skills:encrypted-skills",
+        ],
+        "//conditions:default": [],
+    }),
     crate_name = "codex_cli",
     extra_binaries = [
         "//codex-rs/bwrap:bwrap",

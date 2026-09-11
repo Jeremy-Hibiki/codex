@@ -87,7 +87,7 @@
 复审:R2Fixes(Round 1 修复正确性逐条复核)+ R2Residual(三个遗留面)。结论:**16 项修复中 14 项干净通过**,M2 部分通过;paths 归一化实现正确但有 shell 语义层盲区。
 
 ### Round 1 修复复核结论(全部有据)
-通过:F1-sec 接线、M5 全分段、M6 首次尝试、F5-sec timeline(三路径全覆盖)、M1 全变体、M3 状态迁移+幂等、M9 覆盖面、F3-sec trace token 化(WS 增量退化为整体脱敏,方向安全)、M8 递归脱敏、M7 delta 全覆盖、M4 接线、M10 otel 路径、F6 边界、F7 stub 告警、M2 中央接线。
+通过(R2Fixes 复核表实际 18 行,含 F4-sec compaction drain(compact.rs:787-795)与 M11 V1 spec 门控):F1-sec 接线、F2-sec paths 归一化(实现正确,语义盲区另立 G1)、M5 全分段、M6 首次尝试、F5-sec timeline(三路径全覆盖)、M1 全变体、M3 状态迁移+幂等、M9 覆盖面、F3-sec trace token 化(WS 增量退化为整体脱敏,方向安全)、M8 递归脱敏、M7 delta 全覆盖、M4 接线、M10 otel 路径、F6 边界、F7 stub 告警、M2 中央接线。「14/16」为 R2Fixes 自述口径,以其复核表为准。Round 1 的 17 项中未出现在复核表的 LOW 级项(如 L 级)无独立复核行。
 部分通过:M2(FsCopy/FsRemove 漏 + `..` 词法穿透 → Round 2 MED-1)。
 
 ### Round 2 新发现与修复项(G1-G3 分工)
@@ -139,7 +139,7 @@
 - **无 BUILD.bazel 引用**(grep 验证);Bazel 锁刷新仍按既有决策超范围。
 
 ### 验证
-- 全仓 grep debugoff(源码/清单/bazel)0 残留
+- 全仓 grep debugoff(codex-rs/ 下源码/Cargo.toml/Cargo.lock/BUILD.bazel)0 残留;**例外:仓库根 MODULE.bazel.lock 仍含 debugoff 元数据**(Bazel 锁刷新按既有决策超范围,功能无影响,Bazel 不用于本构建)
 - 全部受影响 crate `cargo check` 0 错(**debug 构建**,证明 cfg 属性拓扑正确;曾修复两处机械替换事故:孤儿 cfg 属性对悬空到 `#[tokio::main]`/`use std::path::PathBuf` 导致 debug 构建丢 main — E0601,已清理)
 - file-search debug 运行冒烟 OK;responses-api-proxy release 冒烟 OK(启动/参数/设计内报错路径正常)
 - clippy(13 个受影响 crate --all-targets)0 错;cargo fmt 干净
@@ -185,6 +185,11 @@
 ### Round 4 验证
 - fm-encrypted-skills 220/220(serial,较 Round 3 +9 测试);core check/clippy 0 错;fmt 干净
 
+### 合并树 core lib 已知失败钉死清单(2026-09-11 最终运行,10 项)
+7 基线:agent::control::tests::{send_input_submits_user_message, spawn_agent_can_fork_parent_thread_history_with_sanitized_items, spawn_agent_creates_thread_and_sends_prompt}, session::tests::{interrupting_compaction_fallback_retains_last_known_step_context, user_shell_commands_do_not_inherit_managed_network_proxy}, session::turn::tests::post_sampling_token_estimate_is_disabled_by_always_on_sinks, tools::handlers::multi_agents::tests::{send_input_accepts_structured_items, send_input_interrupts_before_prompt}(8 项);
+3 负载 flake(隔离运行通过):environment_selection::tests::blocking_snapshot_waits_for_starting_environment、guardian::tests::guardian_ephemeral_retry_preserves_parallel_trunk_and_fork_history、thread_manager::tests::injected_models_manager_controls_refresh_policy。合并验证出现其他名字即回归。R2 期间多出的 unified_exec::stdin_approval_preserves_the_reviewed_terminal、config::multi_agent_v2_* 为负载 flake,隔离复跑通过。
+注:测试计数无落盘工件,复现命令即上文各节所列命令。
+
 ---
 
 ## Round 5(收敛复审,HEAD=7160bb5aae)— ✅ 收敛
@@ -204,6 +209,9 @@ Round 4 五项修复(H1/M1/M2/L1/L2)逐点验证全部通过:
 | N3 | LOW | globstar 钉测注释与运行时锚定依据不同源(结论一致) | 可选改注释 |
 
 **收敛判定:无新的放行侧缺陷,循环终止。**
+
+### H1 fail-closed 已知未量化面
+复合语句内触及受控路径且非 D9 顶层脚本形态的命令一律拒绝;R5 仅验证了良性复合命令无误拦与 D9 顶层回归,复合+受控+非脚本的误拦率未量化,依赖使用反馈再调。
 
 ### D15(by design):裸 `**` 相对模式保守拦截
 engaged 会话中含 `**` 分量的相对 glob 模式一律视为可能命中受控目录而拦截(fail-closed);不区分 globstar 开关、不豁免已追踪的安全 cwd。代价是极小面误拦(模型改用单层 `*` 即可),收益是 globstar 语义不确定性下零漏判。

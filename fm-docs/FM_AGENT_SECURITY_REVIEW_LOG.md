@@ -320,3 +320,26 @@ engaged 会话中含 `**` 分量的相对 glob 模式一律视为可能命中受
 2. **vendor 进仓库**:4 个 crate(+ linux SDK 库,checkout 实测 199MB/7.7MB,可裁剪平台)转 path 依赖入库,彻底离线,代价是仓库体积与 SDK 库入库的合规确认。
 
 feature 开关仍有价值:无 feature 构建不**编译/链接** SDK(另一办公地能出全量功能的非 SDK 产物),但「不拉取」必须靠镜像或 vendor。
+
+---
+
+## Round 9:placeholder path crate 方案(采纳 Codex 建议,替代 strip 脚本)
+
+strip 脚本方案有硬伤:仓库清单里仍写着内网 URL,fresh clone 不跑脚本、第一次 `cargo fetch` 照样失败。采纳 dummy path crate 方案:**公共清单里根本不存在内网 URL,resolver 解析到的 source 就是本地路径**。
+
+### 实现
+- `codex-rs/vendor/dummy/{fmsh-ukey-core,fmsh-ukey-sdk-wrapper,fmsh-ukey-skill,lmclient-rust-sdk}`:同名同版本 placeholder crate,`compile_error!` —— 默认构建(feature 关)根本不编译它们;误开 ukey/lmclient 时编译失败并明确提示跑 `release/use-real-fm-deps.sh`。
+- 根 Cargo.toml 的 4 个 workspace 依赖从 `git = "http://192.168.131.126:8089/..."` 改为 `path = "vendor/dummy/..."` —— **内网地址从公共清单中消失**。
+- `release/use-real-fm-deps.sh`(内部切真依赖)+ `release/use-dummy-fm-deps.sh`(切回 placeholder);切换会改写 Cargo.lock,切换态的 lock 不入库。
+- strip-fm-deps.sh 方案废弃移除(824cc1ea2e 已 reset 丢弃)。
+- **入库的 Cargo.lock 为 placeholder 形态**(零内网 URL;git 源条目消失)。内部切真依赖会本地改写 lock,勿提交切换态 lock;提交回 placeholder 用 release/use-dummy-fm-deps.sh。
+
+### 双模式验证(最终版,干净 git 缓存 + insteadOf 屏蔽 GitLab)
+| 命令 | 结果 |
+|------|------|
+| `cargo fetch`(R8 之前失败的命令) | **exit 0**,仅拉 github 上游依赖 |
+| `cargo check -p codex-exec` | Finished |
+| `cargo test -p fm-encrypted-skills`(OFF) | 基线全绿 |
+| use-real 后 `cargo test -p fm-encrypted-skills --features ukey` | 220/220 |
+| use-real 后 `cargo test -p fm-license --features lmclient`(bypass) | 12/12 |
+| use-dummy-fm-deps.sh 恢复 | 工作树回到已提交状态 |

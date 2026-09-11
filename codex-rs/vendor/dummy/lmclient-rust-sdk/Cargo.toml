@@ -1,0 +1,4 @@
+[package]
+name = "lmclient-rust-sdk"
+version = "1.3.2"
+edition = "2021"

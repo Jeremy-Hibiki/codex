@@ -1,0 +1,4 @@
+[package]
+name = "fmsh-ukey-core"
+version = "0.5.1"
+edition = "2021"

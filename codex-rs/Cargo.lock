@@ -2400,6 +2400,7 @@ dependencies = [
  "codex-utils-path",
  "codex-windows-sandbox",
  "crossterm",
+ "fm-encrypted-skills",
  "fm-license",
  "fm-product-policy",
  "fmsh-ukey-sdk-wrapper",

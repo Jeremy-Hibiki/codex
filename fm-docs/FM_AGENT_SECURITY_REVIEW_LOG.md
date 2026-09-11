@@ -302,3 +302,21 @@ engaged 会话中含 `**` 分量的相对 glob 模式一律视为可能命中受
 ### 用法
 - 另一办公地(离线):`cargo build/test --workspace` 原样即可
 - 本地全功能:`cargo fm-check` / `cargo fm-test`,或显式 `--features fm-license/lmclient,fm-encrypted-skills/ukey`;`-p codex-cli --features ukey` 一站式转发
+
+---
+
+## Round 8 勘误(用户在另一办公地实测反馈)
+
+**「OFF 模式 --offline 0 错 = 离线可建」的证明不成立**:该验证在 warm git 缓存上运行,掩盖了 resolve 行为。用户在干净机器上 `cargo fetch`/`cargo check` 实测仍拉取 GitLab。
+
+### 根因(cargo 机制,非配置问题)
+- Cargo.lock 是**全量声明图**(feature 无关),optional git 依赖始终在列;
+- 任何 cargo resolve(fetch/check/build)都要读 lockfile 内 git 包的 manifest → 缺 checkout 就 fetch;
+- 实验实证(grevo worktree,insteadOf 屏蔽 GitLab + 空 git 缓存):①裸 `cargo fetch` 拉全量 lockfile;②`cargo check -p codex-exec`(feature 关)照样 "Updating git repository" ×2;③**手工剪掉 lockfile 条目后 cargo 回填并重新 fetch**——声明了 optional git 依赖就必然参与 resolve,无 flag 可绕。
+
+### 结论:feature 开关解决的是「编译与链接」解耦,不解决「拉取」
+真正离线可建的两条路(需用户决策):
+1. **镜像(推荐,零代码)**:把 `jiangzhengqi/fmsh-ukey-lib` 与 `jiangzhengqi/lmclient-rust-sdk` 镜像到双方办公地都可达的 git 服务(如托管本仓库的服务),改 workspace Cargo.toml 4 个 URL;或另一办公地一行 git 配置指向镜像:`git config --global url."<镜像URL>".insteadOf "http://192.168.131.126:8089/"`。
+2. **vendor 进仓库**:4 个 crate(+ linux SDK 库,checkout 实测 199MB/7.7MB,可裁剪平台)转 path 依赖入库,彻底离线,代价是仓库体积与 SDK 库入库的合规确认。
+
+feature 开关仍有价值:无 feature 构建不**编译/链接** SDK(另一办公地能出全量功能的非 SDK 产物),但「不拉取」必须靠镜像或 vendor。

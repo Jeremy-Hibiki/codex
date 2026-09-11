@@ -184,3 +184,38 @@
 
 ### Round 4 验证
 - fm-encrypted-skills 220/220(serial,较 Round 3 +9 测试);core check/clippy 0 错;fmt 干净
+
+---
+
+## Round 5(收敛复审,HEAD=7160bb5aae)— ✅ 收敛
+
+Round 4 五项修复(H1/M1/M2/L1/L2)逐点验证全部通过:
+- H1:正常复合命令((ls && pwd)、for、if)无误拦;redirect/pipe 嵌套无行为漂移;D9 无冲突(复合整段首词关键字永不入 RUNNERS,per-segment guard 先行 Block;approvals D9 三断言在位)
+- M2:`**` = globstar 递归语义,方向保守只增拦;`/dev/**` 真阳性;`(` 入 meta 无误拦
+- M1/L1:无回归,纯加宽匹配
+- L2:engaged 双源判定,非 engaged 零拷贝透传,复用 redact_telemetry_text 单一来源
+- 组合 PoC(不可解析 cd × glob × 复合 × redirect)无新漏判
+
+### 新发现(记录性质,不重开循环)
+| ID | 级别 | 描述 | 处置 |
+|----|------|------|------|
+| N1 | MED | 裸 `**` 相对模式在 engaged 会话一律 fail-closed 拦截(无视已追踪安全 cwd 与 globstar 开关) | 记为 D15 已知限制 |
+| N2 | LOW | 虚拟 cwd 不建模子壳作用域(cd /a && (cd /b && cat x) && cat y 以 /a/b 判定) | 不可达 miss,仅产生保守 FP;可选注释 |
+| N3 | LOW | globstar 钉测注释与运行时锚定依据不同源(结论一致) | 可选改注释 |
+
+**收敛判定:无新的放行侧缺陷,循环终止。**
+
+### D15(by design):裸 `**` 相对模式保守拦截
+engaged 会话中含 `**` 分量的相对 glob 模式一律视为可能命中受控目录而拦截(fail-closed);不区分 globstar 开关、不豁免已追踪的安全 cwd。代价是极小面误拦(模型改用单层 `*` 即可),收益是 globstar 语义不确定性下零漏判。
+
+---
+
+## 审查循环总结(5 轮)
+| 轮次 | 内容 | 结果 |
+|------|------|------|
+| R1 | 并行 5 方向初审 | 83 冲突分类 + 17 项修复(F1-F5) |
+| R2 | 修复复核 + 3 残留面 | 14/16 通过;新发现 HIGH×2/MED×2/LOW×2 → G1-G7 修复 |
+| R3 | G1-G7 + 加固定向复审 | 7/8 通过;复合语句盲区 HIGH + 2 MED |
+| R4 | 盲区修复(H1/M1/M2/L1/L2) | 全部落地,fm-encrypted-skills 220/220 |
+| R5 | 收敛复审 | 全部通过;收敛 ✅ |
+| 加固 | debugoff → disable_process_dumping | 16 入口,全树零残留 |

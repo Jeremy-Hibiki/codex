@@ -1977,7 +1977,6 @@ dependencies = [
  "codex-models-manager",
  "codex-otel",
  "codex-plugin",
- "codex-process-hardening",
  "codex-protocol",
  "codex-rmcp-client",
  "codex-rollout",
@@ -1997,6 +1996,7 @@ dependencies = [
  "codex-web-search-extension",
  "codex-windows-sandbox",
  "core_test_support",
+ "debugoff",
  "flate2",
  "fm-encrypted-skills",
  "fm-license",
@@ -2117,9 +2117,9 @@ dependencies = [
  "codex-app-server-protocol",
  "codex-core",
  "codex-otel",
- "codex-process-hardening",
  "codex-protocol",
  "codex-utils-cli",
+ "debugoff",
  "pretty_assertions",
  "serde",
  "serde_json",
@@ -2181,10 +2181,10 @@ dependencies = [
  "assert_cmd",
  "assert_matches",
  "codex-exec-server",
- "codex-process-hardening",
  "codex-utils-absolute-path",
  "codex-utils-cargo-bin",
  "codex-utils-path-uri",
+ "debugoff",
  "pretty_assertions",
  "similar",
  "tempfile",
@@ -2272,7 +2272,7 @@ name = "codex-bwrap"
 version = "0.146.0"
 dependencies = [
  "cc",
- "codex-process-hardening",
+ "debugoff",
  "libc",
  "pkg-config",
 ]
@@ -2336,7 +2336,6 @@ dependencies = [
  "codex-model-provider",
  "codex-models-manager",
  "codex-plugin",
- "codex-process-hardening",
  "codex-protocol",
  "codex-responses-api-proxy",
  "codex-rmcp-client",
@@ -2353,6 +2352,7 @@ dependencies = [
  "codex-utils-path",
  "codex-windows-sandbox",
  "crossterm",
+ "debugoff",
  "fm-encrypted-skills",
  "fm-license",
  "fm-product-policy",
@@ -2504,9 +2504,9 @@ dependencies = [
  "clap",
  "codex-code-mode",
  "codex-code-mode-protocol",
- "codex-process-hardening",
  "codex-protocol",
  "codex-utils-cargo-bin",
+ "debugoff",
  "futures",
  "pretty_assertions",
  "serde_json",
@@ -2886,7 +2886,6 @@ dependencies = [
  "codex-login",
  "codex-model-provider-info",
  "codex-otel",
- "codex-process-hardening",
  "codex-protocol",
  "codex-utils-absolute-path",
  "codex-utils-cargo-bin",
@@ -2894,6 +2893,7 @@ dependencies = [
  "codex-utils-oss",
  "codex-utils-sandbox-summary",
  "core_test_support",
+ "debugoff",
  "fm-license",
  "libc",
  "opentelemetry",
@@ -2998,8 +2998,8 @@ version = "0.146.0"
 dependencies = [
  "anyhow",
  "clap",
- "codex-process-hardening",
  "codex-utils-absolute-path",
+ "debugoff",
  "multimap",
  "pretty_assertions",
  "serde",
@@ -3109,8 +3109,8 @@ version = "0.146.0"
 dependencies = [
  "anyhow",
  "clap",
- "codex-process-hardening",
  "crossbeam-channel",
+ "debugoff",
  "ignore",
  "nucleo",
  "pretty_assertions",
@@ -3335,6 +3335,7 @@ dependencies = [
  "codex-protocol",
  "codex-sandboxing",
  "codex-utils-absolute-path",
+ "debugoff",
  "globset",
  "landlock",
  "libc",
@@ -3482,13 +3483,13 @@ dependencies = [
  "codex-home",
  "codex-image-generation-extension",
  "codex-login",
- "codex-process-hardening",
  "codex-protocol",
  "codex-shell-command",
  "codex-utils-absolute-path",
  "codex-utils-cli",
  "codex-utils-json-to-toml",
  "core_test_support",
+ "debugoff",
  "fm-license",
  "mcp_test_support",
  "os_info",
@@ -3831,6 +3832,7 @@ dependencies = [
  "clap",
  "codex-process-hardening",
  "ctor 0.6.3",
+ "debugoff",
  "libc",
  "pretty_assertions",
  "reqwest 0.12.28",
@@ -4078,9 +4080,9 @@ name = "codex-stdio-to-uds"
 version = "0.146.0"
 dependencies = [
  "anyhow",
- "codex-process-hardening",
  "codex-uds",
  "codex-utils-cargo-bin",
+ "debugoff",
  "pretty_assertions",
  "tempfile",
  "tokio",
@@ -4109,7 +4111,7 @@ dependencies = [
  "anyhow",
  "clap",
  "codex-core-api",
- "codex-process-hardening",
+ "debugoff",
  "serde_json",
  "tracing",
 ]
@@ -4201,7 +4203,6 @@ dependencies = [
  "codex-models-manager",
  "codex-otel",
  "codex-plugin",
- "codex-process-hardening",
  "codex-protocol",
  "codex-rollout",
  "codex-sandboxing",
@@ -4226,6 +4227,7 @@ dependencies = [
  "color-eyre",
  "core_test_support",
  "crossterm",
+ "debugoff",
  "derive_more 2.1.1",
  "diffy",
  "dirs",
@@ -4570,11 +4572,11 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "codex-otel",
- "codex-process-hardening",
  "codex-protocol",
  "codex-utils-absolute-path",
  "codex-utils-pty",
  "codex-utils-string",
+ "debugoff",
  "dirs-next",
  "dunce",
  "glob",
@@ -4696,6 +4698,26 @@ name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
+
+[[package]]
+name = "const-random"
+version = "0.1.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87e00182fe74b066627d63b85fd550ac2998d4b0bd86bfed477a0ae4c7c71359"
+dependencies = [
+ "const-random-macro",
+]
+
+[[package]]
+name = "const-random-macro"
+version = "0.1.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9d839f2a20b0aee515dc581a6172f2321f96cab76c1a38a4c584a194955390e"
+dependencies = [
+ "getrandom 0.2.17",
+ "once_cell",
+ "tiny-keccak",
+]
 
 [[package]]
 name = "const_format"
@@ -5313,6 +5335,18 @@ checksum = "bef552e6f588e446098f6ba40d89ac146c8c7b64aade83c051ee00bb5d2bc18d"
 dependencies = [
  "serde",
  "uuid",
+]
+
+[[package]]
+name = "debugoff"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a134f5d42edf3aebb65ab7757d179a2f931914231a5f6e67b466b8cac16e2dfe"
+dependencies = [
+ "const-random",
+ "crunchy",
+ "goldberg",
+ "unroll",
 ]
 
 [[package]]
@@ -6255,10 +6289,22 @@ dependencies = [
 [[package]]
 name = "fmsh-ukey-core"
 version = "0.5.1"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "base64 0.22.1",
+ "getrandom 0.3.4",
+ "hkdf 0.12.4",
+ "sha2 0.10.9",
+ "x25519-dalek",
+]
 
 [[package]]
 name = "fmsh-ukey-sdk-wrapper"
 version = "0.5.1"
+dependencies = [
+ "cc",
+]
 
 [[package]]
 name = "fmsh-ukey-skill"
@@ -7427,6 +7473,19 @@ dependencies = [
  "log",
  "regex-automata",
  "regex-syntax",
+]
+
+[[package]]
+name = "goldberg"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2d9cbd1fdba1a34e35404e93aab99efbf14076ab4c3380b4d408f7cd3cd9710"
+dependencies = [
+ "moisture",
+ "proc-macro2",
+ "quote",
+ "rand 0.8.6",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -8856,6 +8915,11 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 [[package]]
 name = "lmclient-rust-sdk"
 version = "1.3.2"
+dependencies = [
+ "anyhow",
+ "thiserror 2.0.18",
+ "tracing",
+]
 
 [[package]]
 name = "local-waker"
@@ -9127,6 +9191,17 @@ dependencies = [
  "rand_core 0.6.4",
  "sha3",
  "zeroize",
+]
+
+[[package]]
+name = "moisture"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da1c12ec95f955162f01e673f383afd3f1306a5d7254f0aa38c4d219066ad7b0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -13393,6 +13468,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiny-keccak"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c9d3793400a45f954c52e73d068316d76b6f4e36977e3fcebb13a2721e80237"
+dependencies = [
+ "crunchy",
+]
+
+[[package]]
 name = "tiny_http"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14137,6 +14221,16 @@ checksum = "fc1de2c688dc15305988b563c3854064043356019f97a4b46276fe734c4f07ea"
 dependencies = [
  "crypto-common 0.1.7",
  "subtle",
+]
+
+[[package]]
+name = "unroll"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ad948c1cb799b1a70f836077721a92a35ac177d4daddf4c20a633786d4cf618"
+dependencies = [
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]

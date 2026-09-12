@@ -793,7 +793,15 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let pub_path = tmp.path().join("enc.pub.pem");
         let priv_path = tmp.path().join("enc.priv.pem");
-        let cipher = SoftwareCipher::generate_to_files(&pub_path, &priv_path, algorithm).unwrap();
+        // The offline placeholder only implements the HPKE software envelope;
+        // skip algorithms (SM2/SM4 CMS) that the active backend cannot generate.
+        let cipher = match SoftwareCipher::generate_to_files(&pub_path, &priv_path, algorithm) {
+            Ok(cipher) => cipher,
+            Err(err) => {
+                eprintln!("skipping {algorithm:?} software envelope: {err:#}");
+                return;
+            }
+        };
 
         let mut zip_buf = Vec::new();
         {

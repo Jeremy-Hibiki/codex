@@ -1,0 +1,14 @@
+[package]
+name = "fmsh-ukey-core"
+version = "0.5.1"
+edition = "2021"
+description = "Offline placeholder for the internal fmsh-ukey-lib core crate (internal GitLab 192.168.131.126:8089). Implements the software envelope for real; UKey hardware backends fail closed. Switch to the real dependency with release/use-real-fm-deps.sh."
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+hkdf = "0.12"
+sha2 = "0.10"
+aes-gcm = "0.10"
+x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
+getrandom = "0.3"

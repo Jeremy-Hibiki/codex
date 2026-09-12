@@ -20,6 +20,9 @@ workspace = true
 [dependencies]
 fm-license = { workspace = true }
 fm-product-policy = { workspace = true }
+# Optional: only pulled in to forward the `ukey` feature to the encrypted
+# skills backends when building the full-fat CLI binary.
+fm-encrypted-skills = { workspace = true, optional = true }
 
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
@@ -101,8 +104,22 @@ windows-sys = { version = "0.52", features = [
     "Win32_System_Console",
 ] }
 
+[features]
+# Full-fat build: link the FMSH UKey SDK, compile the real envelope backends
+# and the LMCLIENT license checkout. On by default so the full fm code path
+# is always compiled; against the vendor/dummy placeholders the license gate
+# is non-enforcing and the UKey hardware backends fail closed. Disable with
+# --no-default-features.
+ukey = [
+    "dep:fmsh-ukey-sdk-wrapper",
+    "dep:fm-encrypted-skills",
+    "fm-encrypted-skills/ukey",
+    "fm-license/lmclient",
+]
+default = ["ukey"]
+
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
-fmsh-ukey-sdk-wrapper = { workspace = true }
+fmsh-ukey-sdk-wrapper = { workspace = true, optional = true }
 
 [dev-dependencies]
 app_test_support = { workspace = true }

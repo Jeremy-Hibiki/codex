@@ -1,0 +1,10 @@
+[package]
+name = "lmclient-rust-sdk"
+version = "1.3.2"
+edition = "2021"
+description = "Offline placeholder for the internal LMCLIENT SDK crate (internal GitLab 192.168.131.126:8089). Non-enforcing stub: checkout calls succeed without a license server. Switch to the real dependency with release/use-real-fm-deps.sh."
+
+[dependencies]
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"

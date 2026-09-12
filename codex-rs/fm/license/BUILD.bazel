@@ -2,5 +2,20 @@ load("//:defs.bzl", "codex_rust_crate")
 
 codex_rust_crate(
     name = "license",
+    crate_features = select({
+        # The real LMCLIENT license checkout only links on linux-x86_64-gnu
+        # (Cargo feature `lmclient`, default off).
+        "@platforms//os:linux": ["lmclient"],
+        "//conditions:default": [],
+    }),
     crate_name = "fm_license",
+    # Feature-gated deps: `all_crate_deps()` does not follow crate_features,
+    # so list them like v8-poc does for its `sandbox` feature.
+    deps_extra = select({
+        "@platforms//os:linux": [
+            "@crates//:lmclient-rust-sdk",
+            "@crates//:signal-hook",
+        ],
+        "//conditions:default": [],
+    }),
 )

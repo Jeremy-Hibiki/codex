@@ -1,0 +1,10 @@
+[package]
+name = "fmsh-ukey-sdk-wrapper"
+version = "0.5.1"
+edition = "2021"
+description = "Offline placeholder for the internal fmsh-ukey-lib SDK wrapper crate (internal GitLab 192.168.131.126:8089). Compiles an empty stub shared library so downstream link directives resolve. Switch to the real dependency with release/use-real-fm-deps.sh."
+links = "fmsh_ukey_sdk"
+build = "build.rs"
+
+[build-dependencies]
+cc = "1.2"

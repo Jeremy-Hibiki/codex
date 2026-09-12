@@ -48,14 +48,17 @@ zip = { workspace = true, features = ["deflate"] }
 # 2.32; tested release binaries require GLIBC_2.34).
 [features]
 # Enables the real envelope backends and pulls in the internal GitLab
-# dependencies. Off by default: without it `sdk_for` returns the fail-closed
+# dependencies. On by default so the real envelope backends are always
+# compiled; against the vendor/dummy placeholders the UKey hardware backends
+# fail closed and the software envelope works. Disable with
+# --no-default-features for a build without the dependencies.
 # stub for every real backend kind, so encrypted skills never engage.
 ukey = [
     "dep:fmsh-ukey-core",
     "dep:fmsh-ukey-skill",
     "dep:fmsh-ukey-sdk-wrapper",
 ]
-default = []
+default = ["ukey"]
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
 fmsh-ukey-core = { workspace = true, optional = true }

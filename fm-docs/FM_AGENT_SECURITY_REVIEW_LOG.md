@@ -273,3 +273,73 @@ engaged 会话中含 `**` 分量的相对 glob 模式一律视为可能命中受
 ### Round 7 验证
 - app-server license_/rpc_guard/command_exec/realtime_ 91/91;clippy(app-server/queue-extension/core --all-targets)0 错;fmt 干净
 - **测试环境注记(2026-09-11 勘误,实验定论)**:codex-queue-extension 的 queue_service 测试在默认 2MiB 测试线程栈下栈溢出 —— **纯 upstream rust-v0.154.0 干净检出同样溢出,加 8MiB 通过**(临时 worktree 实验证实);上游三个 CI workflow 均全局设 RUST_MIN_STACK=8388608(.github/workflows/rust-ci*.yml)掩盖了它。**非 fm 造成,无 fm 侧可优化项**;此前「fm 使 future 增大」的归因有误,予以更正。动作(已落地):codex-rs/.cargo/config.toml 增 [env] RUST_MIN_STACK=8388608(与上游 CI 对齐;该文件本为上游跟踪文件,hunk 极小),本地 cargo test/just test 不再需要手工 export;guardian 深栈用例同此约定。已验证:默认 shell 环境下 queue_service 溢出用例转绿。对照实验另证:短路 apply_external_guardrail 不改变溢出,guardrail HTTP 链不在该测试的 poll 路径。
+
+---
+
+## Round 8:skill 加解密与 license 的 feature 开关(离线构建)
+
+需求:另一办公地无法访问内部 GitLab(192.168.131.126:8089,lmclient/fmsh-ukey),默认构建不得拉取。
+
+### 实现
+- **feature 设计**:`fm-encrypted-skills` 增 `ukey` feature(转发 3 个 ukey 依赖)、`fm-license` 增 `lmclient` feature(转发 lmclient),**default = []**;GitLab 依赖全部 optional = true——未激活即不 fetch。
+- **降级语义(用户确认)**:无 feature = 「当作这两个功能不存在」,恢复基础 Codex 行为——license `is_active()=true`/`ensure_active()=Ok`(门全放行,非无证拒绝);skills 走既有非 engaged 直通路径(等同上游),加密技能不可解密。公共 API 签名不变,**core/app-server 等下游零改动**。
+- **SDK 使用面**(已收敛):encrypted-skills 仅 `sdk.rs`(963 行,已有 EnvelopeSdk trait + UnavailableSdk/Noop stub 接缝);license 仅 `license.rs`。cfg 边界 + 新增 `ukey_available()`(供跨 crate 测试运行时跳过)。
+- **链接面**:cli/Cargo.toml 增 `ukey` feature(转发 wrapper 依赖 + 两个 fm crate feature),build.rs 按 CARGO_FEATURE_UKEY 跳过 SDK 链接;全仓仅 cli/build.rs 与 fm/encrypted-skills/build.rs 引用 DEP_FMSH(已核实)。
+- **发布管线**:release/build-fm-cargo.sh 与 release/Dockerfile.cargo 的构建命令补 `--features ukey`(否则产物静默降级);bazel BUILD(cli/license/encrypted-skills)按 v8-poc 先例补 crate_features/deps_extra。
+- **便捷入口**:.cargo/config.toml [alias] `fm-check`/`fm-test`(带双 feature)。
+
+### 双模式验证矩阵
+| 项 | OFF(默认) | ON(--features fm-license/lmclient,fm-encrypted-skills/ukey) |
+|----|------------|-----------|
+| cargo tree 依赖图 | lmclient/fmsh 均 0 引用 | 完整 |
+| workspace check(**--offline**) | 0 错(离线可建 = 无 GitLab 等价证明) | 0 错 |
+| fm-encrypted-skills 测试 | 214(门控子集) | 220/220 |
+| fm-license 测试 | 1(门控子集) | 12/12(bypass) |
+| core encrypted_skills 集成 | 20/20(运行时跳过) | 20/20 |
+| app-server license_/rpc_guard/realtime_ | 64/64(运行时跳过) | (ON 由既有轮次覆盖) |
+| clippy(两 crate + codex-cli) | 0 错 | 0 错 |
+
+### 用法
+- 另一办公地(离线):`cargo build/test --workspace` 原样即可
+- 本地全功能:`cargo fm-check` / `cargo fm-test`,或显式 `--features fm-license/lmclient,fm-encrypted-skills/ukey`;`-p codex-cli --features ukey` 一站式转发
+
+---
+
+## Round 8 勘误(用户在另一办公地实测反馈)
+
+**「OFF 模式 --offline 0 错 = 离线可建」的证明不成立**:该验证在 warm git 缓存上运行,掩盖了 resolve 行为。用户在干净机器上 `cargo fetch`/`cargo check` 实测仍拉取 GitLab。
+
+### 根因(cargo 机制,非配置问题)
+- Cargo.lock 是**全量声明图**(feature 无关),optional git 依赖始终在列;
+- 任何 cargo resolve(fetch/check/build)都要读 lockfile 内 git 包的 manifest → 缺 checkout 就 fetch;
+- 实验实证(grevo worktree,insteadOf 屏蔽 GitLab + 空 git 缓存):①裸 `cargo fetch` 拉全量 lockfile;②`cargo check -p codex-exec`(feature 关)照样 "Updating git repository" ×2;③**手工剪掉 lockfile 条目后 cargo 回填并重新 fetch**——声明了 optional git 依赖就必然参与 resolve,无 flag 可绕。
+
+### 结论:feature 开关解决的是「编译与链接」解耦,不解决「拉取」
+真正离线可建的两条路(需用户决策):
+1. **镜像(推荐,零代码)**:把 `jiangzhengqi/fmsh-ukey-lib` 与 `jiangzhengqi/lmclient-rust-sdk` 镜像到双方办公地都可达的 git 服务(如托管本仓库的服务),改 workspace Cargo.toml 4 个 URL;或另一办公地一行 git 配置指向镜像:`git config --global url."<镜像URL>".insteadOf "http://192.168.131.126:8089/"`。
+2. **vendor 进仓库**:4 个 crate(+ linux SDK 库,checkout 实测 199MB/7.7MB,可裁剪平台)转 path 依赖入库,彻底离线,代价是仓库体积与 SDK 库入库的合规确认。
+
+feature 开关仍有价值:无 feature 构建不**编译/链接** SDK(另一办公地能出全量功能的非 SDK 产物),但「不拉取」必须靠镜像或 vendor。
+
+---
+
+## Round 9:placeholder path crate 方案(采纳 Codex 建议,替代 strip 脚本)
+
+strip 脚本方案有硬伤:仓库清单里仍写着内网 URL,fresh clone 不跑脚本、第一次 `cargo fetch` 照样失败。采纳 dummy path crate 方案:**公共清单里根本不存在内网 URL,resolver 解析到的 source 就是本地路径**。
+
+### 实现
+- `codex-rs/vendor/dummy/{fmsh-ukey-core,fmsh-ukey-sdk-wrapper,fmsh-ukey-skill,lmclient-rust-sdk}`:同名同版本 placeholder crate,`compile_error!` —— 默认构建(feature 关)根本不编译它们;误开 ukey/lmclient 时编译失败并明确提示跑 `release/use-real-fm-deps.sh`。
+- 根 Cargo.toml 的 4 个 workspace 依赖从 `git = "http://192.168.131.126:8089/..."` 改为 `path = "vendor/dummy/..."` —— **内网地址从公共清单中消失**。
+- `release/use-real-fm-deps.sh`(内部切真依赖)+ `release/use-dummy-fm-deps.sh`(切回 placeholder);切换会改写 Cargo.lock,切换态的 lock 不入库。
+- strip-fm-deps.sh 方案废弃移除(824cc1ea2e 已 reset 丢弃)。
+- **入库的 Cargo.lock 为 placeholder 形态**(零内网 URL;git 源条目消失)。内部切真依赖会本地改写 lock,勿提交切换态 lock;提交回 placeholder 用 release/use-dummy-fm-deps.sh。
+
+### 双模式验证(最终版,干净 git 缓存 + insteadOf 屏蔽 GitLab)
+| 命令 | 结果 |
+|------|------|
+| `cargo fetch`(R8 之前失败的命令) | **exit 0**,仅拉 github 上游依赖 |
+| `cargo check -p codex-exec` | Finished |
+| `cargo test -p fm-encrypted-skills`(OFF) | 基线全绿 |
+| use-real 后 `cargo test -p fm-encrypted-skills --features ukey` | 220/220 |
+| use-real 后 `cargo test -p fm-license --features lmclient`(bypass) | 12/12 |
+| use-dummy-fm-deps.sh 恢复 | 工作树回到已提交状态 |

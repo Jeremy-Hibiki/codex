@@ -1,0 +1,4 @@
+[package]
+name = "fmsh-ukey-skill"
+version = "0.5.1"
+edition = "2021"

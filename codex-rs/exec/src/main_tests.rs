@@ -47,6 +47,13 @@ fn top_cli_parses_resume_prompt_after_config_flag() {
 /// the process must refuse to start the run with a visible error.
 #[test]
 fn exec_refuses_to_start_when_license_is_force_lost() {
+    if !fm_license::lmclient_available() {
+        eprintln!(
+            "skipping: license gate is stubbed in this build; \
+             run with --features fm-license/lmclient to exercise it"
+        );
+        return;
+    }
     let bin = codex_utils_cargo_bin::cargo_bin("codex-exec")
         .expect("codex-exec binary should be built for tests");
     let output = std::process::Command::new(bin)

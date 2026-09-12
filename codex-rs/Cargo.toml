@@ -131,6 +131,16 @@ members = [
     "model-provider",
 ]
 resolver = "2"
+# vendor/dummy/* placeholder crates live inside the workspace root, which would
+# auto-join the workspace and get compiled by every `--workspace` build. They
+# must only be compiled when a feature (`ukey`/`lmclient`) pulls them in as a
+# path dependency, so exclude them here.
+exclude = [
+    "vendor/dummy/fmsh-ukey-core",
+    "vendor/dummy/fmsh-ukey-sdk-wrapper",
+    "vendor/dummy/fmsh-ukey-skill",
+    "vendor/dummy/lmclient-rust-sdk",
+]
 
 [workspace.package]
 version = "0.146.0"
@@ -142,10 +152,13 @@ edition = "2024"
 license = "Apache-2.0"
 
 [workspace.dependencies]
-lmclient-rust-sdk = { git = "http://192.168.131.126:8089/jiangzhengqi/lmclient-rust-sdk.git", tag = "v1.3.2" }
-fmsh-ukey-core = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", tag = "0.5.1-sdk.0.3.2" }
-fmsh-ukey-sdk-wrapper = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", tag = "0.5.1-sdk.0.3.2" }
-fmsh-ukey-skill = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", tag = "0.5.1-sdk.0.3.2" }
+# Placeholder crates (vendor/dummy/*) keep offline builds working: cargo
+# resolves these names against the in-repo paths, so no internal GitLab access
+# is needed. Full-fat builds: run release/use-real-fm-deps.sh first.
+lmclient-rust-sdk = { path = "vendor/dummy/lmclient-rust-sdk" }
+fmsh-ukey-core = { path = "vendor/dummy/fmsh-ukey-core" }
+fmsh-ukey-sdk-wrapper = { path = "vendor/dummy/fmsh-ukey-sdk-wrapper" }
+fmsh-ukey-skill = { path = "vendor/dummy/fmsh-ukey-skill" }
 
 fm-license = { path = "fm/license" }
 fm-encrypted-skills = { path = "fm/encrypted-skills" }

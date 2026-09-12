@@ -2,3 +2,8 @@
 name = "fmsh-ukey-skill"
 version = "0.5.1"
 edition = "2021"
+description = "Offline placeholder for the internal fmsh-ukey-lib skill-mode crate (internal GitLab 192.168.131.126:8089). Reimplements the documented detect_mode semantics without the packaging toolchain. Switch to the real dependency with release/use-real-fm-deps.sh."
+
+[dev-dependencies]
+pretty_assertions = "1"
+tempfile = "3"

@@ -33,6 +33,7 @@ use crate::RequirementsExecPolicy;
 use crate::browser_computer_use_requirements::BrowserUseRequirementsToml;
 use crate::browser_computer_use_requirements::ComputerUseRequirementsToml;
 use crate::config_toml::ConfigToml;
+use crate::config_toml::EncryptedSkillsToml;
 use crate::mcp_requirements::validate_mcp_server_requirement;
 use crate::mcp_types::AppToolApproval;
 use crate::permissions_toml::PermissionProfileToml;
@@ -178,6 +179,9 @@ pub struct ConfigRequirements {
     pub windows_sandbox_private_desktop: Option<Sourced<bool>>,
     pub web_search_mode: ConstrainedWithSource<WebSearchMode>,
     pub allow_managed_hooks_only: Option<Sourced<bool>>,
+    pub allow_sandbox_bypass: Option<Sourced<bool>>,
+    pub allow_managed_plugins_only: Option<Sourced<bool>>,
+    pub allow_managed_marketplaces_only: Option<Sourced<bool>>,
     pub allow_appshots: Option<Sourced<bool>>,
     pub allow_remote_control: Option<Sourced<bool>>,
     pub computer_use: Option<Sourced<ComputerUseRequirementsToml>>,
@@ -197,6 +201,10 @@ pub struct ConfigRequirements {
     pub additional_developer_instructions: Option<Sourced<String>>,
     /// Source for the managed guardian policy config, when one is configured.
     pub guardian_policy_config_source: Option<RequirementSource>,
+    /// Source for the managed developer instructions, when one is configured.
+    pub developer_instructions_source: Option<RequirementSource>,
+    /// Source for the managed encrypted-skill settings, when configured.
+    pub encrypted_skills_source: Option<RequirementSource>,
 }
 
 impl Default for ConfigRequirements {
@@ -235,6 +243,9 @@ impl Default for ConfigRequirements {
                 /*source*/ None,
             ),
             allow_managed_hooks_only: None,
+            allow_sandbox_bypass: None,
+            allow_managed_plugins_only: None,
+            allow_managed_marketplaces_only: None,
             allow_appshots: None,
             allow_remote_control: None,
             computer_use: None,
@@ -253,6 +264,8 @@ impl Default for ConfigRequirements {
             filesystem: None,
             additional_developer_instructions: None,
             guardian_policy_config_source: None,
+            developer_instructions_source: None,
+            encrypted_skills_source: None,
         }
     }
 }
@@ -1001,6 +1014,9 @@ pub struct ConfigRequirementsToml {
     pub allowed_web_search_modes: Option<Vec<WebSearchModeRequirement>>,
     pub allow_managed_hooks_only: Option<bool>,
     pub allow_browser_and_computer_use: Option<bool>,
+    pub allow_sandbox_bypass: Option<bool>,
+    pub allow_managed_plugins_only: Option<bool>,
+    pub allow_managed_marketplaces_only: Option<bool>,
     pub allow_appshots: Option<bool>,
     pub allow_remote_control: Option<bool>,
     pub computer_use: Option<ComputerUseRequirementsToml>,
@@ -1024,6 +1040,12 @@ pub struct ConfigRequirementsToml {
     pub models: Option<ModelsRequirementsToml>,
     pub additional_developer_instructions: Option<String>,
     pub guardian_policy_config: Option<String>,
+    /// Managed developer instructions injected as a `developer` role message,
+    /// overriding any user-configured value.
+    pub developer_instructions: Option<String>,
+    /// Managed encrypted-skill settings, overriding user-configured values
+    /// field by field. Unset fields fall back to the user config.
+    pub encrypted_skills: Option<EncryptedSkillsToml>,
 }
 
 #[derive(Deserialize, Debug, Clone, Default, PartialEq, Eq)]
@@ -1106,6 +1128,9 @@ pub struct ConfigRequirementsWithSources {
     pub allowed_web_search_modes: Option<Sourced<Vec<WebSearchModeRequirement>>>,
     pub allow_managed_hooks_only: Option<Sourced<bool>>,
     pub allow_browser_and_computer_use: Option<Sourced<bool>>,
+    pub allow_sandbox_bypass: Option<Sourced<bool>>,
+    pub allow_managed_plugins_only: Option<Sourced<bool>>,
+    pub allow_managed_marketplaces_only: Option<Sourced<bool>>,
     pub allow_appshots: Option<Sourced<bool>>,
     pub allow_remote_control: Option<Sourced<bool>>,
     pub computer_use: Option<Sourced<ComputerUseRequirementsToml>>,
@@ -1127,6 +1152,8 @@ pub struct ConfigRequirementsWithSources {
     pub models: Option<Sourced<ModelsRequirementsToml>>,
     pub additional_developer_instructions: Option<Sourced<String>>,
     pub guardian_policy_config: Option<Sourced<String>>,
+    pub developer_instructions: Option<Sourced<String>>,
+    pub encrypted_skills: Option<Sourced<EncryptedSkillsToml>>,
 }
 
 impl ConfigRequirementsWithSources {
@@ -1167,6 +1194,9 @@ impl ConfigRequirementsWithSources {
             allowed_web_search_modes: _,
             allow_managed_hooks_only: _,
             allow_browser_and_computer_use: _,
+            allow_sandbox_bypass: _,
+            allow_managed_plugins_only: _,
+            allow_managed_marketplaces_only: _,
             allow_appshots: _,
             allow_remote_control: _,
             computer_use: _,
@@ -1188,6 +1218,8 @@ impl ConfigRequirementsWithSources {
             models: _,
             additional_developer_instructions: _,
             guardian_policy_config: _,
+            developer_instructions: _,
+            encrypted_skills: _,
         } = &other;
 
         let mut other = other;
@@ -1197,6 +1229,20 @@ impl ConfigRequirementsWithSources {
             .is_some_and(|value| value.trim().is_empty())
         {
             other.guardian_policy_config = None;
+        }
+        if other
+            .developer_instructions
+            .as_deref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            other.developer_instructions = None;
+        }
+        if other
+            .encrypted_skills
+            .as_ref()
+            .is_some_and(EncryptedSkillsToml::is_empty_for_requirements)
+        {
+            other.encrypted_skills = None;
         }
         fill_missing_take!(
             self,
@@ -1221,6 +1267,9 @@ impl ConfigRequirementsWithSources {
                 allowed_web_search_modes,
                 allow_managed_hooks_only,
                 allow_browser_and_computer_use,
+                allow_sandbox_bypass,
+                allow_managed_plugins_only,
+                allow_managed_marketplaces_only,
                 allow_appshots,
                 allow_remote_control,
                 computer_use,
@@ -1240,6 +1289,8 @@ impl ConfigRequirementsWithSources {
                 models,
                 additional_developer_instructions,
                 guardian_policy_config,
+                developer_instructions,
+                encrypted_skills,
             }
         );
 
@@ -1304,6 +1355,9 @@ impl ConfigRequirementsWithSources {
             allowed_web_search_modes,
             allow_managed_hooks_only,
             allow_browser_and_computer_use,
+            allow_sandbox_bypass,
+            allow_managed_plugins_only,
+            allow_managed_marketplaces_only,
             allow_appshots,
             allow_remote_control,
             computer_use,
@@ -1325,6 +1379,8 @@ impl ConfigRequirementsWithSources {
             models,
             additional_developer_instructions,
             guardian_policy_config,
+            developer_instructions,
+            encrypted_skills,
         } = self;
         ConfigRequirementsToml {
             allowed_login_methods: allowed_login_methods.map(|sourced| sourced.value),
@@ -1346,6 +1402,10 @@ impl ConfigRequirementsWithSources {
             allowed_web_search_modes: allowed_web_search_modes.map(|sourced| sourced.value),
             allow_managed_hooks_only: allow_managed_hooks_only.map(|sourced| sourced.value),
             allow_browser_and_computer_use: allow_browser_and_computer_use
+                .map(|sourced| sourced.value),
+            allow_sandbox_bypass: allow_sandbox_bypass.map(|sourced| sourced.value),
+            allow_managed_plugins_only: allow_managed_plugins_only.map(|sourced| sourced.value),
+            allow_managed_marketplaces_only: allow_managed_marketplaces_only
                 .map(|sourced| sourced.value),
             allow_appshots: allow_appshots.map(|sourced| sourced.value),
             allow_remote_control: allow_remote_control.map(|sourced| sourced.value),
@@ -1369,6 +1429,8 @@ impl ConfigRequirementsWithSources {
             additional_developer_instructions: additional_developer_instructions
                 .map(|sourced| sourced.value),
             guardian_policy_config: guardian_policy_config.map(|sourced| sourced.value),
+            developer_instructions: developer_instructions.map(|sourced| sourced.value),
+            encrypted_skills: encrypted_skills.map(|sourced| sourced.value),
         }
     }
 }
@@ -1459,6 +1521,9 @@ impl ConfigRequirementsToml {
             && self.allowed_web_search_modes.is_none()
             && self.allow_managed_hooks_only.is_none()
             && self.allow_browser_and_computer_use.is_none()
+            && self.allow_sandbox_bypass.is_none()
+            && self.allow_managed_plugins_only.is_none()
+            && self.allow_managed_marketplaces_only.is_none()
             && self.allow_appshots.is_none()
             && self.allow_remote_control.is_none()
             && self
@@ -1522,6 +1587,14 @@ impl ConfigRequirementsToml {
                 .guardian_policy_config
                 .as_deref()
                 .is_none_or(|value| value.trim().is_empty())
+            && self
+                .developer_instructions
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+            && self
+                .encrypted_skills
+                .as_ref()
+                .is_none_or(EncryptedSkillsToml::is_empty_for_requirements)
     }
 
     /// Applies the requirements whose values replace config values.
@@ -1676,6 +1749,9 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
             allowed_web_search_modes,
             allow_managed_hooks_only,
             allow_browser_and_computer_use: _,
+            allow_sandbox_bypass,
+            allow_managed_plugins_only,
+            allow_managed_marketplaces_only,
             allow_appshots,
             allow_remote_control,
             computer_use,
@@ -1697,6 +1773,8 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
             models: _,
             additional_developer_instructions,
             guardian_policy_config,
+            developer_instructions,
+            encrypted_skills,
         } = toml;
 
         let auto_review_required_models = auto_review
@@ -2021,6 +2099,8 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
             Sourced::new(FilesystemConstraints::from(value), source)
         });
         let guardian_policy_config_source = guardian_policy_config.map(|sourced| sourced.source);
+        let developer_instructions_source = developer_instructions.map(|sourced| sourced.source);
+        let encrypted_skills_source = encrypted_skills.map(|sourced| sourced.source);
         Ok(ConfigRequirements {
             allowed_login_methods,
             allowed_chatgpt_workspaces,
@@ -2040,6 +2120,9 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
             windows_sandbox_private_desktop,
             web_search_mode,
             allow_managed_hooks_only,
+            allow_sandbox_bypass,
+            allow_managed_plugins_only,
+            allow_managed_marketplaces_only,
             allow_appshots,
             allow_remote_control,
             computer_use,
@@ -2055,6 +2138,8 @@ impl TryFrom<ConfigRequirementsWithSources> for ConfigRequirements {
             filesystem,
             additional_developer_instructions,
             guardian_policy_config_source,
+            developer_instructions_source,
+            encrypted_skills_source,
         })
     }
 }
@@ -2095,6 +2180,7 @@ mod tests {
     use crate::McpServerCommandMatcher;
     use crate::McpServerIdentity;
     use crate::McpServerValueMatcher;
+    use crate::config_toml::EncryptedSkillsSdkToml;
     use anyhow::Result;
     use codex_execpolicy::Decision;
     use codex_execpolicy::Evaluation;
@@ -2215,6 +2301,9 @@ mod tests {
             allowed_web_search_modes,
             allow_managed_hooks_only,
             allow_browser_and_computer_use,
+            allow_sandbox_bypass,
+            allow_managed_plugins_only,
+            allow_managed_marketplaces_only,
             allow_appshots,
             allow_remote_control,
             computer_use,
@@ -2236,6 +2325,8 @@ mod tests {
             models,
             additional_developer_instructions,
             guardian_policy_config,
+            developer_instructions,
+            encrypted_skills,
         } = toml;
         ConfigRequirementsWithSources {
             allowed_login_methods: allowed_login_methods
@@ -2271,6 +2362,12 @@ mod tests {
                 .map(|value| Sourced::new(value, RequirementSource::Unknown)),
             allow_browser_and_computer_use: allow_browser_and_computer_use
                 .map(|value| Sourced::new(value, RequirementSource::Unknown)),
+            allow_sandbox_bypass: allow_sandbox_bypass
+                .map(|value| Sourced::new(value, RequirementSource::Unknown)),
+            allow_managed_plugins_only: allow_managed_plugins_only
+                .map(|value| Sourced::new(value, RequirementSource::Unknown)),
+            allow_managed_marketplaces_only: allow_managed_marketplaces_only
+                .map(|value| Sourced::new(value, RequirementSource::Unknown)),
             allow_appshots: allow_appshots
                 .map(|value| Sourced::new(value, RequirementSource::Unknown)),
             allow_remote_control: allow_remote_control
@@ -2299,6 +2396,10 @@ mod tests {
                 .map(|value| Sourced::new(value, RequirementSource::Unknown)),
             guardian_policy_config: guardian_policy_config
                 .map(|value| Sourced::new(value, RequirementSource::Unknown)),
+            developer_instructions: developer_instructions
+                .map(|value| Sourced::new(value, RequirementSource::Unknown)),
+            encrypted_skills: encrypted_skills
+                .map(|value| Sourced::new(value, RequirementSource::Unknown)),
         }
     }
 
@@ -2324,6 +2425,23 @@ mod tests {
         )?;
 
         assert_eq!(requirements.allow_managed_hooks_only, Some(false));
+        assert!(!requirements.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn deserialize_flat_product_policy_fields() -> Result<()> {
+        let requirements: ConfigRequirementsToml = from_str(
+            r#"
+                allow_sandbox_bypass = false
+                allow_managed_plugins_only = true
+                allow_managed_marketplaces_only = true
+            "#,
+        )?;
+
+        assert_eq!(requirements.allow_sandbox_bypass, Some(false));
+        assert_eq!(requirements.allow_managed_plugins_only, Some(true));
+        assert_eq!(requirements.allow_managed_marketplaces_only, Some(true));
         assert!(!requirements.is_empty());
         Ok(())
     }
@@ -2758,6 +2876,7 @@ mod tests {
         let enforce_source = source.clone();
         let additional_developer_instructions = "Follow the company policy.".to_string();
         let guardian_policy_config = "Use the company-managed guardian policy.".to_string();
+        let developer_instructions = "Use the company-managed developer instructions.".to_string();
 
         // Intentionally constructed without `..Default::default()` so adding a new field to
         // `ConfigRequirementsToml` forces this test to be updated.
@@ -2781,6 +2900,9 @@ mod tests {
             allowed_web_search_modes: Some(allowed_web_search_modes.clone()),
             allow_managed_hooks_only: Some(true),
             allow_browser_and_computer_use: Some(false),
+            allow_sandbox_bypass: Some(false),
+            allow_managed_plugins_only: Some(true),
+            allow_managed_marketplaces_only: Some(true),
             allow_appshots: Some(false),
             allow_remote_control: Some(false),
             computer_use: Some(computer_use.clone()),
@@ -2802,6 +2924,17 @@ mod tests {
             models: Some(models.clone()),
             additional_developer_instructions: Some(additional_developer_instructions.clone()),
             guardian_policy_config: Some(guardian_policy_config.clone()),
+            developer_instructions: Some(developer_instructions.clone()),
+            encrypted_skills: Some(EncryptedSkillsToml {
+                sdk: Some(EncryptedSkillsSdkToml::Software),
+                skill_idle_ttl_secs: Some(900),
+                key_cache_ttl_secs: None,
+                audit_path: None,
+                software_privkey: None,
+                software_algorithm: None,
+                key_envelope: None,
+                guardrail: Default::default(),
+            }),
         };
 
         target.merge_unset_fields(source.clone(), other);
@@ -2860,6 +2993,18 @@ mod tests {
                     /*value*/ false,
                     enforce_source.clone(),
                 )),
+                allow_sandbox_bypass: Some(Sourced::new(
+                    /*value*/ false,
+                    enforce_source.clone(),
+                )),
+                allow_managed_plugins_only: Some(Sourced::new(
+                    /*value*/ true,
+                    enforce_source.clone(),
+                )),
+                allow_managed_marketplaces_only: Some(Sourced::new(
+                    /*value*/ true,
+                    enforce_source.clone(),
+                )),
                 allow_appshots: Some(Sourced::new(/*value*/ false, enforce_source.clone(),)),
                 allow_remote_control: Some(Sourced::new(
                     /*value*/ false,
@@ -2889,7 +3034,21 @@ mod tests {
                     additional_developer_instructions,
                     source.clone(),
                 )),
-                guardian_policy_config: Some(Sourced::new(guardian_policy_config, source)),
+                guardian_policy_config: Some(Sourced::new(guardian_policy_config, source.clone(),)),
+                encrypted_skills: Some(Sourced::new(
+                    EncryptedSkillsToml {
+                        sdk: Some(EncryptedSkillsSdkToml::Software),
+                        skill_idle_ttl_secs: Some(900),
+                        key_cache_ttl_secs: None,
+                        audit_path: None,
+                        software_privkey: None,
+                        software_algorithm: None,
+                        key_envelope: None,
+                        guardrail: Default::default(),
+                    },
+                    source.clone(),
+                )),
+                developer_instructions: Some(Sourced::new(developer_instructions, source)),
             }
         );
     }
@@ -3925,6 +4084,34 @@ allowed_approvals_reviewers = ["user"]
             })
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn developer_instructions_merges_with_source_and_drops_empty_values() -> Result<()> {
+        let source = RequirementSource::LegacyManagedConfigTomlFromMdm;
+        let requirements_toml: ConfigRequirementsToml =
+            from_str("developer_instructions = \"managed policy\"\n")?;
+        let mut requirements_with_sources = ConfigRequirementsWithSources::default();
+        requirements_with_sources.merge_unset_fields(source.clone(), requirements_toml);
+        assert_eq!(
+            requirements_with_sources
+                .developer_instructions
+                .as_ref()
+                .map(|sourced| sourced.value.as_str()),
+            Some("managed policy")
+        );
+
+        let requirements = ConfigRequirements::try_from(requirements_with_sources)?;
+        assert_eq!(
+            requirements.developer_instructions_source,
+            Some(source.clone())
+        );
+
+        let blank: ConfigRequirementsToml = from_str("developer_instructions = \"   \"\n")?;
+        let mut with_sources = ConfigRequirementsWithSources::default();
+        with_sources.merge_unset_fields(source, blank);
+        assert!(with_sources.developer_instructions.is_none());
         Ok(())
     }
 

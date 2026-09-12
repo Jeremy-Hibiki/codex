@@ -168,6 +168,30 @@ pub(crate) async fn run_turn(
     prewarmed_client_session: Option<ModelClientSession>,
     cancellation_token: CancellationToken,
 ) -> CodexResult<Option<String>> {
+    let result = run_turn_inner(
+        Arc::clone(&sess),
+        turn_context,
+        input,
+        mcp_startup_requirements,
+        prewarmed_client_session,
+        cancellation_token,
+    )
+    .await;
+    // Turn-end unload: encrypted-skill plaintext never outlives the turn that
+    // loaded it. The skill-level TTL sweep remains as a backstop for paths
+    // that bypass `run_turn` or terminate abnormally.
+    sess.encrypted_skills_guard().unload_turn();
+    result
+}
+
+async fn run_turn_inner(
+    sess: Arc<Session>,
+    turn_context: Arc<TurnContext>,
+    input: Vec<TurnInput>,
+    mcp_startup_requirements: &mut McpStartupRequirements,
+    prewarmed_client_session: Option<ModelClientSession>,
+    cancellation_token: CancellationToken,
+) -> CodexResult<Option<String>> {
     // Record results from hooks that finished after the previous turn before this turn's user prompt.
     drain_async_hook_results(&sess, &turn_context, /*before_user_prompt*/ true).await;
 
@@ -827,6 +851,9 @@ async fn build_skills_and_plugins(
     mentioned_plugins: &[crate::plugins::PluginCapabilitySummary],
     cancellation_token: &CancellationToken,
 ) -> Option<(Vec<ResponseItem>, HashSet<String>)> {
+    // Turn-boundary TTL sweep: evict skills idle beyond the skill TTL and
+    // threads idle beyond the thread TTL (decrypted state only).
+    sess.encrypted_skills_guard().sweep();
     let turn_context = step_context.turn.as_ref();
     // Guardian input embeds the parent transcript as untrusted evidence. Do not interpret skill or
     // plugin mentions from that generated prompt as requests to inject additional instructions.
@@ -888,7 +915,13 @@ async fn build_skills_and_plugins(
         fragments,
         injected: injected_host_skills,
         warnings: host_skill_warnings,
-    } = skills_snapshot.load_skill_prompts(&mentioned_skills).await;
+    } = skills_snapshot
+        .load_skill_prompts(
+            &mentioned_skills,
+            Some(&sess.services.encrypted_skills_runtime),
+            &sess.thread_id.to_string(),
+        )
+        .await;
     emit_explicit_skill_invocations(
         sess,
         turn_context,
@@ -1388,6 +1421,7 @@ pub(crate) fn build_prompt(
     input: Vec<ResponseItem>,
     step_context: &StepContext,
     base_instructions: BaseInstructions,
+    encrypted_skills: Option<crate::client_common::EncryptedSkillRehydrator>,
 ) -> Prompt {
     let turn_context = &step_context.turn;
     Prompt {
@@ -1400,6 +1434,7 @@ pub(crate) fn build_prompt(
             &turn_context.session_source,
         ),
         cyber_access_program: turn_context.cyber_access_program,
+        encrypted_skills,
     }
 }
 
@@ -1464,6 +1499,7 @@ async fn run_sampling_request(
             prompt_input,
             step_context.as_ref(),
             base_instructions.clone(),
+            Some(sess.encrypted_skill_rehydrator()),
         );
         let err = match try_run_sampling_request(
             tool_runtime.clone(),
@@ -1774,6 +1810,7 @@ impl ProposedPlanItemState {
         if delta.is_empty() {
             return;
         }
+        let delta = sess.encrypted_skills_guard().redact_text_streaming(delta);
         let event = PlanDeltaEvent {
             thread_id: sess.thread_id.to_string(),
             turn_id: turn_context.sub_id.clone(),
@@ -1979,6 +2016,9 @@ async fn handle_plan_segments(
                 };
                 maybe_emit_pending_agent_message_start(sess, turn_context, state, item_id).await;
 
+                // Client-facing deltas must already be redacted: streamed text
+                // must never carry decrypted skill plaintext.
+                let delta = sess.encrypted_skills_guard().redact_text_streaming(&delta);
                 let event = AgentMessageContentDeltaEvent {
                     thread_id: sess.thread_id.to_string(),
                     turn_id: turn_context.sub_id.clone(),
@@ -2033,11 +2073,15 @@ async fn emit_streamed_assistant_text_delta(
     if parsed.visible_text.is_empty() {
         return;
     }
+    // Client-facing deltas must already be redacted.
+    let visible_text = sess
+        .encrypted_skills_guard()
+        .redact_text_streaming(&parsed.visible_text);
     let event = AgentMessageContentDeltaEvent {
         thread_id: sess.thread_id.to_string(),
         turn_id: turn_context.sub_id.clone(),
         item_id: item_id.to_string(),
-        delta: parsed.visible_text,
+        delta: visible_text,
     };
     sess.send_event(turn_context, EventMsg::AgentMessageContentDelta(event))
         .await;
@@ -2706,6 +2750,10 @@ async fn try_run_sampling_request(
                         )
                         .await;
                     } else {
+                        // fm (M7): non-agent-message deltas bypass the
+                        // assistant-message redaction path; keep skill
+                        // plaintext out of client events.
+                        let delta = sess.encrypted_skills_guard().redact_text_streaming(&delta);
                         let event = AgentMessageContentDeltaEvent {
                             thread_id: sess.thread_id.to_string(),
                             turn_id: turn_context.sub_id.clone(),
@@ -2748,6 +2796,9 @@ async fn try_run_sampling_request(
                     if !active_item_is_streaming_to_client {
                         continue;
                     }
+                    // fm (M7): reasoning summaries can quote rehydrated skill
+                    // content; redact before the client sees them.
+                    let delta = sess.encrypted_skills_guard().redact_text_streaming(&delta);
                     let event = ReasoningContentDeltaEvent {
                         thread_id: sess.thread_id.to_string(),
                         turn_id: turn_context.sub_id.clone(),
@@ -2803,6 +2854,9 @@ async fn try_run_sampling_request(
                     )
                     .await;
                 }
+                // fm (M7): reasoning summaries can quote rehydrated skill
+                // content; redact before the client sees them.
+                let text = sess.encrypted_skills_guard().redact_text_streaming(&text);
                 let event = ReasoningContentDeltaEvent {
                     thread_id: sess.thread_id.to_string(),
                     turn_id: turn_context.sub_id.clone(),
@@ -2821,6 +2875,9 @@ async fn try_run_sampling_request(
                     if !active_item_is_streaming_to_client {
                         continue;
                     }
+                    // fm (M7): raw reasoning content can quote rehydrated
+                    // skill content; redact before the client sees it.
+                    let delta = sess.encrypted_skills_guard().redact_text_streaming(&delta);
                     let event = ReasoningRawContentDeltaEvent {
                         thread_id: sess.thread_id.to_string(),
                         turn_id: turn_context.sub_id.clone(),

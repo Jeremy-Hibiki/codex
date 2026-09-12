@@ -9,6 +9,7 @@ use codex_protocol::protocol::Product;
 use codex_skills::EnvironmentSkillMetadata;
 use codex_skills::ParsedSkillFrontmatter;
 use codex_skills::SkillDependencies;
+use codex_skills::SkillEncryption;
 use codex_skills::SkillPolicy;
 use codex_skills::parse_skill_frontmatter_metadata;
 use codex_utils_path_uri::PathUri;
@@ -37,6 +38,7 @@ struct ParsedEnvironmentSkill {
     short_description: Option<String>,
     dependencies: Option<SkillDependencies>,
     policy: Option<SkillPolicy>,
+    encryption: Option<SkillEncryption>,
 }
 
 /// Parsed executor skill plus the instructions already materialized by capability discovery.
@@ -74,6 +76,7 @@ impl ParsedEnvironmentSkill {
             name: base_name,
             description,
             short_description,
+            encryption,
         } = parse_skill_frontmatter_metadata(&contents, || default_skill_name(&skill.path))
             .map_err(|err| err.to_string())?;
         let (dependencies, policy) = match &skill.metadata {
@@ -92,6 +95,7 @@ impl ParsedEnvironmentSkill {
             short_description,
             dependencies,
             policy,
+            encryption,
         })
     }
 }
@@ -177,6 +181,7 @@ pub async fn load_environment_skills_from_root(
                 short_description: skill.short_description,
                 dependencies: skill.dependencies,
                 policy: skill.policy,
+                encryption: skill.encryption,
             })
         });
         match result {
@@ -242,6 +247,7 @@ pub fn load_environment_skills_from_discovery(
             name: base_name,
             description,
             short_description,
+            encryption,
         } = match parse_skill_frontmatter_metadata(&skill.instructions.contents, || {
             default_skill_name(&skill.instructions.path)
         }) {
@@ -291,6 +297,7 @@ pub fn load_environment_skills_from_discovery(
             short_description,
             dependencies,
             policy,
+            encryption,
         };
         if metadata.matches_product_restriction(restriction_product) {
             outcome.skills.push(EnvironmentSkillSnapshot {

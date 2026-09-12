@@ -482,6 +482,29 @@ pub struct SkillMetadata {
     pub enabled: bool,
     /// Owning plugin ID, matching `PluginSummary.id`, when known.
     pub plugin_id: Option<String>,
+    /// Encryption metadata from the skill's frontmatter, when the skill is
+    /// encrypted. Absent for plaintext skills.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub encryption: Option<SkillEncryption>,
+}
+
+/// Encryption metadata declared in a skill's `SKILL.md` frontmatter under
+/// `metadata.encryption`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct SkillEncryption {
+    #[ts(optional)]
+    pub version: Option<u64>,
+    #[ts(optional)]
+    pub key_id: Option<String>,
+    #[ts(optional)]
+    pub algorithm: Option<String>,
+    #[ts(optional)]
+    pub mode: Option<String>,
+    #[ts(optional)]
+    pub package: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
@@ -990,6 +1013,9 @@ impl From<CoreSkillMetadata> for SkillMetadata {
             scope: value.scope.into(),
             enabled: true,
             plugin_id: None,
+            // The core protocol's skill metadata carries no encryption fields;
+            // the encrypted-skill path builds this DTO in the catalog processor.
+            encryption: None,
         }
     }
 }

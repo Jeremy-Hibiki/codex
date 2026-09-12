@@ -5,6 +5,7 @@ use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_tools::ToolSpec;
+use fm_encrypted_skills::runtime::EncryptedSkillRuntime;
 use futures::Stream;
 use serde_json::Value;
 use std::pin::Pin;
@@ -36,6 +37,25 @@ pub struct Prompt {
     pub output_schema_strict: bool,
 
     pub(crate) cyber_access_program: Option<codex_protocol::turn_input::CyberAccessProgram>,
+
+    /// Rehydrates encrypted skill tokens for this thread before the request is
+    /// transmitted.
+    pub(crate) encrypted_skills: Option<EncryptedSkillRehydrator>,
+}
+
+/// Encrypted-skill rehydration context scoped to one thread.
+#[derive(Clone)]
+pub(crate) struct EncryptedSkillRehydrator {
+    pub(crate) runtime: Arc<EncryptedSkillRuntime>,
+    pub(crate) session_id: String,
+}
+
+impl std::fmt::Debug for EncryptedSkillRehydrator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EncryptedSkillRehydrator")
+            .field("session_id", &self.session_id)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for Prompt {
@@ -48,6 +68,7 @@ impl Default for Prompt {
             output_schema: None,
             output_schema_strict: true,
             cyber_access_program: None,
+            encrypted_skills: None,
         }
     }
 }
@@ -60,6 +81,38 @@ impl Prompt {
         let mut input = self.input.clone();
         if use_responses_lite {
             strip_image_details(&mut input);
+        }
+        if let Some(rehydrator) = &self.encrypted_skills {
+            // Implicitly invoked encrypted skills (identified by the detection
+            // metadata, not by on-disk stub content) are decrypted here and
+            // injected as a framed context fragment, just before the request
+            // is transmitted to the model.
+            let implicit_injections = rehydrator
+                .runtime
+                .take_pending_implicit_skill_injections(&rehydrator.session_id);
+            if !implicit_injections.is_empty() {
+                input.push(ResponseItem::Message {
+                    id: None,
+                    role: "developer".to_string(),
+                    content: implicit_injections
+                        .into_iter()
+                        .map(|text| ContentItem::InputText { text })
+                        .collect(),
+                    phase: None,
+                    internal_chat_message_metadata_passthrough: None,
+                });
+            }
+            for item in &mut input {
+                if let ResponseItem::Message { content, .. } = item {
+                    for content_item in content {
+                        if let ContentItem::InputText { text } = content_item {
+                            *text = rehydrator
+                                .runtime
+                                .rehydrate_framed(Some(&rehydrator.session_id), text);
+                        }
+                    }
+                }
+            }
         }
         input
     }

@@ -1068,6 +1068,11 @@ async fn run_guardian_review_session_with_retry_before_deadline(
         deadline,
     } = limits;
     let context = context.into();
+    // Reviewer models must never observe the real decrypted `/dev/shm`
+    // location: rewrite registered decrypted dirs back to their original skill
+    // paths and redact memory-root segments before the request is serialized
+    // into the review prompt.
+    let request = session.redact_guardian_request(request);
     assert!(max_attempts > 0, "guardian review must run at least once");
     let mut attempt_count = 1;
     loop {

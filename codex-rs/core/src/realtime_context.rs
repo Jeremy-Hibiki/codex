@@ -123,7 +123,15 @@ pub(crate) async fn build_realtime_startup_context(
         has_workspace_section,
         "built realtime startup context"
     );
-    info!("realtime startup context: {context}");
+    // fm M10: the blob aggregates thread history and workspace contents;
+    // telemetry must not see engaged-session plaintext. Redact only the
+    // logged copy — the returned blob still flows to the model verbatim.
+    let logged_context = crate::tools::registry::redact_telemetry_text_if_engaged(
+        &sess.services.encrypted_skills_runtime,
+        &sess.thread_id.to_string(),
+        &context,
+    );
+    info!("realtime startup context: {logged_context}");
     Some(context)
 }
 

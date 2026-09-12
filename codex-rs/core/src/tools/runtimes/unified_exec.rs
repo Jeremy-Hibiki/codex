@@ -197,6 +197,18 @@ impl Approvable<UnifiedExecRequest> for UnifiedExecRuntime<'_> {
     fn sandbox_permissions(&self, req: &UnifiedExecRequest) -> SandboxPermissions {
         req.sandbox_permissions
     }
+
+    fn should_auto_approve(&self, req: &UnifiedExecRequest, ctx: &ToolCtx) -> bool {
+        req.cwd
+            .to_abs_path()
+            .ok()
+            .and_then(|cwd| {
+                ctx.step_context
+                    .turn
+                    .plugin_attribution_for_command(&req.command, &cwd)
+            })
+            .is_some_and(|attribution| attribution.is_auto_approved_skill_script())
+    }
 }
 
 impl<'a> ToolRuntime<UnifiedExecRequest, UnifiedExecAttempt> for UnifiedExecRuntime<'a> {

@@ -87,6 +87,11 @@ struct Args {
 }
 
 fn main() -> anyhow::Result<()> {
+    #[cfg(target_os = "linux")]
+    #[cfg(not(debug_assertions))]
+    codex_process_hardening::disable_process_dumping()
+        .unwrap_or_else(|err| eprintln!("WARNING: failed to disable process dumping: {err}"));
+
     arg0_dispatch_or_else(run_main)
 }
 
@@ -322,6 +327,8 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
         feedback_enabled: false,
         tool_suggest: ToolSuggestConfig::default(),
         otel: OtelConfig::default(),
+        encrypted_skills: Default::default(),
+        product_policy: Default::default(),
     };
     config
         .features

@@ -64,6 +64,7 @@ mod cyber_access_program;
 mod cyber_exec_policy;
 mod daybreak_access;
 mod deprecation_notice;
+mod encrypted_skills;
 mod exec;
 mod exec_policy;
 #[cfg(not(target_os = "windows"))]
@@ -81,6 +82,7 @@ mod guardian_review;
 mod guardian_review_cancellation;
 #[cfg(not(target_os = "windows"))]
 mod guardian_subagent_authorization;
+mod guardrail;
 #[cfg(not(target_os = "windows"))]
 mod hooks;
 #[cfg(not(target_os = "windows"))]

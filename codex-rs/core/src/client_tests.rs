@@ -181,6 +181,7 @@ async fn compact_uses_bearer_after_agent_identity_session_fallback() -> anyhow::
             text: "base instructions".to_string(),
             provenance: None,
         },
+        encrypted_skills: None,
         ..Default::default()
     };
     let responses_metadata = test_responses_metadata_for_client(
@@ -807,6 +808,7 @@ async fn dropped_response_stream_traces_cancelled_partial_output() -> anyhow::Re
         test_session_telemetry(),
         attempt,
         test_model_provider(),
+        /*encrypted_skills*/ None,
     );
 
     let observed = stream
@@ -858,6 +860,7 @@ async fn response_stream_records_last_model_feedback_ids() {
         test_session_telemetry(),
         InferenceTraceAttempt::disabled(),
         test_model_provider(),
+        /*encrypted_skills*/ None,
     );
 
     while stream.next().await.is_some() {}
@@ -1079,6 +1082,7 @@ async fn dropped_backpressured_response_stream_traces_cancelled_partial_output()
         test_session_telemetry(),
         attempt,
         test_model_provider(),
+        /*encrypted_skills*/ None,
     );
 
     // Fill the mapper channel with non-terminal events, then yield one output

@@ -725,6 +725,17 @@ async fn interrupting_regular_turn_waiting_on_startup_prewarm_emits_turn_aborted
     assert!(duration_ms.is_some());
 }
 
+/// Encrypted-skill runtime for tests: no envelope backend is available, so
+/// encrypted skills fail closed instead of touching a real key.
+fn unavailable_encrypted_skills_runtime() -> Arc<fm_encrypted_skills::runtime::EncryptedSkillRuntime>
+{
+    fm_encrypted_skills::runtime::EncryptedSkillRuntime::new_shared(
+        Arc::new(fm_encrypted_skills::sdk::UnavailableSdk),
+        fm_encrypted_skills::registry::TtlConfig::default(),
+        std::path::PathBuf::from(fm_encrypted_skills::mem_root::DEFAULT_MEM_ROOT),
+    )
+}
+
 fn test_model_client_session() -> crate::client::ModelClientSession {
     let thread_id = ThreadId::try_from("00000000-0000-4000-8000-000000000001")
         .expect("test thread id should be valid");
@@ -6559,6 +6570,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         guardian_rejection_circuit_breaker: Mutex::new(Default::default()),
         runtime_handle: tokio::runtime::Handle::current(),
         skills_service,
+        encrypted_skills_runtime: unavailable_encrypted_skills_runtime(),
         agents_md_manager: Arc::new(AgentsMdManager::new(/*user_instructions*/ None)),
         plugins_manager,
         mcp_manager,
@@ -8866,6 +8878,7 @@ where
         guardian_rejection_circuit_breaker: Mutex::new(Default::default()),
         runtime_handle: tokio::runtime::Handle::current(),
         skills_service,
+        encrypted_skills_runtime: unavailable_encrypted_skills_runtime(),
         agents_md_manager: Arc::new(AgentsMdManager::new(/*user_instructions*/ None)),
         plugins_manager,
         mcp_manager,

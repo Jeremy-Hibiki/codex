@@ -1,0 +1,140 @@
+# Agent Security 变更明细（对比 `rust-v0.146.0`）
+
+> 口径：`git diff rust-v0.146.0..HEAD`，以一次实现过程汇总最终状态，不展示中间状态。
+> 汇总：排除 `*.md` 与 `openspec/**` 后共 189 个文件，新增 +13,621 行，删除 -612 行。
+
+## 文件树（按目录列出更新位置，bullet 说明）
+
+- 根目录（构建与发布）
+  - `.bazelrc` — fm-license 的 Bazel 配置。
+  - `BUILD.bazel` — 仓库构建目标与 crate 注解。
+  - `defs.bzl` — Bazel 规则辅助。
+  - `MODULE.bazel` / `MODULE.bazel.lock` — 依赖模块与锁（含 fmsh-ukey-cipher 条目）。
+  - `patches/` — `rules_rs_*`、`v8_module_deps` 构建补丁。
+  - `third_party/lmclient/` — FMSH LMCLIENT SDK 的 Bazel 封装。
+  - `release/` — 发布容器（Dockerfile、predownload-deps、BUILD.md）。
+  - `scripts/format.py`、`.gitignore`、`.dockerignore` — 工具与忽略项。
+- `codex-rs/`
+  - `Cargo.toml` — 新增 `fm-license`、`fm-encrypted-skills`、`zip` 等依赖。
+  - `Cargo.lock` — 对应依赖锁定（含 `fmsh-ukey-cipher`/`fmsh-ukey-wrapper` git 依赖，同步至 `3516cd5`）。
+  - `fm/license/`（新增 crate）
+    - `src/lib.rs` — LicenseManager 公共 API、`verify_at_startup`、`ensure_active`、测试 bypass。
+    - `src/license.rs` — LMCLIENT 启动校验、LicenseGuard、信号处理器、心跳。
+    - `src/license_tests.rs` — 测试。
+    - `Cargo.toml` / `BUILD.bazel` / `README.md` — 依赖、Bazel 目标、说明。
+  - `fm/encrypted-skills/`
+    - `Cargo.toml` — 依赖（含可选 `fmsh-ukey` feature 与 `fmsh-ukey-cipher` git 依赖，rev `3516cd5`）。
+    - `BUILD.bazel` — Bazel 目标。
+    - `src/lib.rs` — crate 根与模块导出。
+    - `src/sdk.rs` — `EnvelopeSdk` 四种后端：`Noop`、`Software`（HPKE 默认或 sm2-sm4-cbc）、`UKey`、`UKeyTwoPhase`（每 Skill `key.enc`，内存 AES key 缓存）；软件私钥经 memfd 载入；容量上限（512 条目 / 16 MiB）。
+    - `src/memfd.rs`（新增）— 瞬态密钥材料的匿名内存文件（Linux memfd），避免落盘。
+    - `src/cache.rs` — 内容缓存（上限/FIFO/引用回调）。
+    - `src/registry.rs` — 会话注册表、替换记录返回与 wipe、生命周期锁。
+    - `src/rehydrate.rs` — token 重水合（framing）。
+    - `src/token.rs` — 哨兵 token 序列化与格式校验。
+    - `src/mem_root.rs` — `/dev/shm` 初始化、0700、容量门控、secure wipe。
+    - `src/paths.rs` — 路径改写、命令分段、受保护目录判定。
+    - `src/audit.rs` — JSONL 审计、轮转、进程级共享 sink。
+    - `src/export_guard.rs` — 明文片段匹配与规范化红act。
+    - `src/runtime.rs` — 解密/落盘/注册/TTL/sweep（Weak）/`unload_turn`/`is_engaged`/in-flight/进程级共享注册/`path_mappings`/unrewrite/redact。
+    - `src/*_tests.rs` — 各模块单测。
+  - `config/`
+    - `src/config_toml.rs` — `EncryptedSkillsToml`（sdk/TTL/audit_path/software_privkey/software_algorithm/key_envelope），支持 `noop`/`software`/`ukey`/`ukey-two-phase`。
+  - `core-skills/`
+    - `src/model.rs` / `src/loader.rs` / `src/loader/environment.rs` — frontmatter 加密标记与字段解析。
+    - `src/injection.rs` — `build_skill_injections` 加密分支（解密/token/幂等、`encryption.package`）。
+    - `src/skill_instructions.rs` — 加密 Skill body 输出哨兵 token。
+    - `src/render.rs` — 渲染适配。
+    - `src/*_tests.rs`、`tests/environment_loader.rs` — 配套测试。
+    - `Cargo.toml` — 新增 `fm-encrypted-skills` 依赖。
+  - `core/`
+    - `src/agent_security.rs`（新增）— `AgentSecurityContext`、`sandbox_applies_binds`、`ensure_encrypted_skill_sandbox`、RPC 纯函数。
+    - `src/agent_security_tests.rs`（新增）— engaged/门控/路径判定单测。
+    - `src/encrypted_skills_guard.rs` — 工具拦截、未 engaged 放行、binds 逻辑路径、`RedactingToolOutput` 门控、turn item 红act 扩展。
+    - `src/encrypted_skills_guard_tests.rs` — 76 个单测。
+    - `src/lib.rs` — 模块导出。
+    - `src/exec.rs` — `build_exec_request` 透传 readonly_binds/上下文。
+    - `src/client_common.rs` — `Prompt` 重水合器与 `EncryptedSkillRehydrator`。
+    - `src/session/mod.rs` / `src/session/session.rs` / `src/session/turn.rs` — runtime 创建、turn 注入、重水合、TTL sweep、事件红act。
+    - `src/session/turn_context.rs` — `TurnContext.agent_security` 组装。
+    - `src/session/review.rs` — review 线程继承安全上下文。
+    - `src/session/tests.rs` — 会话测试。
+    - `src/encrypted_skills_periodic.rs` — 周期 sweep（Weak）。
+    - `src/agent/control.rs` / `src/agent/control/spawn.rs` / `spawn_tests.rs` — fork 剥离 token。
+    - `src/compact.rs` / `compact_remote.rs` / `compact_remote_v2_attempt.rs` / `compact_remote_request.rs` — 压缩历史红act。
+    - `src/hook_runtime.rs` — hook 附加上下文红act。
+    - `src/guardian/review.rs` — 评审请求红act。
+    - `src/stream_events_utils.rs` — 回复项红act。
+    - `src/codex_thread.rs` — `clear_encrypted_skills`。
+    - `src/config/mod.rs` — `Config` 加密技能字段。
+    - `src/state/service.rs` / `src/session_startup_prewarm.rs` / `src/prompt_debug.rs` — 状态/预热/调试面适配。
+    - `src/tools/orchestrator.rs` — engaged 沙箱校验、`skill_binds` 注入、D9 自动 Permit。
+    - `src/tools/registry.rs` — `RedactingToolOutput` 包装、telemetry 预览红act、engaged 门控。
+    - `src/tools/runtimes/shell.rs` / `shell/unix_escalation.rs` / `unified_exec.rs` — D9 审批起点。
+    - `src/tools/runtimes/apply_patch.rs` / `mod_tests.rs` / `apply_patch_tests.rs` — readonly_binds 透传与测试。
+    - `src/tools/sandboxing.rs` / `sandboxing_tests.rs` — `SandboxAttempt.skill_binds`。
+    - `src/tools/handlers/view_image.rs` / `src/tools/hook_names.rs` — 工具拦截接线。
+    - `src/sandbox_tags_tests.rs` — 沙箱标签测试更新。
+    - `tests/common/test_codex_exec.rs` / `tests/suite/cli_stream.rs` — 测试基建（license bypass）。
+    - `tests/suite/encrypted_skills.rs` / `tests/suite/mod.rs` — 集成测试（沙箱执行、回显明文红act）。
+    - `config.schema.json` — 加密技能配置 schema（ukey/local 描述）。
+  - `app-server-protocol/`
+    - `src/protocol/v2/plugin.rs` — `SkillMetadata` 加密字段。
+    - `schema/json/*`、`schema/typescript/v2/*` — schema 与 TS 定义。
+  - `app-server/`
+    - `src/request_processors/rpc_guard.rs`（新增）— engaged 判定、路径/命令/参数检查、插件/市场与配置变更策略。
+    - `src/request_processors.rs` — `rpc_guard` 模块可见性。
+    - `src/request_processors/fs_processor.rs` — fs RPC guard 接线。
+    - `src/request_processors/command_exec_processor.rs` — `command/exec` guard。
+    - `src/request_processors/process_exec_processor.rs` — `process/spawn` guard。
+    - `src/request_processors/thread_goal_processor.rs` — goal RPC guard。
+    - `src/request_processors/thread_processor.rs` — thread shell/name/metadata/settings/start guard。
+    - `src/request_processors/turn_processor.rs` — turn/start 与 settings update danger 拒绝。
+    - `src/request_processors/catalog_processor.rs` — skills 加密元数据。
+    - `src/request_processors/thread_delete.rs` — 加密状态清理。
+    - `src/message_processor.rs` — 分发边界插件/市场与配置策略、license gate。
+    - `src/error_code.rs` / `src/main.rs` — license 错误码与启动校验。
+    - `Cargo.toml` — dev-dependencies 增加 `zip`。
+    - `tests/suite/v2/rpc_guard.rs`（新增）— E2E：in-flight 窗口拦截/放行/配置变更。
+    - `tests/suite/v2/product_policy.rs`（新增）— danger-full-access 拒绝。
+    - `tests/suite/v2/plugin_policy.rs`（新增）— 插件/市场 RPC 策略拒绝。
+    - `tests/suite/v2/marketplace_add|remove|upgrade.rs`、`plugin_install|list|read|share|uninstall.rs` — 原测试保留并 `#[ignore]`。
+    - `tests/suite/v2/mod.rs` — 模块注册。
+    - `tests/suite/v2/thread_settings_update.rs` / `turn_start.rs` / `turn_start_zsh_fork.rs` — 用例适配。
+    - `tests/suite/strict_config.rs` / `tests/suite/v2/license_gate.rs` / `connection_handling_websocket.rs` / `tests/common/test_app_server.rs` — license 相关。
+  - `cli/`
+    - `src/main.rs` — fm-license 启动校验、产品策略（full-access/plugin/marketplace 拒绝）。
+    - `src/remote_control_cmd.rs` — license gate。
+    - `src/debug_sandbox.rs` — readonly_binds 透传。
+    - `tests/plugin_policy.rs`（新增）— 插件/市场 CLI 策略拒绝。
+    - `tests/product_policy.rs`（新增）— full-access/bypass 拒绝。
+    - `tests/plugin_cli.rs` / `tests/marketplace_add|remove|upgrade.rs` — 原测试保留并 `#[ignore]`。
+    - `tests/app_server.rs` — license bypass。
+    - `Cargo.toml` — 依赖。
+  - `sandboxing/`
+    - `src/landlock.rs` — readonly_binds 转 `--ro-bind` 参数。
+    - `src/manager.rs` — `SandboxTransformRequest.readonly_binds`。
+    - `src/landlock_tests.rs` / `src/manager_tests.rs` — 测试。
+  - `linux-sandbox/`
+    - `src/bwrap.rs` — readonly_binds 挂载顺序与真实 bwrap 执行测试。
+    - `src/linux_run_main.rs` — `--ro-bind` CLI 参数。
+  - `exec-server/`
+    - `src/fs_sandbox.rs` / `src/process_sandbox.rs` — `FileSystemSandboxContext.readonly_binds` 传递。
+  - `file-system/`
+    - `src/lib.rs` — `FileSystemSandboxContext.readonly_binds`。
+  - `protocol/`
+    - `src/permissions.rs` — `ReadonlyBind` 与 `readonly_binds`。
+    - `src/models.rs` — 权限档案辅助。
+  - `exec/src/main.rs` — license 接线。
+  - `mcp-server/src/*`、`mcp-server/tests/*` — license 接线与测试。
+  - `skills/src/*` — license 接线。
+  - `tui/src/bottom_pane/*`、`tui/src/chatwidget/tests/*` — license 提示。
+  - `thread-manager-sample/src/main.rs` — 示例配置初始化（含加密技能字段）。
+- 根文档
+  - `FM_AGENT_SECURITY_DESIGN.md` — 实施契约（需求/D1-D10/风险矩阵/TODO-1~10/推荐默认配置）。
+  - `FM_AGENT_SECURITY_FIX_LOG.md` — I1~I31 逐条记录与验证结果。
+  - `FM_AGENT_SECURITY_STATUS.md` — 实施状态与待办速览。
+  - `FM_AGENT_SECURITY_CHANGES.md` — 本文档。
+- `openspec/`
+  - `changes/archive/2026-08-05-*` — 全部变更已归档。
+  - `specs/*` — 主 spec 同步。

@@ -154,6 +154,7 @@ policy:
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
+            encryption: None,
         }]
     );
 }
@@ -180,6 +181,7 @@ async fn invalid_optional_metadata_fails_open() {
             scope: SkillScope::Repo,
             plugin_id: None,
             remote_plugin_id: None,
+            encryption: None,
         }]
     );
 }
@@ -226,6 +228,7 @@ async fn loads_host_interface_metadata_and_local_asset_paths() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
+            encryption: None,
         }]
     );
 }
@@ -269,6 +272,7 @@ async fn loads_plugin_skill_interface_icons_from_local_and_shared_assets() {
             scope: SkillScope::User,
             plugin_id: Some("fixture@test".to_string()),
             remote_plugin_id: None,
+            encryption: None,
         }]
     );
 }
@@ -307,6 +311,7 @@ async fn rejects_plugin_skill_interface_icons_outside_shared_assets() {
             scope: SkillScope::User,
             plugin_id: Some("fixture@test".to_string()),
             remote_plugin_id: None,
+            encryption: None,
         }]
     );
 }
@@ -337,6 +342,7 @@ async fn rejects_interface_fields_that_escape_or_fail_validation() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
+            encryption: None,
         }]
     );
 }
@@ -387,6 +393,7 @@ async fn discovers_nested_plugin_namespace_without_plugin_identity() {
             scope: SkillScope::User,
             plugin_id: None,
             remote_plugin_id: None,
+            encryption: None,
         }]
     );
 }
@@ -432,6 +439,7 @@ async fn plugin_root_accepts_maximum_length_qualified_skill_name() {
             scope: SkillScope::User,
             plugin_id: Some("demo@test".to_string()),
             remote_plugin_id: None,
+            encryption: None,
         }]
     );
 }
@@ -533,6 +541,7 @@ async fn recursive_plugin_root_preserves_owner_namespace_and_shared_asset_policy
             scope: SkillScope::User,
             plugin_id: Some("demo@test".to_string()),
             remote_plugin_id: Some("remote-demo".to_string()),
+            encryption: None,
         }]
     );
     assert_eq!(
@@ -585,6 +594,7 @@ async fn direct_child_plugin_root_ignores_nested_skills() {
             scope: SkillScope::User,
             plugin_id: Some("demo@test".to_string()),
             remote_plugin_id: None,
+            encryption: None,
         }]
     );
 }
@@ -666,6 +676,7 @@ async fn recursive_plugin_root_preserves_symlinked_skill_discovery_path() {
             scope: SkillScope::User,
             plugin_id: Some("demo@test".to_string()),
             remote_plugin_id: None,
+            encryption: None,
         }]
     );
     assert_eq!(

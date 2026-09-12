@@ -94,6 +94,7 @@ async fn host_loading_reuses_walk_inventory_for_symlinked_skill_pack() {
                 scope: SkillScope::User,
                 plugin_id: None,
                 remote_plugin_id: None,
+                encryption: None,
             },
             SkillMetadata {
                 name: "linked:second".to_string(),
@@ -106,6 +107,7 @@ async fn host_loading_reuses_walk_inventory_for_symlinked_skill_pack() {
                 scope: SkillScope::User,
                 plugin_id: None,
                 remote_plugin_id: None,
+                encryption: None,
             },
         ]
     );

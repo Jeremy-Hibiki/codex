@@ -2711,10 +2711,12 @@ async fn multi_agent_feature_selects_one_agent_tool_family() {
         .properties
         .as_ref()
         .expect("spawn_agent should use object params");
+    // fm D5: model dispatch is not supported — the v1 spec must not
+    // advertise model overrides.
     for property in ["model", "reasoning_effort"] {
         assert!(
-            properties.contains_key(property),
-            "expected v1 spawn_agent to expose `{property}`"
+            !properties.contains_key(property),
+            "v1 spawn_agent must not advertise `{property}`"
         );
     }
     assert!(!properties.contains_key("agent_type"));
@@ -2774,7 +2776,12 @@ async fn multi_agent_feature_selects_one_agent_tool_family() {
         .as_ref()
         .expect("spawn_agent should use object params");
     for property in ["model", "reasoning_effort"] {
-        assert!(spawn_agent_properties.contains_key(property));
+        // fm D5: model dispatch is not supported — the V2 spec must not
+        // advertise model overrides either.
+        assert!(
+            !spawn_agent_properties.contains_key(property),
+            "v2 spawn_agent must not advertise `{property}`"
+        );
     }
     for property in ["agent_type", "service_tier"] {
         assert!(!spawn_agent_properties.contains_key(property));

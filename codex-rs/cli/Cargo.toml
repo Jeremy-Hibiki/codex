@@ -23,6 +23,9 @@ doctest = false
 workspace = true
 
 [dependencies]
+fm-license = { workspace = true }
+fm-product-policy = { workspace = true }
+
 anyhow = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
@@ -100,6 +103,7 @@ tracing-subscriber = { workspace = true }
 unicode-segmentation = { workspace = true }
 url = { workspace = true }
 which = { workspace = true }
+codex-process-hardening = { workspace = true }
 
 [target.'cfg(all(target_os = "linux", target_env = "musl", any(target_arch = "x86_64", target_arch = "aarch64")))'.dependencies]
 tikv-jemallocator = { workspace = true }
@@ -112,6 +116,9 @@ windows-sys = { version = "0.52", features = [
     "Win32_System_Console",
     "Win32_System_Threading",
 ] }
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
+fmsh-ukey-sdk-wrapper = { workspace = true }
 
 [dev-dependencies]
 app_test_support = { workspace = true }

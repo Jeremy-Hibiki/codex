@@ -1768,7 +1768,14 @@ pub(crate) async fn handle_text(
     sub_id: String,
     params: ConversationTextParams,
 ) {
-    debug!(text = %params.text, "[realtime-text] appending realtime conversation text input");
+    // fm M10: realtime input previews must not leak engaged-session plaintext
+    // into telemetry; same redaction as the tool-dispatch path.
+    let logged_text = crate::tools::registry::redact_telemetry_text_if_engaged(
+        &sess.services.encrypted_skills_runtime,
+        &sess.thread_id.to_string(),
+        &params.text,
+    );
+    debug!(text = %logged_text, "[realtime-text] appending realtime conversation text input");
     if let Err(err) = sess.conversation.text_in(params).await {
         error!("failed to append realtime text: {err}");
         if sess.conversation.running_state().await.is_some() {
@@ -1785,7 +1792,14 @@ pub(crate) async fn handle_speech(
     sub_id: String,
     params: ConversationSpeechParams,
 ) {
-    debug!(text = %params.text, "[realtime-text] appending realtime speech");
+    // fm M10: realtime input previews must not leak engaged-session plaintext
+    // into telemetry; same redaction as the tool-dispatch path.
+    let logged_text = crate::tools::registry::redact_telemetry_text_if_engaged(
+        &sess.services.encrypted_skills_runtime,
+        &sess.thread_id.to_string(),
+        &params.text,
+    );
+    debug!(text = %logged_text, "[realtime-text] appending realtime speech");
     if let Err(err) = sess.conversation.append_speech(params.text).await {
         error!("failed to append realtime speech: {err}");
         if sess.conversation.running_state().await.is_some() {

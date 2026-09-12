@@ -9981,6 +9981,9 @@ async fn test_requirements_web_search_mode_allowlist_does_not_warn_when_unset() 
         allowed_web_search_modes: Some(vec![codex_config::WebSearchModeRequirement::Cached]),
         application: None,
         allow_managed_hooks_only: None,
+        allow_sandbox_bypass: None,
+        allow_managed_plugins_only: None,
+        allow_managed_marketplaces_only: None,
         allow_appshots: None,
         allow_remote_control: None,
         allow_browser_and_computer_use: None,
@@ -10002,6 +10005,8 @@ async fn test_requirements_web_search_mode_allowlist_does_not_warn_when_unset() 
         models: None,
         additional_developer_instructions: None,
         guardian_policy_config: None,
+        developer_instructions: None,
+        encrypted_skills: None,
     };
     let requirement_source = codex_config::RequirementSource::Unknown;
     let requirement_source_for_error = requirement_source.clone();
@@ -11648,6 +11653,9 @@ enabled = true
         config.multi_agent_v2,
         resolve_multi_agent_v2_config(&ConfigToml::default())
     );
+    // fm: model dispatch is not supported, so the config default must keep
+    // this gate off even when the struct default is not spelled out in TOML.
+    assert!(!config.multi_agent_v2.expose_spawn_agent_model_overrides);
     assert_eq!(
         (
             config.agent_max_threads,
@@ -11742,34 +11750,44 @@ expose_spawn_agent_model_overrides = true
 }
 
 #[test]
-fn multi_agent_v2_exposes_model_overrides_by_default() {
+fn multi_agent_v2_does_not_expose_model_overrides_by_default() {
     let config_toml =
         toml::from_str(r#"[features.multi_agent_v2]"#).expect("multi-agent v2 config should parse");
 
     let mut config = resolve_multi_agent_v2_config(&config_toml);
-    assert!(config.expose_spawn_agent_model_overrides);
-    let usage_hints = resolve_usage_hints(
-        &config, /*catalog*/ None, /*omit_update_plan_instructions*/ false,
-    );
-    config.expose_spawn_agent_model_overrides = false;
-    let usage_hints_without_model_overrides = resolve_usage_hints(
+    // fm: model dispatch is not supported — spawned agents inherit the parent
+    // thread's model, so the tool spec must not advertise a `model` argument.
+    assert!(!config.expose_spawn_agent_model_overrides);
+    let hints_default = resolve_usage_hints(
         &config, /*catalog*/ None, /*omit_update_plan_instructions*/ false,
     );
 
-    for (hint, hint_without_model_overrides) in [
-        (usage_hints.root, usage_hints_without_model_overrides.root),
-        (
-            usage_hints.subagent,
-            usage_hints_without_model_overrides.subagent,
-        ),
+    // The gate still works when explicitly enabled (upstream behavior kept).
+    config.expose_spawn_agent_model_overrides = true;
+    let hints_with_overrides = resolve_usage_hints(
+        &config, /*catalog*/ None, /*omit_update_plan_instructions*/ false,
+    );
+
+    for (default_hint, override_hint) in [
+        (hints_default.root, hints_with_overrides.root),
+        (hints_default.subagent, hints_with_overrides.subagent),
     ] {
-        let hint = hint.expect("default usage hints should be present").body();
-        let hint_without_model_overrides = hint_without_model_overrides
-            .expect("default usage hints should be present without model overrides")
+        let default_body = default_hint
+            .expect("default usage hints should be present")
             .body();
-
-        let model_override_guidance = hint
-            .strip_prefix(hint_without_model_overrides.as_str())
+        // `fork_turns` is part of the base hint (the fork tool itself); only
+        // the model-override guidance is gated by the expose flag.
+        for forbidden_fragment in ["Full-history forks", "`model`", "`reasoning_effort`"] {
+            assert!(
+                !default_body.contains(forbidden_fragment),
+                "default usage hint should not contain {forbidden_fragment}"
+            );
+        }
+        let override_body = override_hint
+            .expect("default usage hints should be present")
+            .body();
+        let model_override_guidance = override_body
+            .strip_prefix(default_body.as_str())
             .expect("model-override guidance should extend the base usage hint");
         for required_fragment in [
             "Full-history forks",
@@ -12946,4 +12964,123 @@ fn sqlite_home_env_conflict_reports_an_override() -> std::io::Result<()> {
     assert!(warnings.is_empty());
 
     Ok(())
+}
+
+#[tokio::test]
+async fn requirements_developer_instructions_override_user_config() -> std::io::Result<()> {
+    let codex_home = TempDir::new()?;
+    let requirements_dir = TempDir::new()?;
+    let requirements_path = requirements_dir.path().join("requirements.toml");
+    tokio::fs::write(
+        &requirements_path,
+        "developer_instructions = \"managed policy instructions\"\n",
+    )
+    .await?;
+    tokio::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        "developer_instructions = \"user instructions\"",
+    )
+    .await?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .loader_overrides(LoaderOverrides {
+            system_requirements_path: Some(requirements_path),
+            ..LoaderOverrides::without_managed_config_for_tests()
+        })
+        .build()
+        .await?;
+
+    assert_eq!(
+        config.developer_instructions.as_deref(),
+        Some("managed policy instructions"),
+        "requirements.toml developer_instructions must override config.toml"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn requirements_encrypted_skills_override_user_config_field_by_field() -> std::io::Result<()>
+{
+    let codex_home = TempDir::new()?;
+    let requirements_dir = TempDir::new()?;
+    let requirements_path = requirements_dir.path().join("requirements.toml");
+    tokio::fs::write(
+        &requirements_path,
+        r#"
+[encrypted_skills]
+sdk = "software"
+audit_path = "/var/log/codex/encrypted-skills.log"
+key_cache_ttl_secs = 15
+
+[encrypted_skills.guardrail]
+enabled = true
+base_url = "http://192.168.131.51:8080"
+"#,
+    )
+    .await?;
+    tokio::fs::write(
+        codex_home.path().join(CONFIG_TOML_FILE),
+        r#"
+[encrypted_skills]
+sdk = "test_zip"
+skill_idle_ttl_secs = 120
+key_cache_ttl_secs = 45
+"#,
+    )
+    .await?;
+
+    let config = ConfigBuilder::without_managed_config_for_tests()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(codex_home.path().to_path_buf()))
+        .loader_overrides(LoaderOverrides {
+            system_requirements_path: Some(requirements_path),
+            ..LoaderOverrides::without_managed_config_for_tests()
+        })
+        .build()
+        .await?;
+
+    let encrypted = &config.encrypted_skills;
+    assert_eq!(
+        encrypted.sdk,
+        codex_config::config_toml::EncryptedSkillsSdkToml::Software,
+        "requirements sdk must override config.toml"
+    );
+    assert_eq!(
+        encrypted.audit_path.as_deref(),
+        Some(std::path::Path::new("/var/log/codex/encrypted-skills.log")),
+        "requirements audit_path must apply"
+    );
+    assert_eq!(
+        encrypted.ttl.skill_idle,
+        std::time::Duration::from_secs(120),
+        "unset requirement fields must keep the user config value"
+    );
+    assert_eq!(
+        encrypted.key_cache_ttl,
+        std::time::Duration::from_secs(15),
+        "requirements key_cache_ttl_secs must override config.toml"
+    );
+    assert!(encrypted.guardrail.enabled);
+    assert_eq!(
+        encrypted.guardrail.base_url.as_deref(),
+        Some("http://192.168.131.51:8080")
+    );
+    Ok(())
+}
+
+#[test]
+fn encrypted_skills_runtime_sdk_defaults_to_auto_detection() {
+    let config = EncryptedSkillsRuntimeConfig::default();
+    assert_eq!(
+        config.into_sdk(),
+        fm_encrypted_skills::sdk::SdkKind::Auto {
+            software_algorithm: fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::HpkeX25519Aes256Gcm,
+            software_privkey: None,
+            key_envelope: "key.enc".to_string(),
+            key_cache_ttl: std::time::Duration::from_secs(900),
+        },
+        "no sdk configured must auto-detect the backend per package"
+    );
 }

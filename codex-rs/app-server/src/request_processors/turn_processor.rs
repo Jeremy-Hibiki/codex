@@ -1,3 +1,4 @@
+use super::rpc_guard;
 use super::thread_input::ensure_direct_input_allowed;
 use super::*;
 use codex_agent_extension::AgentInvocation;
@@ -10,6 +11,7 @@ use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::protocol::AdditionalContextEntry as CoreAdditionalContextEntry;
 use codex_protocol::protocol::AdditionalContextKind as CoreAdditionalContextKind;
+use codex_protocol::protocol::ConversationTextRole;
 use codex_protocol::protocol::TurnSettingsUpdate;
 use codex_protocol::protocol::TurnSettingsUpdateOutcome;
 use codex_skills::system_cache_root_dir;
@@ -171,6 +173,18 @@ impl TurnRequestProcessor {
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        if !self.config.product_policy.allow_sandbox_bypass
+            && fm_product_policy::full_access_requested(
+                params.sandbox_policy
+                    == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
+                params.permissions.as_deref()
+                    == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS),
+            )
+        {
+            return Err(crate::error_code::invalid_request(
+                fm_product_policy::SANDBOX_BYPASS_DISABLED_MESSAGE,
+            ));
+        }
         validate_user_input_image_urls(&params.input)?;
         self.turn_start_inner(
             request_id,
@@ -187,6 +201,7 @@ impl TurnRequestProcessor {
         request_id: &ConnectionRequestId,
         params: ThreadInjectItemsParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        rpc_guard::ensure_serializable_args_not_guarded(&params, "invalid inject items params")?;
         self.thread_inject_items_response_inner(request_id, params)
             .await
             .map(|response| Some(response.into()))
@@ -197,6 +212,18 @@ impl TurnRequestProcessor {
         request_id: &ConnectionRequestId,
         params: ThreadSettingsUpdateParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        if !self.config.product_policy.allow_sandbox_bypass
+            && fm_product_policy::full_access_requested(
+                params.sandbox_policy
+                    == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
+                params.permissions.as_deref()
+                    == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS),
+            )
+        {
+            return Err(crate::error_code::invalid_request(
+                fm_product_policy::SANDBOX_BYPASS_DISABLED_MESSAGE,
+            ));
+        }
         self.thread_settings_update_inner(request_id, params)
             .await
             .map(|response| Some(response.into()))
@@ -1222,15 +1249,21 @@ impl TurnRequestProcessor {
                 include_startup_context: params
                     .include_startup_context
                     .unwrap_or(!attaches_existing_call),
-                initial_items: params
-                    .initial_items
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|item| ConversationTextParams {
-                        text: item.text,
-                        role: item.role,
-                    })
-                    .collect(),
+                initial_items: {
+                    let mut items = Vec::new();
+                    for item in params.initial_items.unwrap_or_default() {
+                        // fm (G4): same soft mitigation as appendText, applied
+                        // per item before the conversation starts.
+                        if realtime_guardrail_flagged(thread.as_ref(), &item.text).await {
+                            items.push(realtime_reminder_params());
+                        }
+                        items.push(ConversationTextParams {
+                            text: item.text,
+                            role: item.role,
+                        });
+                    }
+                    items
+                },
                 realtime_start_instructions: params.realtime_start_instructions,
                 realtime_end_instructions: params.realtime_end_instructions,
                 prompt: params.prompt,
@@ -1296,6 +1329,21 @@ impl TurnRequestProcessor {
         else {
             return Ok(None);
         };
+        // fm (G4): realtime text reaches the model directly and previously
+        // bypassed the turn-input guardrail; shared soft mitigation below.
+        if realtime_guardrail_flagged(thread.as_ref(), &params.text).await {
+            self.submit_core_op(
+                request_id,
+                thread.as_ref(),
+                Op::RealtimeConversationText(realtime_reminder_params()),
+            )
+            .await
+            .map_err(|err| {
+                internal_error(format!(
+                    "failed to append realtime conversation text: {err}"
+                ))
+            })?;
+        }
         self.submit_core_op(
             request_id,
             thread.as_ref(),
@@ -1324,6 +1372,22 @@ impl TurnRequestProcessor {
         else {
             return Ok(None);
         };
+        // fm (G4): speech text shares the appendText soft mitigation — the
+        // reminder is injected as a developer conversation item ahead of the
+        // original speech.
+        if realtime_guardrail_flagged(thread.as_ref(), &params.text).await {
+            self.submit_core_op(
+                request_id,
+                thread.as_ref(),
+                Op::RealtimeConversationText(realtime_reminder_params()),
+            )
+            .await
+            .map_err(|err| {
+                internal_error(format!(
+                    "failed to append realtime conversation text: {err}"
+                ))
+            })?;
+        }
         self.submit_core_op(
             request_id,
             thread.as_ref(),
@@ -1669,4 +1733,66 @@ fn xcode_26_4_mcp_elicitations_auto_deny(
     // TODO: Remove this compatibility hack once Xcode 26.4 ages out.
     client_name == Some("Xcode")
         && client_version.is_some_and(|version| version.starts_with("26.4"))
+}
+
+/// fm (G4): soft mitigation shared by every realtime text surface
+/// (`initialItems`, `appendText`, `appendSpeech`), mirroring core's
+/// `apply_external_guardrail`: a flagged prompt is audited and a developer
+/// reminder must be injected ahead of it, but the original text still flows;
+/// guardrail failures never block the prompt.
+async fn realtime_guardrail_flagged(thread: &CodexThread, text: &str) -> bool {
+    if text.trim().is_empty() {
+        return false;
+    }
+    let Some(guardrail) = fm_encrypted_skills::guardrail::GuardrailClient::from_runtime_config(
+        &thread.config().await.encrypted_skills.guardrail,
+    ) else {
+        return false;
+    };
+    match guardrail.is_attack(text).await {
+        Ok(true) => {
+            record_realtime_guardrail_blocked(thread, text).await;
+            true
+        }
+        Ok(false) => false,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "guardrail check failed; proceeding without reminder"
+            );
+            false
+        }
+    }
+}
+
+/// The developer-role reminder injected ahead of a guardrail-flagged realtime
+/// prompt; see [`realtime_guardrail_flagged`].
+fn realtime_reminder_params() -> ConversationTextParams {
+    ConversationTextParams {
+        text: fm_encrypted_skills::guardrail::REMINDER_TEXT.to_string(),
+        role: ConversationTextRole::Developer,
+    }
+}
+
+/// fm (G4): records a guardrail-flagged realtime prompt in the encrypted-skill
+/// audit log. `SessionGuard::record_guardrail_blocked` is session-scoped and
+/// unreachable from the app-server, so emit the identical audit event through
+/// the same process-wide shared sink the session runtime uses.
+async fn record_realtime_guardrail_blocked(thread: &CodexThread, prompt: &str) {
+    let config = thread.config().await;
+    let sink =
+        match fm_encrypted_skills::audit::shared_file_sink(config.encrypted_skills.audit_path()) {
+            Ok(sink) => sink,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "failed to open encrypted-skill audit sink for guardrail event"
+                );
+                return;
+            }
+        };
+    sink.emit(fm_encrypted_skills::audit::AuditEvent::GuardrailBlocked {
+        session_id: thread.session_configured().session_id.to_string(),
+        prompt: prompt.to_string(),
+    });
 }

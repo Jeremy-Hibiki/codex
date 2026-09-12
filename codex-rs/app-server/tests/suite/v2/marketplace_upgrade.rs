@@ -139,6 +139,7 @@ async fn send_marketplace_upgrade(
 }
 
 #[tokio::test]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_upgrade_all_configured_git_marketplaces() -> Result<()> {
     let codex_home = TempDir::new()?;
     let debug_source = TempDir::new()?;
@@ -363,6 +364,7 @@ async fn automatic_upgrade_isolates_git_while_explicit_install_preserves_configu
 }
 
 #[tokio::test]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_upgrade_named_marketplace_only() -> Result<()> {
     let codex_home = TempDir::new()?;
     let debug_source = TempDir::new()?;
@@ -421,6 +423,7 @@ async fn marketplace_upgrade_named_marketplace_only() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_upgrade_returns_empty_roots_when_already_up_to_date() -> Result<()> {
     let codex_home = TempDir::new()?;
     let source = TempDir::new()?;
@@ -456,6 +459,7 @@ async fn marketplace_upgrade_returns_empty_roots_when_already_up_to_date() -> Re
 }
 
 #[tokio::test]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_upgrade_rejects_unknown_or_non_git_marketplace() -> Result<()> {
     let codex_home = TempDir::new()?;
     let local_source = TempDir::new()?;

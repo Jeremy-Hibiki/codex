@@ -285,6 +285,7 @@ async fn run_compact_task_inner_impl(
         let prompt = Prompt {
             input: turn_input,
             base_instructions: sess.get_prompt_base_instructions().await,
+            encrypted_skills: Some(sess.encrypted_skill_rehydrator()),
             ..Default::default()
         };
         let attempt_result = drain_to_completed(
@@ -789,6 +790,11 @@ async fn drain_to_completed(
         };
         match event {
             Ok(ResponseEvent::OutputItemDone(item)) => {
+                // fm: this drain bypasses the model-stream intake redaction,
+                // so redact assistant text before it reaches the rollout.
+                let item = sess
+                    .encrypted_skills_guard()
+                    .redact_assistant_reply_item(item);
                 sess.record_conversation_items(turn_context, std::slice::from_ref(&item))
                     .await;
             }

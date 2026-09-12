@@ -63,16 +63,25 @@ impl Default for WaitAgentTimeoutOptions {
 }
 
 pub fn create_spawn_agent_tool_v1(options: SpawnAgentToolOptions) -> ToolSpec {
-    let available_models_description = (!options.hide_agent_type_model_reasoning).then(|| {
+    // fm M11: the V1 spec must honor `expose_spawn_agent_model_overrides` like
+    // the V2 spec — model dispatch is not supported (D5), so when exposure is
+    // off, no `model` argument, model list, or INHERITED-model guidance is
+    // advertised.
+    let available_models_description = options.expose_spawn_agent_model_overrides.then(|| {
         spawn_agent_models_description(&options.available_models, options.multi_agent_version)
     });
-    let inherited_model_guidance =
-        (!options.hide_agent_type_model_reasoning).then_some(SPAWN_AGENT_INHERITED_MODEL_GUIDANCE);
+    let inherited_model_guidance = (options.expose_spawn_agent_model_overrides
+        && !options.hide_agent_type_model_reasoning)
+        .then_some(SPAWN_AGENT_INHERITED_MODEL_GUIDANCE);
     let return_value_description =
         "Returns the spawned agent id plus the user-facing nickname when available.";
     let mut properties = spawn_agent_common_properties_v1(&options.agent_type_description);
     if !options.expose_agent_type {
         properties.remove("agent_type");
+    }
+    if !options.expose_spawn_agent_model_overrides {
+        properties.remove("model");
+        properties.remove("reasoning_effort");
     }
     if options.hide_agent_type_model_reasoning {
         hide_spawn_agent_metadata_options(&mut properties);

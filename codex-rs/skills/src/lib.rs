@@ -32,6 +32,7 @@ pub use mentions::plugin_config_name_from_path;
 pub use mentions::tool_kind_for_path;
 pub use model::EnvironmentSkillMetadata;
 pub use model::SkillDependencies;
+pub use model::SkillEncryption;
 pub use model::SkillInterface;
 pub use model::SkillMetadata;
 pub use model::SkillPolicy;

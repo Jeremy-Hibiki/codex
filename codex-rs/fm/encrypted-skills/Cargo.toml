@@ -1,0 +1,60 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "fm-encrypted-skills"
+version.workspace = true
+
+[lib]
+doctest = false
+name = "fm_encrypted_skills"
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-history = { workspace = true }
+codex-protocol = { workspace = true }
+codex-shell-command = { workspace = true }
+libc = { workspace = true }
+rand = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-appender = { workspace = true }
+tree-sitter = { workspace = true }
+unicode-normalization = { workspace = true }
+zeroize = { workspace = true }
+zip = { workspace = true, features = ["deflate"] }
+
+# Real envelope backends (software / ukey / ukey-two-phase) backed by
+# `fmsh-ukey-core`, hard-bound on the platform where the vendor SDK ships.
+# The upstream repo vendors the SDK under vendor/ (SDK 0.3.1 ships both
+# static archives and the shared library), so no FMSH_UKEY_SDK_DIR is needed
+# at build time. The ukey modes still need FMSH_UKEY_PROVIDER /
+# FMSH_UKEY_CONTAINER (and the hardware) at runtime.
+#
+# Release builds set FMSH_UKEY_SDK_LINK=static FMSH_UKEY_LIBSTDCPP=shared:
+# the SDK archives + vendored libcrypto are embedded and the remaining NEEDED
+# entries are the standard C/C++ runtime libraries (statically embedding
+# libstdc++ clashes with the
+# libc++abi V8 embeds on the __cxa_* ABI symbols). Target platform is
+# Ubuntu 22.04+ (LMClient itself references __libc_single_threaded, glibc
+# 2.32; tested release binaries require GLIBC_2.34).
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
+fmsh-ukey-core = { workspace = true }
+fmsh-ukey-skill = { workspace = true }
+# Direct dependency so the wrapper's build script publishes
+# DEP_FMSH_UKEY_SDK_LIB_DIR to our own build script, which emits the link
+# directives its test targets need. It is already in the graph transitively.
+fmsh-ukey-sdk-wrapper = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+codex-utils-path-uri = { workspace = true }
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
+wiremock = { workspace = true }

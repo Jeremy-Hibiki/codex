@@ -235,3 +235,81 @@ async fn explicit_mcp_reviewer_override_takes_precedence_over_action_context() {
         }
     }
 }
+
+struct D9TestSdk;
+
+impl fm_encrypted_skills::sdk::EnvelopeSdk for D9TestSdk {
+    fn decrypt_package(
+        &self,
+        _package_path: &std::path::Path,
+    ) -> Result<Vec<fm_encrypted_skills::sdk::PackageEntry>, fm_encrypted_skills::sdk::EnvelopeError>
+    {
+        Ok(vec![fm_encrypted_skills::sdk::PackageEntry {
+            rel_path: std::path::PathBuf::from("SKILL.md"),
+            contents: b"# Encrypted skill".to_vec(),
+        }])
+    }
+}
+
+#[test]
+fn d9_auto_permit_requires_every_segment_to_be_skill_script_execution() {
+    let tmp = tempfile::tempdir().expect("temp dir");
+    let runtime = Arc::new(fm_encrypted_skills::runtime::EncryptedSkillRuntime::new(
+        Arc::new(D9TestSdk),
+        fm_encrypted_skills::registry::TtlConfig::default(),
+        tmp.path().join("mem-root"),
+    ));
+    runtime
+        .load_or_register(
+            "t1",
+            "secret",
+            std::path::Path::new("/skills/secret.zip.enc"),
+        )
+        .expect("test sdk should decrypt the skill package");
+    let engaged = runtime.guard("t1");
+    let unengaged = runtime.guard("t2");
+
+    // A pure skill-script execution stays auto-permitted (D9).
+    assert!(super::d9_skill_script_auto_permit(
+        &engaged,
+        "bash /skills/run.sh",
+        SandboxPermissions::UseDefault,
+        /*additional_permissions*/ None,
+    ));
+
+    // A mixed command with a review-worthy segment must go through approval.
+    assert!(!super::d9_skill_script_auto_permit(
+        &engaged,
+        "bash /skills/run.sh; sudo rm -rf /tmp/x",
+        SandboxPermissions::UseDefault,
+        /*additional_permissions*/ None,
+    ));
+    assert!(!super::d9_skill_script_auto_permit(
+        &engaged,
+        "bash /skills/run.sh; cat /skills/SKILL.md",
+        SandboxPermissions::UseDefault,
+        /*additional_permissions*/ None,
+    ));
+
+    // Sandbox escalation always needs review.
+    assert!(!super::d9_skill_script_auto_permit(
+        &engaged,
+        "bash /skills/run.sh",
+        SandboxPermissions::RequireEscalated,
+        /*additional_permissions*/ None,
+    ));
+    assert!(!super::d9_skill_script_auto_permit(
+        &engaged,
+        "bash /skills/run.sh",
+        SandboxPermissions::UseDefault,
+        Some(&AdditionalPermissionProfile::default()),
+    ));
+
+    // Unengaged sessions never auto-permit via D9.
+    assert!(!super::d9_skill_script_auto_permit(
+        &unengaged,
+        "bash /skills/run.sh",
+        SandboxPermissions::UseDefault,
+        /*additional_permissions*/ None,
+    ));
+}

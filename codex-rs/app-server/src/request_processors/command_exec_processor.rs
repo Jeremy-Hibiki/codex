@@ -1,3 +1,4 @@
+use super::rpc_guard;
 use super::*;
 use codex_core::exec_env::inject_apply_patch_env;
 use codex_protocol::shell_environment::is_non_inheritable_env_var;
@@ -35,6 +36,8 @@ impl CommandExecRequestProcessor {
         request_id: &ConnectionRequestId,
         params: CommandExecParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        rpc_guard::ensure_not_engaged_unsandboxed()?;
+        rpc_guard::ensure_command_not_guarded(&params.command.join(" "))?;
         self.require_local_environment()?;
         self.exec_one_off_command(request_id, params)
             .await

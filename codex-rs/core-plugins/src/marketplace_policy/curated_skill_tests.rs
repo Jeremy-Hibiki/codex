@@ -120,6 +120,7 @@ async fn curated_git_requirements_control_plugin_skills() -> Result<()> {
                     scope: SkillScope::User,
                     plugin_id: Some(plugin_id),
                     remote_plugin_id: None,
+                    encryption: None,
                 }],
                 errors: Vec::new(),
             }

@@ -58,6 +58,7 @@ codex-sandboxing = { workspace = true }
 codex-shell-command = { workspace = true }
 codex-state = { workspace = true }
 codex-terminal-detection = { workspace = true }
+fm-license = { workspace = true }
 codex-worktree = { workspace = true }
 codex-utils-approval-presets = { workspace = true }
 codex-uds = { workspace = true }
@@ -75,6 +76,7 @@ codex-utils-sleep-inhibitor = { workspace = true }
 codex-utils-string = { workspace = true }
 color-eyre = { workspace = true }
 crossterm = { workspace = true, features = ["bracketed-paste", "event-stream"] }
+codex-process-hardening = { workspace = true }
 derive_more = { workspace = true, features = ["is_variant"] }
 diffy = { workspace = true }
 dirs = { workspace = true }

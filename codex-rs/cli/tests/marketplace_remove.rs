@@ -33,6 +33,7 @@ fn write_installed_marketplace(codex_home: &Path, marketplace_name: &str) -> Res
 }
 
 #[tokio::test]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_remove_deletes_config_and_installed_root() -> Result<()> {
     let codex_home = TempDir::new()?;
     record_user_marketplace(codex_home.path(), "debug", &configured_marketplace_update())?;
@@ -56,6 +57,7 @@ async fn marketplace_remove_deletes_config_and_installed_root() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_remove_json_prints_remove_outcome() -> Result<()> {
     let codex_home = TempDir::new()?;
     record_user_marketplace(codex_home.path(), "debug", &configured_marketplace_update())?;
@@ -82,6 +84,7 @@ async fn marketplace_remove_json_prints_remove_outcome() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore = "only managed plugins and marketplaces are allowed by product policy"]
 async fn marketplace_remove_rejects_unknown_marketplace() -> Result<()> {
     let codex_home = TempDir::new()?;
 

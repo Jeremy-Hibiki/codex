@@ -196,10 +196,11 @@ impl PreparedTurnInputSettings {
 
 pub(super) async fn handle(
     session: &Arc<Session>,
-    request: TurnInputRequest,
+    mut request: TurnInputRequest,
     mode: TurnInputMode,
     submission_id: String,
 ) -> CodexResult<TurnInputSubmission> {
+    apply_external_guardrail(session, &mut request).await;
     match mode {
         TurnInputMode::StartOrSteer => start_or_steer(session, request, submission_id).await,
         TurnInputMode::StartIfIdle => {
@@ -636,6 +637,73 @@ async fn pending_turn_input(session: &Session, input: SubmittedTurnInput) -> Tur
         SubmittedTurnInput::ResponseItem(item) => TurnInput::ResponseItem(item.into()),
         SubmittedTurnInput::InterAgentCommunication(communication) => {
             TurnInput::InterAgentCommunication(communication)
+        }
+    }
+}
+
+/// Checks the submitted user text against the configured external guardrail.
+///
+/// A flagged prompt still reaches the model, but with a reminder that the input
+/// is untrusted; the full flagged text is recorded for periodic review.
+async fn apply_external_guardrail(session: &Session, request: &mut TurnInputRequest) {
+    // Read the thread's own configuration; constructing a turn context here
+    // would mutate session state before the turn is accepted.
+    let guardrail_config = {
+        let state = session.state.lock().await;
+        state
+            .session_configuration
+            .original_config_do_not_use
+            .encrypted_skills
+            .guardrail
+            .clone()
+    };
+    let Some(guardrail) =
+        fm_encrypted_skills::guardrail::GuardrailClient::from_runtime_config(&guardrail_config)
+    else {
+        return;
+    };
+    let prompt = match &request.input {
+        SubmittedTurnInput::UserInput { content, .. } => content
+            .iter()
+            .filter_map(|item| match item {
+                codex_protocol::user_input::UserInput::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        SubmittedTurnInput::InterAgentCommunication(communication) => communication.content.clone(),
+        SubmittedTurnInput::ResponseItem(item) => {
+            // fm: injected response items do not pass the guardrail text scan;
+            // log the channel use so unvetted input stays auditable.
+            tracing::info!(
+                item_id = item.id().map(codex_protocol::ResponseItemId::as_str),
+                "guardrail scan does not cover injected response items"
+            );
+            return;
+        }
+    };
+    if prompt.trim().is_empty() {
+        return;
+    }
+    match guardrail.is_attack(&prompt).await {
+        Ok(true) => {
+            tracing::info!(
+                "guardrail flagged user input; injecting reminder for cautious handling"
+            );
+            session
+                .encrypted_skills_guard()
+                .record_guardrail_blocked(prompt);
+            request.additional_context.insert(
+                fm_encrypted_skills::guardrail::REMINDER_KEY.to_string(),
+                AdditionalContextEntry {
+                    value: fm_encrypted_skills::guardrail::REMINDER_TEXT.to_string(),
+                    kind: codex_protocol::protocol::AdditionalContextKind::Application,
+                },
+            );
+        }
+        Ok(false) => {}
+        Err(error) => {
+            tracing::warn!(error = %error, "guardrail check failed; proceeding without reminder");
         }
     }
 }

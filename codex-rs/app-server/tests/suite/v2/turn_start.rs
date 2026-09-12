@@ -83,6 +83,7 @@ use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::ReasoningSummary;
 use codex_protocol::config_types::Settings;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;
+use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
 use codex_protocol::models::ImageDetail;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::MULTI_AGENT_MODE_OPEN_TAG;
@@ -1779,7 +1780,7 @@ async fn turn_start_rejects_invalid_permission_selection_before_starting_turn() 
                 text: "Hello".to_string(),
                 text_elements: Vec::new(),
             }],
-            permissions: Some(BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS.to_string()),
+            permissions: Some(BUILT_IN_PERMISSION_PROFILE_WORKSPACE.to_string()),
             ..Default::default()
         })
         .await?;
@@ -1793,14 +1794,14 @@ async fn turn_start_rejects_invalid_permission_selection_before_starting_turn() 
     assert!(
         err.error
             .message
-            .contains("`approval_policy = \"never\"` cannot be used"),
+            .contains("invalid thread settings override"),
         "unexpected error message: {}",
         err.error.message
     );
     assert!(
         err.error
             .message
-            .contains("requirements do not allow `sandbox_mode = \"danger-full-access\"`"),
+            .contains("is not in the allowed set [ReadOnly]"),
         "unexpected error message: {}",
         err.error.message
     );
@@ -2958,7 +2959,6 @@ async fn turn_start_exec_approval_toggle_v2() -> Result<()> {
                     text_elements: Vec::new(),
                 }],
                 approval_policy: Some(codex_app_server_protocol::AskForApproval::Never),
-                sandbox_policy: Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
                 model: Some("mock-model".to_string()),
                 effort: Some(ReasoningEffort::Medium),
                 summary: Some(ReasoningSummary::Auto),
@@ -4058,13 +4058,11 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
     const PARENT_PROMPT: &str = "spawn a child and continue";
     const SPAWN_CALL_ID: &str = "spawn-call-1";
     const CHILD_PLAN_CALL_ID: &str = "child-plan-call";
-    const REQUESTED_MODEL: &str = "gpt-5.2";
     const REQUESTED_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::Low;
 
     let server = responses::start_mock_server().await;
     let spawn_args = serde_json::to_string(&json!({
         "message": CHILD_PROMPT,
-        "model": REQUESTED_MODEL,
         "reasoning_effort": REQUESTED_REASONING_EFFORT,
     }))?;
     let _parent_turn = responses::mount_sse_once_match(
@@ -4176,7 +4174,7 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
             sender_thread_id: thread.id.clone(),
             receiver_thread_ids: Vec::new(),
             prompt: Some(CHILD_PROMPT.to_string()),
-            model: Some(REQUESTED_MODEL.to_string()),
+            model: None,
             reasoning_effort: Some(REQUESTED_REASONING_EFFORT),
             agents_states: HashMap::new(),
         }
@@ -4218,7 +4216,8 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
     assert_eq!(sender_thread_id, thread.id);
     assert_eq!(receiver_thread_ids, vec![receiver_thread_id.clone()]);
     assert_eq!(prompt, Some(CHILD_PROMPT.to_string()));
-    assert_eq!(model, Some(REQUESTED_MODEL.to_string()));
+    // fm: model dispatch is not supported; the item carries no model.
+    assert_eq!(model, None);
     assert_eq!(reasoning_effort, Some(REQUESTED_REASONING_EFFORT));
     let agent_state = agents_states
         .get(&receiver_thread_id)
@@ -5306,7 +5305,6 @@ async fn command_execution_notifications_include_process_id() -> Result<()> {
                     text: "run a command".to_string(),
                     text_elements: Vec::new(),
                 }],
-                sandbox_policy: Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
                 ..Default::default()
             },
         })
@@ -5463,7 +5461,6 @@ async fn command_execution_notifications_include_trusted_plugin_id() -> Result<(
                     text: "run a plugin command".to_string(),
                     text_elements: Vec::new(),
                 }],
-                sandbox_policy: Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
                 ..Default::default()
             },
         })
@@ -5544,7 +5541,12 @@ async fn turn_start_with_elevated_override_does_not_persist_project_trust() -> R
             params: TurnStartParams {
                 thread_id: thread.id,
                 cwd: Some(workspace.path().to_path_buf()),
-                sandbox_policy: Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
+                sandbox_policy: Some(codex_app_server_protocol::SandboxPolicy::WorkspaceWrite {
+                    writable_roots: vec![],
+                    network_access: false,
+                    exclude_tmpdir_env_var: true,
+                    exclude_slash_tmp: true,
+                }),
                 input: vec![V2UserInput::Text {
                     text: "Hello".to_string(),
                     text_elements: Vec::new(),

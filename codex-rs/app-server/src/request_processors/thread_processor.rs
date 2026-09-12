@@ -1,5 +1,6 @@
 use super::persisted_resume_settings::PersistedResumeSettings;
 use super::persisted_resume_settings::latest_persisted_resume_settings;
+use super::rpc_guard;
 use super::thread_enrichment::enrich_loaded_threads;
 use super::thread_fork_goal::inherit_thread_goal_snapshot;
 use super::thread_input::can_accept_direct_input;
@@ -15,6 +16,7 @@ use codex_app_server_protocol::ThreadSection;
 use codex_app_server_protocol::ThreadSectionAppearance;
 use codex_app_server_protocol::ThreadSectionMoveParams;
 use codex_app_server_protocol::ThreadSectionMoveResponse;
+use codex_app_server_protocol::ThreadTimelineEntry;
 use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::ThreadIdleCause;
 use codex_protocol::SanitizedGitUrl;
@@ -519,6 +521,17 @@ impl ThreadRequestProcessor {
         client_mcp_extensions: ClientMcpExtensions,
         request_context: RequestContext,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        if !self.config.product_policy.allow_sandbox_bypass
+            && fm_product_policy::full_access_requested(
+                params.sandbox == Some(codex_app_server_protocol::SandboxMode::DangerFullAccess),
+                params.permissions.as_deref()
+                    == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS),
+            )
+        {
+            return Err(crate::error_code::invalid_request(
+                fm_product_policy::SANDBOX_BYPASS_DISABLED_MESSAGE,
+            ));
+        }
         self.thread_start_inner(
             request_id,
             params,
@@ -654,6 +667,7 @@ impl ThreadRequestProcessor {
         request_id: ConnectionRequestId,
         params: ThreadSetNameParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        rpc_guard::ensure_command_not_guarded(&params.name)?;
         match self.thread_set_name_response_inner(params).await {
             Ok((response, notification)) => {
                 self.outgoing
@@ -676,6 +690,7 @@ impl ThreadRequestProcessor {
         &self,
         params: ThreadMetadataUpdateParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        rpc_guard::ensure_serializable_args_not_guarded(&params, "invalid thread metadata params")?;
         self.thread_metadata_update_response_inner(params)
             .await
             .map(|response| Some(response.into()))
@@ -922,9 +937,11 @@ impl ThreadRequestProcessor {
             })
             .await
             .map_err(paginated_history_list_error)?;
+        let mut data = page.items;
+        hide_reasoning_from_sensitive_timeline_entries(&mut data);
         Ok(Some(
             ThreadTimelineListResponse {
-                data: page.items,
+                data,
                 next_cursor: page.next_cursor,
                 active_realtime_session_at_page_start: page.active_realtime_session_at_page_start,
             }
@@ -937,6 +954,7 @@ impl ThreadRequestProcessor {
         request_id: &ConnectionRequestId,
         params: ThreadShellCommandParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        rpc_guard::ensure_not_engaged_unsandboxed()?;
         self.thread_shell_command_inner(request_id, params)
             .await
             .map(|response| Some(response.into()))
@@ -3301,7 +3319,7 @@ impl ThreadRequestProcessor {
                 items.push(deserialize_stored_thread_item(item)?);
             }
             let Some(next_cursor) = page.next_cursor else {
-                return Ok(items);
+                break;
             };
             if cursor.as_ref() == Some(&next_cursor) {
                 return Err(internal_error(format!(
@@ -3310,6 +3328,8 @@ impl ThreadRequestProcessor {
             }
             cursor = Some(next_cursor);
         }
+        hide_reasoning_from_sensitive_items(&mut items);
+        Ok(items)
     }
 
     // Older clients expect full `thread.turns` from resume and `thread/read(includeTurns=true)`.
@@ -3459,7 +3479,7 @@ impl ThreadRequestProcessor {
                 }
                 err => internal_error(format!("failed to list thread items: {err}")),
             })?;
-        let data = page
+        let mut data = page
             .items
             .into_iter()
             .map(|stored_item| {
@@ -3469,6 +3489,7 @@ impl ThreadRequestProcessor {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
+        hide_reasoning_from_sensitive_entries(&mut data);
         Ok(ThreadItemsListResponse {
             data,
             next_cursor: page.next_cursor,
@@ -5767,6 +5788,39 @@ fn deserialize_stored_thread_item(
             item.item_id
         ))
     })
+}
+
+fn hide_reasoning_from_sensitive_items(items: &mut Vec<ThreadItem>) {
+    if items.iter().any(thread_item_contains_token) {
+        items.retain(|item| !matches!(item, ThreadItem::Reasoning { .. }));
+    }
+}
+
+fn hide_reasoning_from_sensitive_entries(entries: &mut Vec<ThreadItemEntry>) {
+    if entries
+        .iter()
+        .any(|entry| thread_item_contains_token(&entry.item))
+    {
+        entries.retain(|entry| !matches!(entry.item, ThreadItem::Reasoning { .. }));
+    }
+}
+
+fn hide_reasoning_from_sensitive_timeline_entries(entries: &mut Vec<ThreadTimelineEntry>) {
+    if entries.iter().any(|entry| {
+        matches!(entry, ThreadTimelineEntry::Item { item, .. } if thread_item_contains_token(item))
+    }) {
+        entries.retain(|entry| {
+            !matches!(entry, ThreadTimelineEntry::Item { item, .. } if matches!(item.as_ref(), ThreadItem::Reasoning { .. }))
+        });
+    }
+}
+
+fn thread_item_contains_token(item: &ThreadItem) -> bool {
+    // The sentinel token is the durable "this thread engaged an encrypted
+    // skill" marker; serializing the item is the cheapest robust way to scan
+    // every text-bearing surface without mirroring the protocol shape.
+    serde_json::to_string(item)
+        .is_ok_and(|text| text.contains(fm_encrypted_skills::token::TOKEN_PREFIX))
 }
 
 fn stored_turn_to_api_turn(

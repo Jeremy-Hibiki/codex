@@ -1795,6 +1795,16 @@ impl ChatWidget {
             });
             return false;
         }
+        // Request boundary: if the runtime heartbeat lost the license, refuse
+        // to start new work (see `fm-license` lib.rs documentation).
+        if matches!(
+            &op,
+            AppCommand::UserTurn { .. } | AppCommand::Review { .. } | AppCommand::Compact
+        ) && let Err(error) = fm_license::ensure_active()
+        {
+            self.add_error_message(error.to_string());
+            return false;
+        }
         self.prepare_local_op_submission(&op);
         if op.is_review() && !self.bottom_pane.is_task_running() {
             self.bottom_pane.set_task_running(/*running*/ true);

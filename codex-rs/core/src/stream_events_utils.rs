@@ -33,6 +33,27 @@ use tracing::debug;
 use tracing::instrument;
 use tracing::warn;
 
+/// Redacts the `ToolCall:` telemetry preview for engaged sessions (fm L2):
+/// the payload may carry guard-rewritten `/dev/shm` paths and known skill
+/// plaintext. Same redaction as the dispatch-path telemetry
+/// ([`crate::tools::registry::redact_telemetry_text`]).
+pub(crate) fn redacted_tool_call_preview<'a>(
+    runtime: &fm_encrypted_skills::runtime::EncryptedSkillRuntime,
+    session_id: &str,
+    engaged: bool,
+    payload_preview: std::borrow::Cow<'a, str>,
+) -> std::borrow::Cow<'a, str> {
+    if engaged {
+        std::borrow::Cow::Owned(crate::tools::registry::redact_telemetry_text(
+            runtime,
+            session_id,
+            &payload_preview,
+        ))
+    } else {
+        payload_preview
+    }
+}
+
 fn strip_hidden_assistant_markup(text: &str, plan_mode: bool) -> String {
     let (without_citations, _) = strip_citations(text);
     if plan_mode {
@@ -292,6 +313,15 @@ pub(crate) async fn handle_output_item_done(
     item: ResponseItem,
     previously_active_item: Option<TurnItem>,
 ) -> Result<OutputItemResult> {
+    // Redact known skill plaintext at the model stream intake so the response
+    // item, derived turn item, and `last_agent_message` are all clean before
+    // any of them can be persisted. Reasoning stays in context/rollout (some
+    // models require it to be sent back on later calls); only client-facing
+    // display events are suppressed while engaged.
+    let item = ctx
+        .sess
+        .encrypted_skills_guard()
+        .redact_assistant_reply_item(item);
     let mut output = OutputItemResult::default();
     let plan_mode = ctx.turn_context.mode() == ModeKind::Plan;
 
@@ -307,6 +337,26 @@ pub(crate) async fn handle_output_item_done(
                 .await;
 
             let payload_preview = tool_log_payload(&call.payload, &call.direct_source());
+            // fm L2: engaged sessions must never see decrypted paths or known
+            // skill plaintext in telemetry; redact like the dispatch path.
+            let session_id = ctx.sess.thread_id.to_string();
+            let engaged = ctx
+                .turn_context
+                .agent_security
+                .as_ref()
+                .map(crate::agent_security::AgentSecurityContext::engaged)
+                .unwrap_or_else(|| {
+                    ctx.sess
+                        .services
+                        .encrypted_skills_runtime
+                        .is_engaged(&session_id)
+                });
+            let payload_preview = redacted_tool_call_preview(
+                &ctx.sess.services.encrypted_skills_runtime,
+                &session_id,
+                engaged,
+                payload_preview,
+            );
             tracing::info!(
                 thread_id = %ctx.sess.thread_id,
                 "ToolCall: {} {}",
@@ -362,6 +412,13 @@ pub(crate) async fn handle_output_item_done(
         }
         // The tool request should be answered directly (or was denied); push that response into the transcript.
         Err(FunctionCallError::RespondToModel(message)) => {
+            // fm (M7): error text can quote model-provided content derived
+            // from rehydrated skill plaintext; redact it before it enters the
+            // transcript or goes back to the model.
+            let message = ctx
+                .sess
+                .encrypted_skills_guard()
+                .redact_text_streaming(&message);
             let response = ResponseInputItem::FunctionCallOutput {
                 call_id: String::new(),
                 output: FunctionCallOutputPayload {

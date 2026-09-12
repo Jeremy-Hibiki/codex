@@ -1,5 +1,8 @@
 [workspace]
 members = [
+    "fm/encrypted-skills",
+    "fm/license",
+    "fm/product-policy",
     "aws-auth",
     "analytics",
     "agent-graph-store",
@@ -158,6 +161,15 @@ edition = "2024"
 license = "Apache-2.0"
 
 [workspace.dependencies]
+lmclient-rust-sdk = { git = "http://192.168.131.126:8089/jiangzhengqi/lmclient-rust-sdk.git", tag = "v1.3.2" }
+fmsh-ukey-core = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", tag = "0.5.1-sdk.0.3.2" }
+fmsh-ukey-sdk-wrapper = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", tag = "0.5.1-sdk.0.3.2" }
+fmsh-ukey-skill = { git = "http://192.168.131.126:8089/jiangzhengqi/fmsh-ukey-lib.git", tag = "0.5.1-sdk.0.3.2" }
+
+fm-license = { path = "fm/license" }
+fm-encrypted-skills = { path = "fm/encrypted-skills" }
+fm-product-policy = { path = "fm/product-policy" }
+
 # Internal
 codex-realtime-webrtc = { path = "realtime-webrtc" }
 app_test_support = { path = "app-server/tests/common" }
@@ -438,6 +450,7 @@ serde_json = "1"
 serde_path_to_error = "0.1.20"
 serde_with = "3.17"
 serde_yaml = "0.9"
+signal-hook = "0.3"
 serial_test = "3.2.0"
 sha1 = "0.10.6"
 scopeguard = "1.2.0"
@@ -503,6 +516,7 @@ tree-sitter-powershell = "=0.26.4"
 ts-rs = "11"
 tungstenite = { version = "0.27.0", features = ["deflate", "proxy"] }
 uds_windows = "1.1.0"
+unicode-normalization = "0.1.24"
 unicode-segmentation = "1.12.0"
 unicode-width = "0.2"
 url = "2"
@@ -516,7 +530,7 @@ which = "8"
 whoami = "1.6.1"
 wildmatch = "2.6.1"
 winapi-util = "0.1.11"
-zip = "2.4.2"
+zip = { version = "2.4.2", default-features = false }
 zstd = "0.13"
 
 wiremock = "0.6"
@@ -584,15 +598,19 @@ debug = "none"
 strip = "symbols"
 
 [profile.release]
-lto = "thin"
-debug = "line-tables-only"
-split-debuginfo = "off"
-# Keep release binaries symbolicateable until packaging has archived the
-# sidecar symbols and stripped the binaries.
-strip = false
+opt-level = 3        # 或 "z" 极致体积；优化越狠，反编译越难看
+lto = "fat"          # 跨 crate 全程序优化，抹掉 crate 边界
+codegen-units = 1    # 单编译单元，内联与死代码消除最大化
+panic = "abort"      # 去掉栈展开代码与 .eh_frame 依赖
+strip = true         # 剥离符号表
 
-# Balance parallel release code generation against binary size.
-codegen-units = 4
+[profile.dev-release]
+# Fast local release builds: retain release optimizations, but avoid thin LTO
+# and preserve incremental compilation for iteration.
+inherits = "release"
+lto = false
+incremental = true
+codegen-units = 16
 
 [profile.profiling]
 inherits = "release"

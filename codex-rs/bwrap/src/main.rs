@@ -5,6 +5,10 @@ fn main() {
     use std::os::raw::c_char;
     use std::os::unix::ffi::OsStrExt;
 
+    #[cfg(not(debug_assertions))]
+    codex_process_hardening::disable_process_dumping()
+        .unwrap_or_else(|err| eprintln!("WARNING: failed to disable process dumping: {err}"));
+
     unsafe extern "C" {
         fn bwrap_main(argc: libc::c_int, argv: *const *const c_char) -> libc::c_int;
     }
@@ -30,6 +34,10 @@ fn main() {
 
 #[cfg(all(target_os = "linux", not(bwrap_available)))]
 fn main() {
+    #[cfg(not(debug_assertions))]
+    codex_process_hardening::disable_process_dumping()
+        .unwrap_or_else(|err| eprintln!("WARNING: failed to disable process dumping: {err}"));
+
     panic!(
         r#"bubblewrap is not available in this build.
 Notes:

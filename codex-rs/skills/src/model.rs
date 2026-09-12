@@ -17,9 +17,18 @@ pub struct SkillMetadata {
     pub scope: SkillScope,
     pub plugin_id: Option<String>,
     pub remote_plugin_id: Option<String>,
+    /// Encryption metadata from the frontmatter, when the skill is encrypted.
+    ///
+    /// `Some` (possibly default-valued) means the SKILL.md declared
+    /// `metadata.encrypted: true`; `None` means a plaintext skill.
+    pub encryption: Option<SkillEncryption>,
 }
 
 impl SkillMetadata {
+    pub fn is_encrypted(&self) -> bool {
+        self.encryption.is_some()
+    }
+
     pub fn allows_implicit_invocation(&self) -> bool {
         self.policy
             .as_ref()
@@ -44,9 +53,15 @@ pub struct EnvironmentSkillMetadata {
     pub short_description: Option<String>,
     pub dependencies: Option<SkillDependencies>,
     pub policy: Option<SkillPolicy>,
+    /// Encryption metadata from the frontmatter, when the skill is encrypted.
+    pub encryption: Option<SkillEncryption>,
 }
 
 impl EnvironmentSkillMetadata {
+    pub fn is_encrypted(&self) -> bool {
+        self.encryption.is_some()
+    }
+
     pub fn allows_implicit_invocation(&self) -> bool {
         self.policy
             .as_ref()
@@ -57,6 +72,19 @@ impl EnvironmentSkillMetadata {
     pub fn matches_product_restriction(&self, restriction_product: Option<Product>) -> bool {
         matches_product_restriction(self.policy.as_ref(), restriction_product)
     }
+}
+
+/// Encryption metadata declared in a skill's SKILL.md frontmatter under
+/// `metadata.encryption`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SkillEncryption {
+    pub version: Option<u64>,
+    pub key_id: Option<String>,
+    pub algorithm: Option<String>,
+    /// Decryption backend mode written by the encryptor (e.g. `software`,
+    /// `ukey`, `ukey-two-phase`). Used to auto-select the envelope backend.
+    pub mode: Option<String>,
+    pub package: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

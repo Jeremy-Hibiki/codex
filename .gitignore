@@ -1,3 +1,5 @@
+analysis
+
 # deps
 # Node.js dependencies
 node_modules
@@ -94,3 +96,6 @@ CHANGELOG.ignore.md
 # Python bytecode files
 __pycache__/
 *.pyc
+
+# agent decision log (show-me-your-work, working artifact)
+/decisions.tsv

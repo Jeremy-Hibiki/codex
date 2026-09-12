@@ -39,6 +39,7 @@ fn make_skill(name: &str, path: &str) -> SkillMetadata {
         scope: codex_protocol::protocol::SkillScope::User,
         plugin_id: None,
         remote_plugin_id: None,
+        encryption: None,
     }
 }
 

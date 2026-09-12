@@ -1,0 +1,38 @@
+"""Additive BUILD file for the fmsh-ukey-sdk-wrapper crate (Bazel).
+
+The upstream build.rs resolves the vendored SDK at
+`<repo-root>/vendor/fmsh-ukey-sdk` and emits `cargo:rustc-link-search` +
+`cargo:rustc-link-lib` + an absolute RPATH. Under Bazel the build script's
+sandbox runfiles are invisible to the separate rustc/link action (the same
+issue lmclient-rust-sdk had), so we disable the build script and link the SDK
+shared library through cc_import instead. The SDK's SONAME is
+`libfmsh_ukey_sdk.so.0`; since SDK 0.3.1 the library NEEDs the host's
+`libcrypto.so.3` (Ubuntu 22.04 ships it as libssl3), so no vendored libcrypto
+is needed and only the SDK .so files land in runfiles / _solib_k8.
+"""
+
+load("@rules_cc//cc:defs.bzl", "cc_import", "cc_library")
+
+cc_import(
+    name = "fmsh_ukey_sdk_shared",
+    shared_library = "//vendor/fmsh-ukey-sdk/linux/lib:libfmsh_ukey_sdk.so",
+)
+
+# The SDK's SONAME is libfmsh_ukey_sdk.so.0 (the .so file is a dev symlink).
+# cc_import puts only the unversioned .so into _solib_k8, but the loader
+# resolves the NEEDED soname libfmsh_ukey_sdk.so.0, so the versioned file must
+# land in solib too. Import it as a second shared library and depend on both.
+cc_import(
+    name = "fmsh_ukey_sdk_soname_shared",
+    shared_library = "//vendor/fmsh-ukey-sdk/linux/lib:libfmsh_ukey_sdk.so.0",
+)
+
+cc_library(
+    name = "fmsh_ukey_native",
+    data = ["//vendor/fmsh-ukey-sdk/linux/lib:libfmsh_ukey_sdk.so.0"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":fmsh_ukey_sdk_shared",
+        ":fmsh_ukey_sdk_soname_shared",
+    ],
+)

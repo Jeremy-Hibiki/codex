@@ -479,9 +479,11 @@ async fn spawn_agent_service_tier_inheritance_uses_root_preference_and_child_mod
     }
 
     {
+        // The child's model follows the parent turn: `spawn_agent` does not
+        // take a model override.
         let (mut session, turn) = make_session_and_context().await;
         let mut turn = turn
-            .with_model("gpt-5.4".to_string(), &session.services.models_manager)
+            .with_model("gpt-5.4-mini".to_string(), &session.services.models_manager)
             .await;
         let mut config = (*turn.config).clone();
         config.service_tier = Some(ServiceTier::Fast.request_value().to_string());
@@ -500,8 +502,7 @@ async fn spawn_agent_service_tier_inheritance_uses_root_preference_and_child_mod
                 Arc::new(turn),
                 "spawn_agent",
                 function_payload(json!({
-                    "message": "inspect this repo",
-                    "model": "gpt-5.4-mini"
+                    "message": "inspect this repo"
                 })),
             ))
             .await

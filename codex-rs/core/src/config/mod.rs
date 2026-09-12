@@ -129,6 +129,7 @@ pub use codex_thread_store::ExtraConfig;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_absolute_path::AbsolutePathBufGuard;
 use codex_utils_path_uri::PathUri;
+use fm_encrypted_skills::guardrail::GuardrailRuntimeConfig;
 use http::HeaderValue;
 use rmcp::model::ElicitationCapability;
 use rmcp::model::FormElicitationCapability;
@@ -604,9 +605,138 @@ pub enum ThreadStoreConfig {
     InMemory { id: String },
 }
 
+/// Runtime settings for encrypted skills, resolved from
+/// `[encrypted_skills]` in `config.toml`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EncryptedSkillsRuntimeConfig {
+    /// Envelope SDK selection (fail-closed by default).
+    pub sdk: codex_config::config_toml::EncryptedSkillsSdkToml,
+    /// Two-tier TTL configuration.
+    pub ttl: fm_encrypted_skills::registry::TtlConfig,
+    /// Lifetime of an unwrapped UKey two-phase key in memory.
+    pub key_cache_ttl: std::time::Duration,
+    /// Audit log path for security events (persistent deployments should
+    /// point this at a mounted volume).
+    pub audit_path: Option<std::path::PathBuf>,
+    /// Static private key for the `software` envelope backend.
+    pub software_privkey: Option<std::path::PathBuf>,
+    /// Software envelope algorithm (`sdk = "software"`).
+    pub software_algorithm: codex_config::config_toml::SoftwareAlgorithmToml,
+    /// Per-skill key envelope file name (`sdk = "ukey-two-phase"`).
+    pub key_envelope: String,
+    /// External guardrail (prompt sanitizer) settings for user prompts.
+    pub guardrail: GuardrailRuntimeConfig,
+}
+
+impl Default for EncryptedSkillsRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            sdk: Default::default(),
+            ttl: fm_encrypted_skills::registry::TtlConfig::default(),
+            key_cache_ttl: std::time::Duration::from_secs(900),
+            audit_path: None,
+            software_privkey: None,
+            software_algorithm: Default::default(),
+            key_envelope: "key.enc".to_string(),
+            guardrail: GuardrailRuntimeConfig::default(),
+        }
+    }
+}
+
+impl EncryptedSkillsRuntimeConfig {
+    /// Resolves the configured envelope SDK kind, keeping the test_zip
+    /// warning next to the mapping that produces it.
+    pub fn into_sdk(&self) -> fm_encrypted_skills::sdk::SdkKind {
+        match self.sdk {
+            codex_config::config_toml::EncryptedSkillsSdkToml::Auto => {
+                let algorithm = match self.software_algorithm {
+                    codex_config::config_toml::SoftwareAlgorithmToml::Sm2Sm4Cbc => {
+                        fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::Sm2Sm4Cbc
+                    }
+                    codex_config::config_toml::SoftwareAlgorithmToml::HpkeX25519Aes256Gcm => {
+                        fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::HpkeX25519Aes256Gcm
+                    }
+                };
+                fm_encrypted_skills::sdk::SdkKind::Auto {
+                    software_algorithm: algorithm,
+                    software_privkey: self.software_privkey.clone(),
+                    key_envelope: self.key_envelope.clone(),
+                    key_cache_ttl: self.key_cache_ttl,
+                }
+            }
+            codex_config::config_toml::EncryptedSkillsSdkToml::Unavailable => {
+                fm_encrypted_skills::sdk::SdkKind::Unavailable
+            }
+            codex_config::config_toml::EncryptedSkillsSdkToml::TestZip => {
+                tracing::warn!(
+                    "encrypted-skill envelope SDK is test_zip: packages are plain ZIPs and are NOT encrypted"
+                );
+                fm_encrypted_skills::sdk::SdkKind::TestZip
+            }
+            codex_config::config_toml::EncryptedSkillsSdkToml::Noop => {
+                fm_encrypted_skills::sdk::SdkKind::Noop
+            }
+            codex_config::config_toml::EncryptedSkillsSdkToml::Software => {
+                let algorithm = match self.software_algorithm {
+                    codex_config::config_toml::SoftwareAlgorithmToml::Sm2Sm4Cbc => {
+                        fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::Sm2Sm4Cbc
+                    }
+                    codex_config::config_toml::SoftwareAlgorithmToml::HpkeX25519Aes256Gcm => {
+                        fm_encrypted_skills::sdk::SdkSoftwareAlgorithm::HpkeX25519Aes256Gcm
+                    }
+                };
+                fm_encrypted_skills::sdk::SdkKind::Software {
+                    algorithm,
+                    privkey: self.software_privkey.clone(),
+                }
+            }
+            codex_config::config_toml::EncryptedSkillsSdkToml::UKey => {
+                fm_encrypted_skills::sdk::SdkKind::UKey
+            }
+            codex_config::config_toml::EncryptedSkillsSdkToml::UKeyTwoPhase => {
+                fm_encrypted_skills::sdk::SdkKind::UKeyTwoPhase {
+                    key_envelope: self.key_envelope.clone(),
+                    key_cache_ttl: self.key_cache_ttl,
+                }
+            }
+        }
+    }
+
+    /// Resolves the audit log path, defaulting to the process temp directory.
+    pub fn audit_path(&self) -> std::path::PathBuf {
+        self.audit_path
+            .clone()
+            .unwrap_or_else(|| std::env::temp_dir().join("fm_skill_security_audit.log"))
+    }
+}
+
+/// Product policy toggles resolved from `config.toml` and managed
+/// `requirements.toml` fields. Defaults are open.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProductPolicyRuntimeConfig {
+    pub allow_managed_plugins_only: bool,
+    pub allow_managed_marketplaces_only: bool,
+    pub allow_sandbox_bypass: bool,
+}
+
+impl Default for ProductPolicyRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            allow_managed_plugins_only: false,
+            allow_managed_marketplaces_only: false,
+            allow_sandbox_bypass: true,
+        }
+    }
+}
+
 /// Application configuration loaded from disk and merged with overrides.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
+    /// Encrypted-skill runtime settings resolved from `[encrypted_skills]`.
+    pub encrypted_skills: EncryptedSkillsRuntimeConfig,
+    /// Product policy toggles resolved from flat config and requirements fields.
+    pub product_policy: ProductPolicyRuntimeConfig,
+
     /// Provenance for how this [`Config`] was derived (merged layers + enforced
     /// requirements).
     pub config_layer_stack: ConfigLayerStack,
@@ -1305,7 +1435,8 @@ impl MultiAgentV2Config {
             multi_agent_mode_hint_text: None,
             tool_namespace: Some(DEFAULT_MULTI_AGENT_V2_TOOL_NAMESPACE.to_string()),
             hide_spawn_agent_metadata: true,
-            expose_spawn_agent_model_overrides: true,
+            // fm: model dispatch is not supported.
+            expose_spawn_agent_model_overrides: false,
             wait_agent_enabled: true,
             non_code_mode_only: true,
         }
@@ -3217,6 +3348,9 @@ impl Config {
             windows_sandbox_private_desktop: _,
             web_search_mode: mut constrained_web_search_mode,
             allow_managed_hooks_only: _,
+            allow_sandbox_bypass,
+            allow_managed_plugins_only,
+            allow_managed_marketplaces_only,
             allow_appshots: _,
             allow_remote_control: _,
             computer_use: _,
@@ -3232,6 +3366,8 @@ impl Config {
             filesystem: filesystem_requirements,
             additional_developer_instructions: _,
             guardian_policy_config_source: _,
+            developer_instructions_source: _,
+            encrypted_skills_source: _,
         } = config_layer_stack.requirements().clone();
 
         // Destructure ConfigOverrides fully to ensure all overrides are applied.
@@ -3919,7 +4055,12 @@ impl Config {
         let base_instructions_provenance = base_instructions
             .as_ref()
             .map(|_| BaseInstructionsProvenance::Custom);
-        let developer_instructions = developer_instructions.or(cfg.developer_instructions);
+        // Managed requirements win over both the host and the user config.
+        let developer_instructions = developer_instructions_from_requirements(
+            config_layer_stack.requirements_toml(),
+        )
+        .or(developer_instructions)
+        .or(cfg.developer_instructions);
         let include_permissions_instructions = cfg.include_permissions_instructions.unwrap_or(true);
         let include_apps_instructions = cfg.include_apps_instructions.unwrap_or(true);
         let include_collaboration_mode_instructions =
@@ -4149,7 +4290,52 @@ impl Config {
         )
         .map_err(std::io::Error::from)?;
         let otel = otel::resolve_config(cfg.otel.unwrap_or_default(), &mut startup_warnings);
+        let encrypted_skills_toml = encrypted_skills_toml_with_requirements(
+            &cfg.encrypted_skills,
+            config_layer_stack.requirements_toml(),
+        );
+        let skill_idle_ttl_secs = encrypted_skills_toml.skill_idle_ttl_secs.unwrap_or(600);
         let config = Self {
+            encrypted_skills: EncryptedSkillsRuntimeConfig {
+                sdk: encrypted_skills_toml.sdk.unwrap_or_default(),
+                ttl: fm_encrypted_skills::registry::TtlConfig {
+                    skill_idle: std::time::Duration::from_secs(
+                        skill_idle_ttl_secs,
+                    ),
+                },
+                key_cache_ttl: std::time::Duration::from_secs(
+                    encrypted_skills_toml
+                        .key_cache_ttl_secs
+                        .unwrap_or_else(|| skill_idle_ttl_secs.saturating_add(300)),
+                ),
+                audit_path: encrypted_skills_toml
+                    .audit_path
+                    .map(std::path::PathBuf::from),
+                software_privkey: encrypted_skills_toml
+                    .software_privkey
+                    .map(std::path::PathBuf::from),
+                software_algorithm: encrypted_skills_toml
+                    .software_algorithm
+                    .unwrap_or_default(),
+                key_envelope: encrypted_skills_toml
+                    .key_envelope
+                    .unwrap_or_else(|| "key.enc".to_string()),
+                guardrail: GuardrailRuntimeConfig {
+                    enabled: encrypted_skills_toml.guardrail.enabled.unwrap_or(false),
+                    base_url: encrypted_skills_toml.guardrail.base_url,
+                },
+            },
+            product_policy: ProductPolicyRuntimeConfig {
+                allow_managed_plugins_only: allow_managed_plugins_only
+                    .map(|sourced| sourced.value)
+                    .unwrap_or(cfg.allow_managed_plugins_only.unwrap_or(false)),
+                allow_managed_marketplaces_only: allow_managed_marketplaces_only
+                    .map(|sourced| sourced.value)
+                    .unwrap_or(cfg.allow_managed_marketplaces_only.unwrap_or(false)),
+                allow_sandbox_bypass: allow_sandbox_bypass
+                    .map(|sourced| sourced.value)
+                    .unwrap_or(cfg.allow_sandbox_bypass.unwrap_or(true)),
+            },
             model,
             service_tier,
             review_model,
@@ -4577,6 +4763,57 @@ fn guardian_policy_config_from_requirements(
     requirements_toml: &ConfigRequirementsToml,
 ) -> Option<String> {
     normalize_guardian_policy_config(requirements_toml.guardian_policy_config.as_deref())
+}
+
+/// Developer instructions managed by `requirements.toml`, overriding any
+/// user-configured value. Empty values are treated as unset.
+fn developer_instructions_from_requirements(
+    requirements_toml: &ConfigRequirementsToml,
+) -> Option<String> {
+    requirements_toml
+        .developer_instructions
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+}
+
+/// Merges `requirements.toml` encrypted-skill settings over the user config,
+/// field by field. Unset requirement fields keep the user-configured value.
+fn encrypted_skills_toml_with_requirements(
+    cfg: &codex_config::config_toml::EncryptedSkillsToml,
+    requirements_toml: &ConfigRequirementsToml,
+) -> codex_config::config_toml::EncryptedSkillsToml {
+    let Some(requirements) = requirements_toml.encrypted_skills.as_ref() else {
+        return cfg.clone();
+    };
+    let mut merged = cfg.clone();
+    if let Some(sdk) = &requirements.sdk {
+        merged.sdk = Some(*sdk);
+    }
+    if let Some(ttl) = requirements.skill_idle_ttl_secs {
+        merged.skill_idle_ttl_secs = Some(ttl);
+    }
+    if let Some(ttl) = requirements.key_cache_ttl_secs {
+        merged.key_cache_ttl_secs = Some(ttl);
+    }
+    if let Some(path) = &requirements.audit_path {
+        merged.audit_path = Some(path.clone());
+    }
+    if let Some(path) = &requirements.software_privkey {
+        merged.software_privkey = Some(path.clone());
+    }
+    if let Some(algorithm) = &requirements.software_algorithm {
+        merged.software_algorithm = Some(*algorithm);
+    }
+    if let Some(key_envelope) = &requirements.key_envelope {
+        merged.key_envelope = Some(key_envelope.clone());
+    }
+    if let Some(enabled) = requirements.guardrail.enabled {
+        merged.guardrail.enabled = Some(enabled);
+    }
+    if let Some(base_url) = &requirements.guardrail.base_url {
+        merged.guardrail.base_url = Some(base_url.clone());
+    }
+    merged
 }
 
 fn merge_managed_permission_profiles(

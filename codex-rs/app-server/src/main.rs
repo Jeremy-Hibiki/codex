@@ -12,6 +12,7 @@ use codex_arg0::arg0_dispatch_or_else;
 use codex_config::LoaderOverrides;
 use codex_protocol::protocol::SessionSource;
 use codex_utils_cli::CliConfigOverrides;
+
 use std::path::PathBuf;
 
 #[cfg(all(
@@ -73,6 +74,11 @@ struct AppServerArgs {
 }
 
 fn main() -> anyhow::Result<()> {
+    #[cfg(target_os = "linux")]
+    #[cfg(not(debug_assertions))]
+    codex_process_hardening::disable_process_dumping()
+        .unwrap_or_else(|err| eprintln!("WARNING: failed to disable process dumping: {err}"));
+
     let remote_control_disabled = codex_app_server::take_remote_control_disabled_env();
     arg0_dispatch_or_else(move |arg0_paths: Arg0DispatchPaths| async move {
         let AppServerArgs {
@@ -86,6 +92,12 @@ fn main() -> anyhow::Result<()> {
             disable_plugin_startup_tasks_for_tests,
             remote_control,
         } = AppServerArgs::parse();
+        // The standalone app-server binary is a product entry point that can
+        // start Codex work; it must hold a license for the process lifetime.
+        // ACP adapters terminate this process with SIGTERM when the client
+        // disconnects; `init_entry` installs a handler that returns the
+        // license before the process exits.
+        let _license_guard = fm_license::init_entry()?;
         let loader_overrides = if disable_managed_config_from_debug_env() {
             LoaderOverrides::without_managed_config_for_tests()
         } else {

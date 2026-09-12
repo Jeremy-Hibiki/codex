@@ -61,7 +61,7 @@ def buildifier_formatter_group(*, check: bool) -> FormatterGroup:
         name = path.name
         if (
             name in {"BUILD", "WORKSPACE", "MODULE.bazel"}
-            or name.startswith(("BUILD.", "WORKSPACE."))
+            or (name.startswith(("BUILD.", "WORKSPACE.")) and not name.endswith(".md"))
             or name.endswith((".BUILD.bazel", ".MODULE.bazel", ".bzl", ".sky"))
             or ".bzl." in name
             or ".sky." in name

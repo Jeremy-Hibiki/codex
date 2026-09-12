@@ -1,0 +1,16 @@
+[package]
+name = "fm-product-policy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "fm_product_policy"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }

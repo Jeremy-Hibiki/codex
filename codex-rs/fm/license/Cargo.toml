@@ -1,0 +1,25 @@
+[package]
+name = "fm-license"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "fm_license"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+codex-core = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
+lmclient-rust-sdk = { workspace = true }
+signal-hook = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

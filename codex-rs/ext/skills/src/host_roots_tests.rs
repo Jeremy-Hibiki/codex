@@ -238,6 +238,7 @@ fn expected_skill(path: AbsolutePathBuf, name: &str, scope: SkillScope) -> Skill
         scope,
         plugin_id: None,
         remote_plugin_id: None,
+        encryption: None,
     }
 }
 

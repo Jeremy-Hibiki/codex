@@ -517,7 +517,7 @@ impl ToolRegistry {
             Some(tool) => tool,
             None => {
                 let message = unsupported_tool_call_message(&invocation.payload, &tool_name);
-                let log_payload = tool_log_payload(&invocation.payload, &invocation.source);
+                let log_payload = redacted_log_payload(&invocation);
                 let mut tool_result_tags = Vec::with_capacity(2);
                 sandbox_tags.append_metric_tags(&mut tool_result_tags);
                 otel.tool_result_with_tags(
@@ -548,7 +548,7 @@ impl ToolRegistry {
         }
         if !tool.matches_kind(&invocation.payload) {
             let message = format!("tool {tool_name} invoked with incompatible payload");
-            let log_payload = tool_log_payload(&invocation.payload, &invocation.source);
+            let log_payload = redacted_log_payload(&invocation);
             otel.tool_result_with_tags(
                 &tool_name,
                 &call_id_owned,
@@ -562,6 +562,47 @@ impl ToolRegistry {
             let err = FunctionCallError::Fatal(message);
             dispatch_trace.record_failed(&err);
             return Err(err);
+        }
+
+        // Encrypted-skill guard: block or rewrite the call before any hook or
+        // approval sees it, so plaintext never reaches a reviewer surface.
+        if let Some(pre_tool_use_payload) = tool.pre_tool_use_payload(&invocation) {
+            match invocation.session.encrypted_skills_guard().before_tool(
+                pre_tool_use_payload.tool_name.name(),
+                &pre_tool_use_payload.tool_input,
+            ) {
+                crate::encrypted_skills_guard::GuardDecision::Blocked { message, .. } => {
+                    let err = FunctionCallError::RespondToModel(message);
+                    dispatch_trace.record_failed(&err);
+                    notify_tool_finish_if_unclaimed(
+                        &invocation,
+                        terminal_outcome_reached.as_deref(),
+                        ToolCallOutcome::Blocked,
+                    )
+                    .await;
+                    return Err(err);
+                }
+                crate::encrypted_skills_guard::GuardDecision::Updated(updated_input) => {
+                    match tool.with_updated_hook_input(invocation.clone(), updated_input) {
+                        Ok(updated_invocation) => {
+                            invocation = updated_invocation;
+                        }
+                        Err(err) => {
+                            dispatch_trace.record_failed(&err);
+                            notify_tool_finish_if_unclaimed(
+                                &invocation,
+                                terminal_outcome_reached.as_deref(),
+                                ToolCallOutcome::Failed {
+                                    handler_executed: false,
+                                },
+                            )
+                            .await;
+                            return Err(err);
+                        }
+                    }
+                }
+                crate::encrypted_skills_guard::GuardDecision::Allow => {}
+            }
         }
 
         if let Some(pre_tool_use_payload) = tool.pre_tool_use_payload(&invocation) {
@@ -641,7 +682,30 @@ impl ToolRegistry {
             tool_result_tags.push(("command_category", category));
         }
 
+        // Redaction must wrap the tool output before any surface reads it:
+        // telemetry previews, response items, and hooks all route through the
+        // same value.
+        let redaction_runtime = Arc::clone(&invocation.session.services.encrypted_skills_runtime);
+        let redaction_session_id = invocation.session.thread_id.to_string();
+        let redaction_engaged = invocation
+            .turn
+            .agent_security
+            .as_ref()
+            .map(crate::agent_security::AgentSecurityContext::engaged)
+            .unwrap_or_else(|| redaction_runtime.is_engaged(&redaction_session_id));
+
+        // fm M10: the payload may carry guard-rewritten `/dev/shm` paths and
+        // known plaintext; telemetry must never see either for engaged sessions.
         let log_payload = tool_log_payload(&invocation.payload, &invocation.source);
+        let log_payload = if redaction_engaged {
+            std::borrow::Cow::Owned(redact_telemetry_text(
+                &redaction_runtime,
+                &redaction_session_id,
+                &log_payload,
+            ))
+        } else {
+            log_payload
+        };
 
         let result = otel
             .log_tool_result_with_tags(
@@ -652,13 +716,28 @@ impl ToolRegistry {
                 &extra_trace_fields,
                 || handle_any_tool(tool.as_ref(), invocation.clone()),
                 |result| {
-                    (
-                        result.result.log_output(),
-                        result.result.success_for_logging(),
-                    )
+                    let preview = result.result.log_output();
+                    let preview = if redaction_engaged {
+                        redact_telemetry_text(&redaction_runtime, &redaction_session_id, &preview)
+                    } else {
+                        preview
+                    };
+                    (preview, result.result.success_for_logging())
                 },
             )
             .await;
+        let result = match result {
+            Ok(mut result) => {
+                result.result = Box::new(crate::encrypted_skills_guard::RedactingToolOutput {
+                    inner: result.result,
+                    runtime: Arc::clone(&redaction_runtime),
+                    session_id: redaction_session_id.clone(),
+                    engaged: redaction_engaged,
+                });
+                Ok(result)
+            }
+            Err(err) => Err(err),
+        };
         let success = match &result {
             Ok(result) => result.result.success_for_logging(),
             Err(_) => false,
@@ -753,6 +832,54 @@ impl ToolRegistry {
                 Err(err)
             }
         }
+    }
+}
+
+// fm M10: telemetry surfaces must go through full runtime redaction.
+// Path unrewrite must run before the plaintext pass: redacting the memory-root
+// prefix first would mangle decrypted `/dev/shm` paths and defeat unrewrite
+// matching.
+pub(crate) fn redact_telemetry_text(
+    runtime: &fm_encrypted_skills::runtime::EncryptedSkillRuntime,
+    session_id: &str,
+    text: &str,
+) -> String {
+    let unrewritten = crate::encrypted_skills_guard::redact_text_for(runtime, session_id, text);
+    fm_encrypted_skills::guard::redact_text_quiet(runtime, session_id, &unrewritten)
+}
+
+/// fm M10: log-site helper for telemetry surfaces that are not tool dispatches
+/// (e.g. realtime input previews) — redacts text for engaged sessions and
+/// returns it unchanged otherwise.
+pub(crate) fn redact_telemetry_text_if_engaged<'a>(
+    runtime: &fm_encrypted_skills::runtime::EncryptedSkillRuntime,
+    session_id: &str,
+    text: &'a str,
+) -> std::borrow::Cow<'a, str> {
+    if runtime.is_engaged(session_id) {
+        std::borrow::Cow::Owned(redact_telemetry_text(runtime, session_id, text))
+    } else {
+        std::borrow::Cow::Borrowed(text)
+    }
+}
+
+// fm G6: dispatch-error telemetry must apply the same redaction as the success
+// path — the payload can carry guard-rewritten `/dev/shm` paths and known
+// plaintext for engaged sessions.
+fn redacted_log_payload(invocation: &ToolInvocation) -> std::borrow::Cow<'_, str> {
+    let payload = tool_log_payload(&invocation.payload, &invocation.source);
+    let runtime = Arc::clone(&invocation.session.services.encrypted_skills_runtime);
+    let session_id = invocation.session.thread_id.to_string();
+    let engaged = invocation
+        .turn
+        .agent_security
+        .as_ref()
+        .map(crate::agent_security::AgentSecurityContext::engaged)
+        .unwrap_or_else(|| runtime.is_engaged(&session_id));
+    if engaged {
+        std::borrow::Cow::Owned(redact_telemetry_text(&runtime, &session_id, &payload))
+    } else {
+        payload
     }
 }
 

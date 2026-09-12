@@ -457,12 +457,19 @@ fn create_filesystem_args(
         // creates the standard minimal nodes: null, zero, full, random,
         // urandom, and tty. `/dev` must be mounted before writable roots so
         // explicit `/dev/*` writable binds remain visible.
+        //
+        // `--dev` also replaces `/dev/shm` with an empty mount, so shared
+        // memory is restored explicitly; otherwise in-process tmpfs users
+        // (including decrypted skill storage) disappear inside the sandbox.
         vec![
             "--ro-bind".to_string(),
             "/".to_string(),
             "/".to_string(),
             "--dev".to_string(),
             "/dev".to_string(),
+            "--bind-try".to_string(),
+            "/dev/shm".to_string(),
+            "/dev/shm".to_string(),
         ]
     } else {
         // Start from an empty filesystem and add only the approved readable

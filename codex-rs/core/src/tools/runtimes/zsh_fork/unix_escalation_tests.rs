@@ -322,6 +322,7 @@ fn shell_request_escalation_execution_is_explicit() {
             crate::sandboxing::SandboxPermissions::UseDefault,
             &permission_profile,
             /*additional_permissions*/ None,
+            /*engaged*/ false,
         ),
         EscalationExecution::TurnDefault,
     );
@@ -330,6 +331,7 @@ fn shell_request_escalation_execution_is_explicit() {
             crate::sandboxing::SandboxPermissions::RequireEscalated,
             &read_only_permission_profile,
             /*additional_permissions*/ None,
+            /*engaged*/ false,
         ),
         EscalationExecution::Unsandboxed,
     );
@@ -338,6 +340,7 @@ fn shell_request_escalation_execution_is_explicit() {
             crate::sandboxing::SandboxPermissions::RequireEscalated,
             &permission_profile,
             /*additional_permissions*/ None,
+            /*engaged*/ false,
         ),
         EscalationExecution::TurnDefault,
     );
@@ -346,10 +349,33 @@ fn shell_request_escalation_execution_is_explicit() {
             crate::sandboxing::SandboxPermissions::WithAdditionalPermissions,
             &permission_profile,
             Some(&requested_permissions),
+            /*engaged*/ false,
         ),
         EscalationExecution::Permissions(EscalationPermissions::ResolvedPermissionProfile(
             ResolvedPermissionProfile { permission_profile },
         )),
+    );
+}
+
+// fm I6/G2-sec: engaged sessions must not escalate to unsandboxed execution.
+#[test]
+fn engaged_sessions_never_escalate_to_unsandboxed() {
+    let network_sandbox_policy = NetworkSandboxPolicy::Restricted;
+    // Permissive enough that unengaged requests would run unsandboxed.
+    let permission_profile = PermissionProfile::from_runtime_permissions(
+        &read_only_file_system_sandbox_policy(),
+        network_sandbox_policy,
+    );
+
+    assert_eq!(
+        CoreShellActionProvider::shell_request_escalation_execution(
+            crate::sandboxing::SandboxPermissions::RequireEscalated,
+            &permission_profile,
+            /*additional_permissions*/ None,
+            /*engaged*/ true,
+        ),
+        EscalationExecution::TurnDefault,
+        "engaged sessions must not degrade escalated commands to unsandboxed execution",
     );
 }
 

@@ -1,3 +1,4 @@
+use anyhow::Context;
 use clap::Args;
 use clap::CommandFactory;
 use clap::Parser;
@@ -117,7 +118,7 @@ use codex_terminal_detection::TerminalName;
 #[derive(Debug, Parser)]
 #[clap(
     author,
-    version,
+    version = concat!(env!("CARGO_PKG_VERSION"), "-", env!("FM_BUILD_SUFFIX")),
     // If a sub‑command is given, ignore requirements of the default args.
     subcommand_negates_reqs = true,
     // The executable is sometimes invoked via a platform‑specific name like
@@ -1115,8 +1116,44 @@ fn stage_str(stage: Stage) -> &'static str {
     }
 }
 
+/// Full CLI version: `Cargo.toml` version plus the build suffix injected by
+/// `build.rs` (`fm.rNNN-HHHHHHHH`, where NNN is the git commit count).
+pub(crate) fn build_version() -> String {
+    format!(
+        "{}-{}",
+        env!("CARGO_PKG_VERSION"),
+        option_env!("FM_BUILD_SUFFIX").unwrap_or("fm.r0-unknown")
+    )
+}
+
+fn requests_full_access(shared: &SharedCliOptions) -> bool {
+    fm_product_policy::full_access_requested(
+        shared.dangerously_bypass_approvals_and_sandbox,
+        matches!(
+            shared.sandbox_mode,
+            Some(codex_utils_cli::SandboxModeCliArg::DangerFullAccess)
+        ),
+    )
+}
+
+fn subcommand_requests_full_access(subcommand: &Subcommand) -> bool {
+    match subcommand {
+        Subcommand::Exec(cli) => requests_full_access(&cli.shared),
+        Subcommand::Resume(cmd) => requests_full_access(&cmd.config_overrides.0.shared),
+        Subcommand::Fork(cmd) => requests_full_access(&cmd.config_overrides.0.shared),
+        Subcommand::Archive(cmd) => requests_full_access(&cmd.config_overrides.shared),
+        Subcommand::Unarchive(cmd) => requests_full_access(&cmd.config_overrides.shared),
+        Subcommand::Delete(cmd) => requests_full_access(&cmd.session.config_overrides.shared),
+        _ => false,
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     codex_build_info::initialize!();
+    #[cfg(target_os = "linux")]
+    #[cfg(not(debug_assertions))]
+    codex_process_hardening::disable_process_dumping()
+        .unwrap_or_else(|err| eprintln!("WARNING: failed to disable process dumping: {err}"));
     let remote_control_disabled = codex_app_server::take_remote_control_disabled_env();
     arg0_dispatch_or_else(move |arg0_paths: Arg0DispatchPaths| async move {
         cli_main(arg0_paths, remote_control_disabled).await?;
@@ -1168,6 +1205,51 @@ async fn cli_main(
     if let Some(subcommand) = subcommand.as_ref() {
         profile_v2_for_subcommand(&interactive, subcommand)?;
     }
+
+    // Product policy (I6/I7): full-access execution is open by default and
+    // can be blocked by `allow_sandbox_bypass = false` in requirements.
+    let full_access_requested = requests_full_access(&interactive.shared)
+        || subcommand
+            .as_ref()
+            .is_some_and(subcommand_requests_full_access);
+    let allow_sandbox_bypass = if full_access_requested {
+        let overrides = root_config_overrides
+            .parse_overrides()
+            .map_err(anyhow::Error::msg)?;
+        codex_core::config::Config::load_with_cli_overrides(overrides)
+            .await
+            .context("failed to load configuration")?
+            .product_policy
+            .allow_sandbox_bypass
+    } else {
+        true
+    };
+    if !allow_sandbox_bypass {
+        return Err(fm_product_policy::sandbox_bypass_error());
+    }
+    // Verify the product license before entering any of the main product
+    // flows (interactive, exec, review, app-server, resume, fork,
+    // remote-control). The FMSH LMCLIENT SDK only ships a CentOS 7 / x86_64
+    // static library, so other targets skip the check.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    let license_required = match subcommand.as_ref() {
+        None
+        | Some(Subcommand::Exec(_))
+        | Some(Subcommand::Review(_))
+        | Some(Subcommand::Resume(_))
+        | Some(Subcommand::Fork(_)) => true,
+        Some(Subcommand::AppServer(app_server)) => app_server.subcommand.is_none(),
+        Some(Subcommand::RemoteControl(remote_control)) => remote_control.starts_app_server(),
+        _ => false,
+    };
+    #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+    let _license_guard = if license_required {
+        Some(fm_license::init_entry()?)
+    } else {
+        None
+    };
+    #[cfg(not(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu")))]
+    let _license_guard: Option<()> = None;
 
     let open_agents_overview = matches!(&subcommand, Some(Subcommand::Agents(_)));
     match subcommand {
@@ -1283,28 +1365,44 @@ async fn cli_main(
                 subcommand,
             } = plugin_cli;
             prepend_config_flags(&mut config_overrides, root_config_overrides.clone());
+            // Product policy toggles come from top-level config fields;
+            // defaults are open so upstream plugin/marketplace behavior is
+            // preserved.
+            let plugin_overrides = config_overrides
+                .parse_overrides()
+                .map_err(anyhow::Error::msg)?;
+            let policy_config =
+                codex_core::config::Config::load_with_cli_overrides(plugin_overrides.clone())
+                    .await
+                    .context("failed to load configuration")?;
+            match &subcommand {
+                PluginSubcommand::Marketplace(_)
+                    if policy_config.product_policy.allow_managed_marketplaces_only =>
+                {
+                    return Err(fm_product_policy::managed_marketplaces_only_error());
+                }
+                PluginSubcommand::Add(_)
+                | PluginSubcommand::List(_)
+                | PluginSubcommand::Remove(_)
+                    if policy_config.product_policy.allow_managed_plugins_only =>
+                {
+                    return Err(fm_product_policy::managed_plugins_only_error());
+                }
+                _ => {}
+            }
             match subcommand {
                 PluginSubcommand::Add(args) => {
-                    let overrides = config_overrides
-                        .parse_overrides()
-                        .map_err(anyhow::Error::msg)?;
-                    plugin_cmd::run_plugin_add(overrides, args).await?;
+                    plugin_cmd::run_plugin_add(plugin_overrides, args).await?;
                 }
                 PluginSubcommand::List(args) => {
-                    let overrides = config_overrides
-                        .parse_overrides()
-                        .map_err(anyhow::Error::msg)?;
-                    plugin_cmd::run_plugin_list(overrides, args).await?;
+                    plugin_cmd::run_plugin_list(plugin_overrides, args).await?;
                 }
                 PluginSubcommand::Marketplace(mut marketplace_cli) => {
                     prepend_config_flags(&mut marketplace_cli.config_overrides, config_overrides);
                     marketplace_cli.run().await?;
                 }
                 PluginSubcommand::Remove(args) => {
-                    let overrides = config_overrides
-                        .parse_overrides()
-                        .map_err(anyhow::Error::msg)?;
-                    plugin_cmd::run_plugin_remove(overrides, args).await?;
+                    plugin_cmd::run_plugin_remove(plugin_overrides, args).await?;
                 }
             }
         }

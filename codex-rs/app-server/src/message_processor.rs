@@ -11,6 +11,7 @@ use crate::current_time::app_server_time_provider;
 use crate::error_code::internal_error;
 use crate::error_code::invalid_params;
 use crate::error_code::invalid_request;
+use crate::error_code::license_unavailable;
 use crate::extensions::ThreadExtensionDependencies;
 use crate::extensions::app_server_extension_event_sink;
 use crate::extensions::guardian_agent_spawner;
@@ -139,6 +140,7 @@ pub(crate) struct MessageProcessor {
     models_refresh_worker: ModelsRefreshWorker,
     turn_cost_worker: Option<TurnCostWorker>,
     skills_watcher: Arc<SkillsWatcher>,
+    product_policy: codex_core::config::ProductPolicyRuntimeConfig,
     account_processor: AccountRequestProcessor,
     apps_processor: AppsRequestProcessor,
     catalog_processor: CatalogRequestProcessor,
@@ -573,6 +575,7 @@ impl MessageProcessor {
             models_refresh_worker,
             turn_cost_worker,
             skills_watcher,
+            product_policy: config.product_policy.clone(),
             account_processor,
             apps_processor,
             catalog_processor,
@@ -869,6 +872,12 @@ impl MessageProcessor {
         request_context: RequestContext,
     ) -> Result<(), JSONRPCErrorError> {
         let connection_id = connection_request_id.connection_id;
+        crate::request_processors::rpc_guard::ensure_plugin_management_allowed(
+            &codex_request,
+            self.product_policy.allow_managed_plugins_only,
+            self.product_policy.allow_managed_marketplaces_only,
+        )?;
+        crate::request_processors::rpc_guard::ensure_config_mutation_allowed(&codex_request)?;
         if let ClientRequest::Initialize { request_id, params } = codex_request {
             let connection_initialized = self
                 .initialize_processor
@@ -981,6 +990,35 @@ impl MessageProcessor {
         event_stream_ready: Option<McpEventStreamReady>,
     ) -> Result<(), JSONRPCErrorError> {
         let connection_id = connection_request_id.connection_id;
+
+        // Requests that start new Codex work are rejected while the license is
+        // unavailable, so users cannot initiate new work while already-running
+        // sessions continue to operate.
+        if !fm_license::is_active()
+            && matches!(
+                &codex_request,
+                ClientRequest::ThreadStart { .. }
+                    | ClientRequest::ThreadResume { .. }
+                    | ClientRequest::ThreadFork { .. }
+                    | ClientRequest::TurnStart { .. }
+                    | ClientRequest::TurnSteer { .. }
+                    | ClientRequest::ThreadInjectItems { .. }
+                    | ClientRequest::ThreadRealtimeStart { .. }
+                    | ClientRequest::ThreadQueueAdd { .. }
+                    | ClientRequest::ThreadQueueUpdate { .. }
+                    | ClientRequest::ThreadQueueStart { .. }
+                    | ClientRequest::ThreadCompactStart { .. }
+                    | ClientRequest::ThreadRealtimeAppendAudio { .. }
+                    | ClientRequest::ThreadRealtimeAppendText { .. }
+                    | ClientRequest::ThreadRealtimeAppendSpeech { .. }
+                    | ClientRequest::OneOffCommandExec { .. }
+                    | ClientRequest::CommandExecWrite { .. }
+                    | ClientRequest::ReviewStart { .. }
+            )
+        {
+            return Err(license_unavailable(fm_license::LICENSE_UNAVAILABLE_MESSAGE));
+        }
+
         let app_server_client_name = session.app_server_client_name().map(str::to_string);
         let client_version = session.client_version().map(str::to_string);
         let client_mcp_extensions = session.client_mcp_extensions();

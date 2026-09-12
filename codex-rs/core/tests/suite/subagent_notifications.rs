@@ -1841,8 +1841,7 @@ async fn spawned_full_history_v2_child_uses_model_precedence_without_dropping_co
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn spawn_agent_requested_model_and_reasoning_override_inherited_settings_without_role()
--> Result<()> {
+async fn spawn_agent_uses_configured_model_and_requested_reasoning_without_role() -> Result<()> {
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
@@ -1862,7 +1861,7 @@ async fn spawn_agent_requested_model_and_reasoning_override_inherited_settings_w
     )
     .await?;
 
-    assert_eq!(child_snapshot.model, REQUESTED_MODEL);
+    assert_eq!(child_snapshot.model, INHERITED_MODEL);
     assert_eq!(
         child_snapshot.reasoning_effort,
         Some(REQUESTED_REASONING_EFFORT)
@@ -1963,13 +1962,13 @@ async fn spawned_agent_uses_summary_support_for_final_model(
         &server,
         json!({
             "message": CHILD_PROMPT,
-            "model": REQUESTED_MODEL,
         }),
         /*child_response_delay*/ Some(Duration::from_secs(1)),
         /*wait_for_parent_notification*/ false,
         INHERITED_REASONING_EFFORT,
         move |builder| {
             builder.with_config(move |config| {
+                config.agent_default_subagent_model = Some(REQUESTED_MODEL.to_string());
                 config.model_catalog = Some(model_catalog);
                 config.model_reasoning_summary = Some(ReasoningSummary::Detailed);
                 config
@@ -3018,7 +3017,8 @@ async fn skills_toggle_skips_instructions_for_parent_and_spawned_child() -> Resu
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn spawn_agent_role_overrides_requested_model_and_reasoning_settings() -> Result<()> {
+async fn spawn_agent_role_overrides_inherited_model_and_requested_reasoning_settings() -> Result<()>
+{
     skip_if_no_network!(Ok(()));
 
     let server = start_mock_server().await;
@@ -3027,7 +3027,6 @@ async fn spawn_agent_role_overrides_requested_model_and_reasoning_settings() -> 
         json!({
             "message": CHILD_PROMPT,
             "agent_type": "custom",
-            "model": REQUESTED_MODEL,
             "reasoning_effort": REQUESTED_REASONING_EFFORT,
         }),
         |builder| {

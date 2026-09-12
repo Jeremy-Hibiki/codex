@@ -78,13 +78,14 @@ impl ToolCallRuntime {
     ) -> impl std::future::Future<Output = Result<ResponseItemEnvelope, CodexErr>> {
         let error_call = call.clone();
         let source = call.direct_source();
+        let error_session = Arc::clone(&self.session);
         let future = self.handle_tool_call_with_source(call, source, cancellation_token);
         async move {
             match future.await {
                 Ok(response) => Ok(response.into_response()),
                 Err(FunctionCallError::Fatal(message)) => Err(CodexErr::Fatal(message)),
                 Err(other) => Ok(ResponseItemEnvelope::new(
-                    Self::failure_response(error_call, other).into(),
+                    Self::failure_response(&error_session, error_call, other).into(),
                 )),
             }
         }
@@ -216,8 +217,23 @@ impl ToolCallRuntime {
         FunctionCallError::Fatal(format!("tool task failed to receive: {err:?}"))
     }
 
-    fn failure_response(call: ToolCall, err: FunctionCallError) -> ResponseInputItem {
+    fn failure_response(
+        session: &Arc<Session>,
+        call: ToolCall,
+        err: FunctionCallError,
+    ) -> ResponseInputItem {
         let message = err.to_string();
+        // fm G6: RespondToModel echoes can carry guard-rewritten decrypted
+        // paths; project them away before the message reaches the model.
+        let message = if session.encrypted_skills_guard().is_engaged() {
+            crate::encrypted_skills_guard::redact_text_for(
+                &session.services.encrypted_skills_runtime,
+                &session.thread_id.to_string(),
+                &message,
+            )
+        } else {
+            message
+        };
         match call.payload {
             ToolPayload::ToolSearch { .. } => ResponseInputItem::ToolSearchOutput {
                 call_id: call.call_id,
@@ -669,6 +685,142 @@ mod tests {
             .drain(..)
             .collect::<Vec<_>>();
         assert_eq!(vec![ToolCallOutcome::Completed { success: true }], actual);
+
+        Ok(())
+    }
+
+    struct FailingEchoHandler {
+        tool_name: codex_tools::ToolName,
+        message: String,
+    }
+
+    impl ToolExecutor<ToolInvocation> for FailingEchoHandler {
+        fn tool_name(&self) -> codex_tools::ToolName {
+            self.tool_name.clone()
+        }
+
+        fn spec(&self) -> codex_tools::ToolSpec {
+            codex_tools::ToolSpec::Function(codex_tools::ResponsesApiTool {
+                name: self.tool_name.name.clone(),
+                description: "Failing test tool.".to_string(),
+                strict: false,
+                defer_loading: None,
+                parameters: codex_tools::JsonSchema::default(),
+                output_schema: None,
+            })
+        }
+
+        fn handle<'a>(&'a self, _invocation: ToolInvocation) -> codex_tools::ToolExecutorFuture<'a>
+        where
+            ToolInvocation: 'a,
+        {
+            let message = self.message.clone();
+            Box::pin(async { Err(FunctionCallError::RespondToModel(message)) })
+        }
+    }
+
+    impl CoreToolRuntime for FailingEchoHandler {}
+
+    struct FailureEchoSkillSdk;
+
+    impl fm_encrypted_skills::sdk::EnvelopeSdk for FailureEchoSkillSdk {
+        fn decrypt_package(
+            &self,
+            _package_path: &std::path::Path,
+        ) -> Result<
+            Vec<fm_encrypted_skills::sdk::PackageEntry>,
+            fm_encrypted_skills::sdk::EnvelopeError,
+        > {
+            Ok(vec![fm_encrypted_skills::sdk::PackageEntry {
+                rel_path: std::path::Path::new("SKILL.md").to_path_buf(),
+                contents: b"# Encrypted skill".to_vec(),
+            }])
+        }
+    }
+
+    // fm G6: tool failure echoes are RespondToModel output too; decrypted
+    // paths must be projected away before the model sees them.
+    #[tokio::test]
+    async fn failure_response_redacts_decrypted_paths_when_engaged() -> anyhow::Result<()> {
+        let (session, turn_context) = crate::session::tests::make_session_and_context().await;
+        let tmp = tempfile::tempdir().expect("temp dir");
+        let runtime = fm_encrypted_skills::runtime::EncryptedSkillRuntime::new(
+            Arc::new(FailureEchoSkillSdk),
+            fm_encrypted_skills::registry::TtlConfig::default(),
+            tmp.path().join("mem-root"),
+        );
+        let thread_id = session.thread_id.to_string();
+        runtime
+            .load_or_register(
+                &thread_id,
+                "secret",
+                std::path::Path::new("/skills/secret.zip.enc"),
+            )
+            .expect("test sdk should decrypt the skill package");
+        let decrypted = runtime
+            .decrypted_dirs(&thread_id)
+            .pop()
+            .expect("loaded skill should register a decrypted dir");
+        let mut session = Arc::new(session);
+        Arc::get_mut(&mut session)
+            .expect("session should be uniquely owned")
+            .services
+            .encrypted_skills_runtime = Arc::new(runtime);
+        let turn_context = Arc::new(turn_context);
+
+        let tool_name = codex_tools::ToolName::plain("echo_fail");
+        let handler = Arc::new(FailingEchoHandler {
+            message: format!(
+                "failed to run script {}",
+                decrypted.join("run.sh").to_string_lossy()
+            ),
+            tool_name: tool_name.clone(),
+        }) as Arc<dyn CoreToolRuntime>;
+        let step_context = StepContext::for_test(Arc::clone(&turn_context));
+        let router = Arc::new(ToolRouter::from_parts(
+            ToolRegistry::from_tools([handler]),
+            Vec::new(),
+            ToolMode::Direct,
+            BTreeMap::new(),
+            /*tool_namespaces_info*/ None,
+            &[],
+        ));
+        let step_context = step_context.with_tool_router_for_test(router);
+        let tracker = Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new()));
+        let runtime = ToolCallRuntime::new(session, step_context, tracker);
+        let call = ToolCall {
+            tool_name,
+            call_id: "call-1".to_string(),
+            payload: ToolPayload::Function {
+                arguments: "{}".to_string(),
+            },
+            encrypted_function_args: None,
+        };
+
+        let response = tokio::time::timeout(
+            Duration::from_secs(1),
+            runtime.handle_tool_call(call, CancellationToken::new()),
+        )
+        .await
+        .expect("timed out waiting for tool response")
+        .expect("failed tool call should produce a failure response");
+
+        let codex_protocol::models::ResponseItem::FunctionCallOutput { output, .. } = response.item
+        else {
+            panic!("expected a function call output, got {:?}", response.item);
+        };
+        let FunctionCallOutputBody::Text(text) = output.body else {
+            panic!("expected text output body");
+        };
+        assert!(
+            !text.contains(decrypted.to_string_lossy().as_ref()),
+            "failure echo must not contain the decrypted path: {text}"
+        );
+        assert!(
+            text.contains("/skills/run.sh"),
+            "failure echo should project the decrypted path back to the skill path: {text}"
+        );
+        assert_eq!(output.success, Some(false));
 
         Ok(())
     }

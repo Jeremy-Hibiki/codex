@@ -118,6 +118,7 @@ use uuid::Uuid;
 use crate::attestation::AttestationContext;
 use crate::attestation::AttestationProvider;
 use crate::attestation::X_OAI_ATTESTATION_HEADER;
+use crate::client_common::EncryptedSkillRehydrator;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::client_common::ResponseStream;
@@ -673,7 +674,18 @@ impl ModelClient {
         let client =
             ApiCompactClient::new(transport, client_setup.api_provider, client_setup.api_auth)
                 .with_telemetry(Some(request_telemetry));
-        let trace_attempt = compaction_trace.start_attempt(&payload);
+        // D1 (fm): record the tokenized input in the compaction trace — the
+        // payload input is rehydrated and must never reach the trace.
+        let trace_attempt = if prompt.encrypted_skills.is_some() {
+            let trace_input = sanitized_trace_input(prompt, payload.input);
+            let trace_payload = ApiCompactionInput {
+                input: &trace_input,
+                ..payload.clone()
+            };
+            compaction_trace.start_attempt(&trace_payload)
+        } else {
+            compaction_trace.start_attempt(&payload)
+        };
         let result = client
             .compact_input(
                 &payload,
@@ -1644,7 +1656,15 @@ impl ModelClientSession {
                 session_telemetry_for_request(session_telemetry, &request);
             let inference_trace_attempt = inference_trace.start_attempt();
             inference_trace_attempt.add_request_headers(&mut options.extra_headers);
-            inference_trace_attempt.record_started(&request);
+            // D1 (fm): record the tokenized request — the formatted input
+            // carries rehydrated plaintext that must never reach the trace.
+            if prompt.encrypted_skills.is_some() {
+                let mut trace_request = request.clone();
+                trace_request.input = sanitized_trace_input(prompt, &request.input);
+                inference_trace_attempt.record_started(&trace_request);
+            } else {
+                inference_trace_attempt.record_started(&request);
+            }
             let client = ApiResponsesClient::new(
                 transport,
                 client_setup.api_provider,
@@ -1661,6 +1681,7 @@ impl ModelClientSession {
                         request_session_telemetry,
                         inference_trace_attempt,
                         Arc::clone(&self.client.state.provider),
+                        prompt.encrypted_skills.clone(),
                     );
                     return Ok(stream);
                 }
@@ -1843,7 +1864,14 @@ impl ModelClientSession {
                 // The transport can reuse an untraced warmup response id and omit the
                 // already-sent input, but rollout replay needs the logical model-visible
                 // request rather than the compressed websocket delta.
-                inference_trace_attempt.record_started(&request);
+                // D1 (fm): record the tokenized view of that logical request.
+                if prompt.encrypted_skills.is_some() {
+                    let mut trace_request = request.clone();
+                    trace_request.input = sanitized_trace_input(prompt, &request.input);
+                    inference_trace_attempt.record_started(&trace_request);
+                } else {
+                    inference_trace_attempt.record_started(&request);
+                }
             }
 
             let (previous_response_id, mut incremental_items) = match incremental_request {
@@ -1880,10 +1908,30 @@ impl ModelClientSession {
                 client_setup.auth.as_ref(),
                 endpoint,
             );
+            // D1 (fm): capture the tokenized trace view before ws_payload is
+            // moved into the request envelope.
+            let ws_trace_view = (!previous_response_id_from_untraced_warmup
+                && prompt.encrypted_skills.is_some())
+            .then(|| {
+                (
+                    ws_payload.previous_response_id.clone(),
+                    sanitized_trace_input(prompt, ws_payload.input),
+                    ws_payload.generate,
+                )
+            });
             let mut ws_request = ResponsesWsRequest::ResponseCreate(ws_payload);
             stamp_ws_stream_request_start_ms(&mut ws_request);
             if !previous_response_id_from_untraced_warmup {
-                inference_trace_attempt.record_started(&ws_request);
+                if let Some((previous_response_id, trace_input, generate)) = ws_trace_view {
+                    inference_trace_attempt.record_started(&serde_json::json!({
+                        "type": "response.create",
+                        "previous_response_id": previous_response_id,
+                        "input": trace_input,
+                        "generate": generate,
+                    }));
+                } else {
+                    inference_trace_attempt.record_started(&ws_request);
+                }
             }
 
             let websocket_connection =
@@ -1921,6 +1969,7 @@ impl ModelClientSession {
                 request_session_telemetry,
                 inference_trace_attempt,
                 Arc::clone(&self.client.state.provider),
+                prompt.encrypted_skills.clone(),
             );
             self.websocket_session.last_response_rx = Some(last_request_rx);
             return Ok(WebsocketStreamOutcome::Stream(stream));
@@ -2154,6 +2203,7 @@ fn map_response_stream(
     session_telemetry: SessionTelemetry,
     inference_trace_attempt: InferenceTraceAttempt,
     provider: SharedModelProvider,
+    encrypted_skills: Option<EncryptedSkillRehydrator>,
 ) -> (ResponseStream, oneshot::Receiver<LastResponse>) {
     let codex_api::ResponseStream {
         rx_event,
@@ -2169,6 +2219,7 @@ fn map_response_stream(
         session_telemetry,
         inference_trace_attempt,
         provider,
+        encrypted_skills,
     )
 }
 
@@ -2178,6 +2229,7 @@ fn map_response_events<S>(
     session_telemetry: SessionTelemetry,
     inference_trace_attempt: InferenceTraceAttempt,
     provider: SharedModelProvider,
+    encrypted_skills: Option<EncryptedSkillRehydrator>,
 ) -> (ResponseStream, oneshot::Receiver<LastResponse>)
 where
     S: futures::Stream<Item = std::result::Result<ResponseEvent, ApiError>>
@@ -2192,6 +2244,19 @@ where
     let consumer_dropped_for_stream = consumer_dropped.clone();
 
     tokio::spawn(async move {
+        // G5 (fm): inference trace payloads must never carry rehydrated skill
+        // plaintext echoed by the model, mirroring the request-side D1
+        // redaction. Only the trace view is redacted; the items forwarded to
+        // the session keep their intake-side redaction path.
+        let redact_trace_items = move |items: &[ResponseItem]| -> Vec<ResponseItem> {
+            match &encrypted_skills {
+                Some(rehydrator) => rehydrator
+                    .runtime
+                    .guard(&rehydrator.session_id)
+                    .redact_all_response_item_text(items),
+                None => items.to_vec(),
+            }
+        };
         let mut logged_error = false;
         let mut tx_last_response = Some(tx_last_response);
         let mut items_added: Vec<ResponseItem> = Vec::new();
@@ -2207,7 +2272,7 @@ where
                     inference_trace_attempt.record_cancelled(
                         STREAM_DROPPED_REASON,
                         upstream_request_id,
-                        &items_added,
+                        &redact_trace_items(&items_added),
                     );
                     return;
                 }
@@ -2227,7 +2292,7 @@ where
                         inference_trace_attempt.record_cancelled(
                             STREAM_DROPPED_REASON,
                             upstream_request_id,
-                            &items_added,
+                            &redact_trace_items(&items_added),
                         );
                         return;
                     }
@@ -2246,7 +2311,7 @@ where
                         &response_id,
                         upstream_request_id,
                         &token_usage,
-                        &items_added,
+                        &redact_trace_items(&items_added),
                     );
                     if let Some(sender) = tx_last_response.take() {
                         let _ = sender.send(LastResponse {
@@ -2277,7 +2342,7 @@ where
                         inference_trace_attempt.record_cancelled(
                             STREAM_DROPPED_REASON,
                             upstream_request_id,
-                            &items_added,
+                            &redact_trace_items(&items_added),
                         );
                         return;
                     }
@@ -2294,7 +2359,7 @@ where
                     inference_trace_attempt.record_failed(
                         &mapped,
                         upstream_request_id,
-                        &items_added,
+                        &redact_trace_items(&items_added),
                     );
                     if !logged_error {
                         session_telemetry.see_event_completed_failed(&mapped);
@@ -2309,7 +2374,7 @@ where
         inference_trace_attempt.record_failed(
             "stream closed before response.completed",
             upstream_request_id,
-            &items_added,
+            &redact_trace_items(&items_added),
         );
     });
 
@@ -2737,6 +2802,36 @@ impl WebsocketTelemetry for ApiTelemetry {
         self.session_telemetry
             .record_websocket_event(result, duration);
     }
+}
+
+/// D1 (fm): rollout traces must carry sentinel tokens, never rehydrated
+/// plaintext. The formatted request input replaces tokens with framed
+/// plaintext, so for tracing restore the tokenized conversation items and
+/// redact the plaintext tail (implicit injections and any derived content).
+///
+/// When the sent input is shorter than `prompt.input` (incremental websocket
+/// deltas), the tokenized originals cannot be mapped back, so the sent items
+/// are redacted directly instead.
+pub(crate) fn sanitized_trace_input(
+    prompt: &Prompt,
+    formatted_input: &[ResponseItem],
+) -> Vec<ResponseItem> {
+    let Some(rehydrator) = &prompt.encrypted_skills else {
+        return formatted_input.to_vec();
+    };
+    let input = if formatted_input.len() >= prompt.input.len() {
+        // Formatted input is prompt.input (possibly responses-lite stripped)
+        // followed by any implicit-injection developer messages.
+        let mut input = prompt.input.clone();
+        input.extend_from_slice(&formatted_input[input.len()..]);
+        input
+    } else {
+        formatted_input.to_vec()
+    };
+    rehydrator
+        .runtime
+        .guard(&rehydrator.session_id)
+        .redact_all_response_item_text(&input)
 }
 
 #[cfg(test)]

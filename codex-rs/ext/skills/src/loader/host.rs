@@ -365,6 +365,7 @@ async fn parse_skill_file(
         name,
         description,
         short_description,
+        encryption,
     } = parse_skill_frontmatter_metadata(&contents, || default_skill_name(path))
         .map_err(|error| error.to_string())?;
     let LoadedSkillMetadata {
@@ -384,6 +385,7 @@ async fn parse_skill_file(
         scope,
         plugin_id: plugin_identity.map(|identity| identity.plugin_id.clone()),
         remote_plugin_id: plugin_identity.and_then(|identity| identity.remote_plugin_id.clone()),
+        encryption,
     })
 }
 

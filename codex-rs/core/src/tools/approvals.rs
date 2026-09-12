@@ -425,6 +425,28 @@ enum ApprovalResolutionSource {
     User,
 }
 
+// fm M5: D9 auto-permit requires the WHOLE command to be a skill-script
+// execution. The whole-command `is_skill_script_execution` check uses `.any()`
+// over segments, so a mixed command (`bash run.sh; <needs-review>`) would ride
+// one script segment into auto-approval.
+fn d9_skill_script_auto_permit(
+    guard: &fm_encrypted_skills::session_guard::SessionGuard<'_>,
+    hook_command: &str,
+    sandbox_permissions: SandboxPermissions,
+    additional_permissions: Option<&AdditionalPermissionProfile>,
+) -> bool {
+    // A command that escalates beyond the turn's sandbox policy always needs
+    // a real review, even when it executes a skill script.
+    if sandbox_permissions.requests_sandbox_override() || additional_permissions.is_some() {
+        return false;
+    }
+    let segments = fm_encrypted_skills::paths::split_command_segments(hook_command);
+    !segments.is_empty()
+        && segments
+            .iter()
+            .all(|segment| guard.is_skill_script_execution(segment))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ApprovalResolution {
     decision: ReviewDecision,
@@ -469,6 +491,24 @@ impl Session {
         action: ApprovalAction,
         ctx: ApprovalContext,
     ) -> Result<ReviewDecision, ToolError> {
+        // D9: executing a script from an engaged execute-only encrypted skill is
+        // turn-internal. Auto-permit it so neither the user nor a reviewer sees
+        // the decrypted execution path.
+        if let ApprovalAction::ExecCommand {
+            hook_command,
+            sandbox_permissions,
+            additional_permissions,
+            ..
+        } = &action
+            && d9_skill_script_auto_permit(
+                &self.encrypted_skills_guard(),
+                hook_command,
+                *sandbox_permissions,
+                additional_permissions.as_ref(),
+            )
+        {
+            return Ok(ReviewDecision::ApprovedForSession);
+        }
         // Stdin that exceeds current permissions needs a fresh sandbox approval.
         // Strict review of ordinary input follows the same routing as ordinary exec.
         let policy = ctx.review_context.turn().approval_policy();

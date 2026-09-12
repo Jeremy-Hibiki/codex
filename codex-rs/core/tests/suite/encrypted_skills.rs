@@ -302,6 +302,15 @@ async fn build_test_with_encrypted_skill(
 async fn encrypted_skills_auto_detect_mode_without_sdk_config() -> Result<()> {
     skip_if_target_windows!(Ok(()), "requires native cross-OS skill paths");
     skip_if_no_network!(Ok(()));
+    if !fm_encrypted_skills::ukey_available() {
+        // Auto-detection needs the real `AutoSdk`; without the `ukey` feature
+        // `sdk_for(Auto { .. })` fails closed and the skill never decrypts.
+        eprintln!(
+            "skipping: envelope auto-detection needs the ukey feature; \
+             run with --features fm-encrypted-skills/ukey to exercise it"
+        );
+        return Ok(());
+    }
 
     let server = start_mock_server().await;
     // No `encrypted_skills.sdk` configuration: the envelope backend must be

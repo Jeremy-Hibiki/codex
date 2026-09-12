@@ -19,10 +19,19 @@ use tokio::time::timeout;
 
 const LICENSE_UNAVAILABLE_ERROR_CODE: i64 = -32002;
 
-#[tokio::test]
-async fn license_lost_blocks_thread_start() -> Result<()> {
-    let codex_home = TempDir::new()?;
-    let mut server = TestAppServer::builder()
+/// Builds a server started with the license forced lost via the test env
+/// vars, or `None` when this build's license gate is the no-op stub (`lmclient`
+/// feature off): the env var is then ignored and the lost-license gates
+/// cannot be exercised, so the caller skips.
+async fn force_lost_server(codex_home: &TempDir) -> Result<Option<TestAppServer>> {
+    if !fm_license::lmclient_available() {
+        eprintln!(
+            "skipping: license gate is stubbed in this build; \
+             run with --features fm-license/lmclient to exercise it"
+        );
+        return Ok(None);
+    }
+    let server = TestAppServer::builder()
         .with_codex_home(codex_home.path())
         .without_auto_env()
         .with_env_overrides(&[
@@ -31,6 +40,15 @@ async fn license_lost_blocks_thread_start() -> Result<()> {
         ])
         .build_initialized_with_timeout(Duration::from_secs(30))
         .await?;
+    Ok(Some(server))
+}
+
+#[tokio::test]
+async fn license_lost_blocks_thread_start() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    let Some(mut server) = force_lost_server(&codex_home).await? else {
+        return Ok(());
+    };
 
     let request_id = server
         .send_thread_start_request(ThreadStartParams::default())
@@ -51,15 +69,9 @@ async fn license_lost_blocks_thread_start() -> Result<()> {
 #[tokio::test]
 async fn license_lost_blocks_queue_and_compact_start() -> Result<()> {
     let codex_home = TempDir::new()?;
-    let mut server = TestAppServer::builder()
-        .with_codex_home(codex_home.path())
-        .without_auto_env()
-        .with_env_overrides(&[
-            (fm_license::TEST_BYPASS_ENV_VAR, Some("1")),
-            (fm_license::TEST_FORCE_LOST_ENV_VAR, Some("1")),
-        ])
-        .build_initialized_with_timeout(Duration::from_secs(30))
-        .await?;
+    let Some(mut server) = force_lost_server(&codex_home).await? else {
+        return Ok(());
+    };
 
     for method in ["thread/queue/start", "thread/compact/start"] {
         let request_id = server
@@ -82,15 +94,9 @@ async fn license_lost_blocks_queue_and_compact_start() -> Result<()> {
 #[tokio::test]
 async fn license_lost_blocks_queue_add_and_update() -> Result<()> {
     let codex_home = TempDir::new()?;
-    let mut server = TestAppServer::builder()
-        .with_codex_home(codex_home.path())
-        .without_auto_env()
-        .with_env_overrides(&[
-            (fm_license::TEST_BYPASS_ENV_VAR, Some("1")),
-            (fm_license::TEST_FORCE_LOST_ENV_VAR, Some("1")),
-        ])
-        .build_initialized_with_timeout(Duration::from_secs(30))
-        .await?;
+    let Some(mut server) = force_lost_server(&codex_home).await? else {
+        return Ok(());
+    };
 
     let thread_id = uuid::Uuid::now_v7().to_string();
     for (method, params) in [
@@ -130,15 +136,9 @@ async fn license_lost_blocks_queue_add_and_update() -> Result<()> {
 #[tokio::test]
 async fn license_lost_blocks_command_exec_and_write() -> Result<()> {
     let codex_home = TempDir::new()?;
-    let mut server = TestAppServer::builder()
-        .with_codex_home(codex_home.path())
-        .without_auto_env()
-        .with_env_overrides(&[
-            (fm_license::TEST_BYPASS_ENV_VAR, Some("1")),
-            (fm_license::TEST_FORCE_LOST_ENV_VAR, Some("1")),
-        ])
-        .build_initialized_with_timeout(Duration::from_secs(30))
-        .await?;
+    let Some(mut server) = force_lost_server(&codex_home).await? else {
+        return Ok(());
+    };
 
     let request_id = server
         .send_command_exec_request(CommandExecParams {
@@ -186,15 +186,9 @@ async fn license_lost_blocks_command_exec_and_write() -> Result<()> {
 #[tokio::test]
 async fn license_lost_allows_non_work_requests() -> Result<()> {
     let codex_home = TempDir::new()?;
-    let mut server = TestAppServer::builder()
-        .with_codex_home(codex_home.path())
-        .without_auto_env()
-        .with_env_overrides(&[
-            (fm_license::TEST_BYPASS_ENV_VAR, Some("1")),
-            (fm_license::TEST_FORCE_LOST_ENV_VAR, Some("1")),
-        ])
-        .build_initialized_with_timeout(Duration::from_secs(30))
-        .await?;
+    let Some(mut server) = force_lost_server(&codex_home).await? else {
+        return Ok(());
+    };
 
     let request_id = server
         .send_config_read_request(ConfigReadParams {

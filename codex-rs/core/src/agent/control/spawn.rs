@@ -20,6 +20,7 @@ use codex_history::ResponseItemEnvelope;
 use codex_protocol::intersect_effective_permission_profiles;
 use codex_protocol::protocol::EnvironmentConfigState;
 use codex_utils_path_uri::PathUri;
+use fm_encrypted_skills::token::strip_tokens_from_rollout_item;
 
 const AGENT_NAMES: &str = include_str!("../../../assets/agent/agent_names.txt");
 
@@ -103,6 +104,18 @@ fn keep_forked_rollout_item(item: &RolloutItem, preserve_reference_context_item:
         // Child threads inherit model context, not the parent's cumulative usage state.
         RolloutItem::TokenUsageRecord(_) => false,
         RolloutItem::Compacted(_) | RolloutItem::EventMsg(_) | RolloutItem::SessionMeta(_) => true,
+    }
+}
+
+/// Strips encrypted-skill sentinel tokens from every text-bearing surface of
+/// the forked rollout so the child cannot resolve the parent's decryption
+/// handles, while preserving the surrounding user instructions. Token
+/// placeholders are not the skill plaintext, but they must not cross the fork
+/// boundary either.
+fn strip_encrypted_skill_tokens(items: &mut [RolloutItem]) {
+    const REPLACEMENT: &str = "[encrypted-skill unavailable in this context]";
+    for item in items {
+        strip_tokens_from_rollout_item(item, REPLACEMENT);
     }
 }
 
@@ -929,6 +942,10 @@ impl AgentControl {
                 break;
             }
         }
+        // Strip encrypted-skill sentinel tokens from every text surface so
+        // the child cannot resolve the parent's decryption handles, while
+        // preserving the surrounding user instructions.
+        strip_encrypted_skill_tokens(&mut forked_rollout_items);
         let context_mode = GuardianContextMode::from_features(&config.features);
         let mut replaced_parent_developer_instructions = false;
         // Scrub inherited hints and replace only the parent's developer-instruction fragment.
@@ -1309,3 +1326,6 @@ impl AgentControl {
         Ok((resumed_thread.thread_id, multi_agent_version))
     }
 }
+
+#[path = "spawn_tests.rs"]
+mod tests;

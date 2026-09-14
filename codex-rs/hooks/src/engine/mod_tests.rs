@@ -1737,6 +1737,7 @@ fn bundled_cleanup_source(plugin_id: &str, server: &str, event: &str) -> PluginH
         source_path: plugin_root.join(".codex-plugin/plugin.json"),
         source_relative_path: "plugin.json#hooks[0]".to_string(),
         plugin_root,
+        is_managed: false,
         hooks: serde_json::from_value(serde_json::json!({
             (event): [{"hooks": [{
                 "type": "mcp_tool",

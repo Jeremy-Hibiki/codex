@@ -1327,5 +1327,6 @@ impl AgentControl {
     }
 }
 
+#[cfg(test)]
 #[path = "spawn_tests.rs"]
 mod tests;

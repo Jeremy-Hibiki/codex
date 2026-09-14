@@ -123,9 +123,9 @@ async fn first_layer_config_error_from_entries(layers: &[ConfigLayerEntry]) -> O
 /// - profile   `${GREVO_HOME}/<name>.config.toml`, when selected
 /// - cwd       `${PWD}/config.toml` (loaded but disabled when the directory is untrusted)
 /// - tree      parent directories up to root looking for `./.grevo/config.toml` (legacy
-///             `./.codex/config.toml` is still honored; loaded but disabled when untrusted)
+///   `./.codex/config.toml` is still honored; loaded but disabled when untrusted)
 /// - repo      `$(git rev-parse --show-toplevel)/.grevo/config.toml` (legacy
-///             `$(git rev-parse --show-toplevel)/.codex/config.toml` is still honored)
+///   `$(git rev-parse --show-toplevel)/.codex/config.toml` is still honored)
 /// - runtime   e.g., --config flags, model selector in UI
 ///
 /// (*) Only available on macOS via managed device profiles.

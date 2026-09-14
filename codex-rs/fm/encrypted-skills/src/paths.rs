@@ -196,15 +196,15 @@ fn path_references_guarded(token: &str, base: Option<&str>, dirs: &[String]) -> 
     if has_glob_meta(token) && glob_token_references_guarded(token, dirs) {
         return true;
     }
-    if let Some(base) = base {
-        if !token.starts_with('/') {
-            let joined = join_lexical(base, token);
-            if literal_token_guarded(&joined, dirs) {
-                return true;
-            }
-            if has_glob_meta(&joined) && glob_token_references_guarded(&joined, dirs) {
-                return true;
-            }
+    if let Some(base) = base
+        && !token.starts_with('/')
+    {
+        let joined = join_lexical(base, token);
+        if literal_token_guarded(&joined, dirs) {
+            return true;
+        }
+        if has_glob_meta(&joined) && glob_token_references_guarded(&joined, dirs) {
+            return true;
         }
     }
     false
@@ -992,10 +992,10 @@ fn controlled_tail_components(dirs: &[String]) -> Vec<String> {
         .map(String::as_str)
         .chain(std::iter::once(MEM_ROOT))
     {
-        if let Some(tail) = dir.split('/').filter(|c| !c.is_empty()).next_back() {
-            if !tails.iter().any(|known| known == tail) {
-                tails.push(tail.to_string());
-            }
+        if let Some(tail) = dir.split('/').rfind(|c| !c.is_empty())
+            && !tails.iter().any(|known| known == tail)
+        {
+            tails.push(tail.to_string());
         }
     }
     tails

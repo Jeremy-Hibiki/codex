@@ -48,7 +48,6 @@ pub const DISCOVERABLE_PLUGIN_MANIFEST_PATHS: &[&str] = &[
     ".grevo-plugin/plugin.json",
     // Legacy pre-rename plugin manifest, still honored for existing plugins.
     ".codex-plugin/plugin.json",
-    ".codex-plugin/plugin.json",
     ".claude-plugin/plugin.json",
     ".cursor-plugin/plugin.json",
 ];

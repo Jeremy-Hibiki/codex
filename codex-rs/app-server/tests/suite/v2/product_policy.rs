@@ -8,8 +8,10 @@ use codex_app_server_protocol::SandboxMode;
 use codex_app_server_protocol::SandboxPolicy;
 use codex_app_server_protocol::ThreadSettingsUpdateParams;
 use codex_app_server_protocol::ThreadStartParams;
+use codex_app_server_protocol::ThreadStartResponse;
 use codex_app_server_protocol::TurnStartParams;
 use codex_app_server_protocol::UserInput as V2UserInput;
+use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::time::timeout;
@@ -85,6 +87,23 @@ async fn danger_full_access_is_rejected_across_rpc_surfaces() -> Result<()> {
         })
         .await?;
     read_invalid_request_error(&mut mcp, RequestId::Integer(request_id)).await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn full_access_permissions_are_allowed_when_sandbox_is_not_bypassed() -> Result<()> {
+    let (mut mcp, _codex_home) = build_server().await?;
+
+    let request_id = mcp
+        .send_thread_start_request_with_auto_env(ThreadStartParams {
+            permissions: Some(BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS.to_string()),
+            ..Default::default()
+        })
+        .await?;
+    let ThreadStartResponse { thread, .. } =
+        timeout(DEFAULT_TIMEOUT, mcp.read_response(request_id)).await??;
+    assert!(!thread.id.is_empty());
 
     Ok(())
 }

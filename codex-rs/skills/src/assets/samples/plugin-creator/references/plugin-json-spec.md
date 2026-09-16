@@ -22,12 +22,12 @@
     "displayName": "Plugin Display Name",
     "shortDescription": "Short description for subtitle",
     "longDescription": "Long description for details page",
-    "developerName": "OpenAI",
+    "developerName": "Grevo",
     "category": "Productivity",
     "capabilities": ["Interactive", "Write"],
-    "websiteURL": "https://openai.com/",
-    "privacyPolicyURL": "https://openai.com/policies/row-privacy-policy/",
-    "termsOfServiceURL": "https://openai.com/policies/row-terms-of-use/",
+    "websiteURL": "https://grevo.dev/",
+    "privacyPolicyURL": "https://grevo.dev/privacy",
+    "termsOfServiceURL": "https://grevo.dev/terms",
     "defaultPrompt": [
       "Summarize my inbox and draft replies for me.",
       "Find open bugs and turn them into Linear tickets.",
@@ -128,9 +128,9 @@ personal marketplace unless the caller explicitly requests a repo-local destinat
 
 ```json
 {
-  "name": "openai-curated",
+  "name": "grevo-curated",
   "interface": {
-    "displayName": "ChatGPT Official"
+    "displayName": "Grevo Official"
   },
   "plugins": [
     {

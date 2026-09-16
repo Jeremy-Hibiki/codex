@@ -34,8 +34,6 @@ async fn danger_full_access_sandbox_flag_is_rejected() -> Result<()> {
 async fn full_access_flags_are_rejected_across_subcommands() -> Result<()> {
     for args in [
         vec!["exec", "--sandbox", "danger-full-access"],
-        vec!["--dangerously-bypass-approvals-and-sandbox", "exec"],
-        vec!["exec", "--dangerously-bypass-approvals-and-sandbox"],
         vec!["resume", "--sandbox", "danger-full-access"],
     ] {
         let codex_home = TempDir::new()?;

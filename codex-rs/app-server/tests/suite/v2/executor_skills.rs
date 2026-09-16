@@ -180,7 +180,7 @@ stream_max_retries = 0
     }
     let manifest_path = manifest_dir.join("plugin.json")?;
     let skill_path = skill_dir.join("SKILL.md")?;
-    let openai_yaml_path = agents_dir.join("openai.yaml")?;
+    let grevo_yaml_path = agents_dir.join("grevo.yaml")?;
     let reference_path = reference_dir.join("details.md")?;
     let reference_size = match scenario {
         ExecutorSkillScenario::VisibleWithBudgetWarning => 600 * 1024,
@@ -208,7 +208,7 @@ stream_max_retries = 0
             Default::default(), /*sandbox*/ None,
         ),
         file_system.write_file(
-            &openai_yaml_path,
+            &grevo_yaml_path,
             format!(
                 "policy:\n  allow_implicit_invocation: {allow_implicit_invocation}\n"
             )

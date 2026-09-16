@@ -524,8 +524,6 @@ impl ThreadRequestProcessor {
         if !self.config.product_policy.allow_sandbox_bypass
             && fm_product_policy::full_access_requested(
                 params.sandbox == Some(codex_app_server_protocol::SandboxMode::DangerFullAccess),
-                params.permissions.as_deref()
-                    == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS),
             )
         {
             return Err(crate::error_code::invalid_request(

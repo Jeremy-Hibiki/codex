@@ -254,7 +254,7 @@ async fn plugin_root_resolution_uses_supplied_executor_file_system() {
         )
     );
     let codex_manifest_path = plugin_root
-        .join(".codex-plugin/plugin.json")
+        .join(".grevo-plugin/plugin.json")
         .expect("codex manifest URI");
     assert_eq!(
         *file_system
@@ -303,7 +303,7 @@ async fn plugin_root_resolution_accepts_foreign_executor_file_uri() {
         )
     );
     let codex_manifest_path = plugin_root
-        .join(".codex-plugin/plugin.json")
+        .join(".grevo-plugin/plugin.json")
         .expect("codex manifest URI");
     assert_eq!(
         *file_system

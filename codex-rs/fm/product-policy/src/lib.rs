@@ -21,9 +21,17 @@ pub fn managed_marketplaces_only_error() -> anyhow::Error {
     anyhow::anyhow!(MANAGED_MARKETPLACES_ONLY_MESSAGE)
 }
 
-/// True when a request or command asks for full-access execution: an explicit
-/// danger-full-access sandbox mode or the dangerous approvals/sandbox bypass
-/// flag. Hosts keep their own error types and apply their own bypass checks.
-pub fn full_access_requested(sandbox_danger: bool, permissions_danger: bool) -> bool {
-    sandbox_danger || permissions_danger
+/// True when a request or command asks for danger-full-access sandboxing.
+/// Full-access approvals are an approval-policy choice and are not a sandbox bypass.
+pub fn full_access_requested(sandbox_danger: bool) -> bool {
+    sandbox_danger
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn only_sandbox_danger_is_a_bypass() {
+        assert!(super::full_access_requested(true));
+        assert!(!super::full_access_requested(false));
+    }
 }

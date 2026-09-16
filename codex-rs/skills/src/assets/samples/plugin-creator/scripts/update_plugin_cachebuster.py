@@ -15,14 +15,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from identifier_validation import validate_plugin_identifier
 
 
-CACHEBUSTER_PREFIX = "codex"
+CACHEBUSTER_PREFIX = "grevo"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Rewrite a local plugin's version so it preserves everything before '+' and uses "
-            "a single +codex.<cachebuster> suffix."
+            "a single +grevo.<cachebuster> suffix."
         )
     )
     parser.add_argument("plugin_path", help="Path to the plugin root directory")

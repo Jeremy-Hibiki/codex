@@ -45,6 +45,7 @@ zip = { workspace = true, features = ["deflate"] }
 # 2.32; tested release binaries require GLIBC_2.34).
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))'.dependencies]
 fmsh-ukey-core = { workspace = true }
+fmsh-ukey-sdk-wrapper = { workspace = true }
 fmsh-ukey-skill = { workspace = true }
 
 [dev-dependencies]

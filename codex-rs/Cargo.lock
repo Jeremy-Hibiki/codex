@@ -6310,6 +6310,7 @@ dependencies = [
  "codex-shell-command",
  "codex-utils-path-uri",
  "fmsh-ukey-core",
+ "fmsh-ukey-sdk-wrapper",
  "fmsh-ukey-skill",
  "libc",
  "pretty_assertions",

@@ -199,9 +199,9 @@ build_local() {
 
     # Replacing by rename keeps concurrent `mv` safe even when an old dist
     # binary is still running; Linux otherwise rejects truncating ETXTBSY files.
-    staged_bin="$(mktemp "$out_dir/codex.XXXXXX")"
+    staged_bin="$(mktemp "$out_dir/grevo.XXXXXX")"
     rm "$staged_bin"
-    cp "$codex_src/target/$target_subdir/codex" "$staged_bin"
+    cp "$codex_src/target/$target_subdir/grevo" "$staged_bin"
     if [[ "$profile" == "release" ]]; then
         echo "== release build: keeping symbols =="
     elif [[ "$profile" == "release" ]]; then

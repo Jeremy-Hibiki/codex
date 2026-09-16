@@ -185,8 +185,6 @@ impl TurnRequestProcessor {
             && fm_product_policy::full_access_requested(
                 params.sandbox_policy
                     == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
-                params.permissions.as_deref()
-                    == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS),
             )
         {
             return Err(crate::error_code::invalid_request(
@@ -224,8 +222,6 @@ impl TurnRequestProcessor {
             && fm_product_policy::full_access_requested(
                 params.sandbox_policy
                     == Some(codex_app_server_protocol::SandboxPolicy::DangerFullAccess),
-                params.permissions.as_deref()
-                    == Some(codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS),
             )
         {
             return Err(crate::error_code::invalid_request(

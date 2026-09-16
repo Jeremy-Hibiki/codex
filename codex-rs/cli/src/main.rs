@@ -968,13 +968,10 @@ pub(crate) fn build_version() -> String {
 }
 
 fn requests_full_access(shared: &SharedCliOptions) -> bool {
-    fm_product_policy::full_access_requested(
-        shared.dangerously_bypass_approvals_and_sandbox,
-        matches!(
-            shared.sandbox_mode,
-            Some(codex_utils_cli::SandboxModeCliArg::DangerFullAccess)
-        ),
-    )
+    fm_product_policy::full_access_requested(matches!(
+        shared.sandbox_mode,
+        Some(codex_utils_cli::SandboxModeCliArg::DangerFullAccess)
+    ))
 }
 
 fn subcommand_requests_full_access(subcommand: &Subcommand) -> bool {

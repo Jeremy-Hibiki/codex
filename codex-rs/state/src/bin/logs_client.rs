@@ -148,10 +148,10 @@ fn resolve_db_path(args: &Args) -> anyhow::Result<PathBuf> {
 
 fn default_codex_home() -> PathBuf {
     for key in ["GREVO_HOME", "CODEX_HOME"] {
-        if let Ok(value) = std::env::var(key) {
-            if !value.is_empty() {
-                return PathBuf::from(value);
-            }
+        if let Ok(value) = std::env::var(key)
+            && !value.is_empty()
+        {
+            return PathBuf::from(value);
         }
     }
     if let Some(home) = home_dir() {

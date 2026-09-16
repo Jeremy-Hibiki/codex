@@ -368,6 +368,8 @@ async fn reuses_walk_inventory_for_missing_skill_metadata() {
         .map(|path| PathUri::from_host_native_path(path).unwrap())
         .collect::<Vec<_>>();
     let manifest_uri = PathUri::from_host_native_path(manifest_path).unwrap();
+    let grevo_manifest_uri =
+        PathUri::from_host_native_path(root.path().join(".grevo-plugin/plugin.json")).unwrap();
     expected_read_files.push(manifest_uri.clone());
     expected_read_files.sort_by_key(ToString::to_string);
     assert_eq!(
@@ -375,7 +377,7 @@ async fn reuses_walk_inventory_for_missing_skill_metadata() {
         FileSystemCalls {
             walks: 1,
             read_files: expected_read_files,
-            metadata_files: vec![manifest_uri],
+            metadata_files: vec![manifest_uri, grevo_manifest_uri],
         }
     );
 }
@@ -456,7 +458,7 @@ async fn host_loading_reuses_walk_inventory_for_symlinked_skill_pack() {
         )
         .expect("skill");
     }
-    let metadata_path = skills_root.join("first/agents/openai.yaml");
+    let metadata_path = skills_root.join("first/agents/grevo.yaml");
     fs::create_dir_all(metadata_path.parent().expect("metadata parent")).expect("metadata dir");
     fs::write(
         &metadata_path,
@@ -548,7 +550,7 @@ async fn host_loading_reuses_walk_inventory_for_symlinked_skill_pack() {
         calls
             .metadata_files
             .iter()
-            .all(|path| path.basename().as_deref() != Some("openai.yaml"))
+            .all(|path| path.basename().as_deref() != Some("grevo.yaml"))
     );
     let manifest_uri =
         PathUri::from_host_native_path(dunce::canonicalize(manifest_path).unwrap()).unwrap();
@@ -568,7 +570,7 @@ async fn executor_bundle_parser_matches_the_existing_environment_loader() {
     let plugin_manifest = root.path().join(".codex-plugin/plugin.json");
     let nested_manifest = root.path().join("nested/.claude-plugin/plugin.json");
     let deploy_skill = root.path().join("skills/deploy/SKILL.md");
-    let deploy_metadata = root.path().join("skills/deploy/agents/openai.yaml");
+    let deploy_metadata = root.path().join("skills/deploy/agents/grevo.yaml");
     let audit_skill = root.path().join("nested/skills/audit/SKILL.md");
     for (path, contents) in [
         (&plugin_manifest, r#"{"name":"demo"}"#),

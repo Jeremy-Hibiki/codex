@@ -1464,7 +1464,7 @@ description: Visible only for ChatGPT
     )?;
     std::fs::create_dir_all(plugin_root.join("skills/thread-summarizer/agents"))?;
     std::fs::write(
-        plugin_root.join("skills/thread-summarizer/agents/openai.yaml"),
+        plugin_root.join("skills/thread-summarizer/agents/grevo.yaml"),
         r#"policy:
   products:
     - CODEX
@@ -1472,7 +1472,7 @@ description: Visible only for ChatGPT
     )?;
     std::fs::create_dir_all(plugin_root.join("skills/chatgpt-only/agents"))?;
     std::fs::write(
-        plugin_root.join("skills/chatgpt-only/agents/openai.yaml"),
+        plugin_root.join("skills/chatgpt-only/agents/grevo.yaml"),
         r#"policy:
   products:
     - CHATGPT

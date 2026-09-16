@@ -25,7 +25,7 @@ const MAX_FILE_BYTES: usize = 1024 * 1024;
 const MAX_BUNDLE_BYTES_PER_ROOT: usize = 16 * 1024 * 1024;
 const MAX_CONCURRENT_ROOTS: usize = 8;
 const SKILL_FILE_NAME: &str = "SKILL.md";
-const SKILL_METADATA_PATH: &str = "agents/openai.yaml";
+const SKILL_METADATA_PATH: &str = "agents/grevo.yaml";
 const DEFAULT_MCP_CONFIG_PATH: &str = ".mcp.json";
 
 #[derive(Debug, thiserror::Error)]

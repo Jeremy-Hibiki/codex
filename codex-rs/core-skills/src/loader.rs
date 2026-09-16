@@ -160,7 +160,7 @@ struct ParsedSkillFrontmatter {
 const SKILLS_FILENAME: &str = "SKILL.md";
 const AGENTS_DIR_NAME: &str = ".agents";
 const SKILLS_METADATA_DIR: &str = "agents";
-const SKILLS_METADATA_FILENAME: &str = "openai.yaml";
+const SKILLS_METADATA_FILENAME: &str = "grevo.yaml";
 const SKILLS_DIR_NAME: &str = "skills";
 const MAX_NAME_LEN: usize = 64;
 const MAX_QUALIFIED_NAME_LEN: usize = 128;

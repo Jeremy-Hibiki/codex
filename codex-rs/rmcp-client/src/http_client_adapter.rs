@@ -555,6 +555,7 @@ async fn collect_body(
 fn sse_stream_from_body(
     body_stream: HttpResponseBodyStream,
 ) -> BoxStream<'static, std::result::Result<Sse, sse_stream::Error>> {
+    #[allow(deprecated)] // rmcp dependency still pins the typo'd API; switch when upgraded
     SseStream::from_byte_stream(stream::unfold(body_stream, |mut body_stream| async move {
         match body_stream.recv().await {
             Ok(Some(bytes)) => Some((Ok(Bytes::from(bytes)), body_stream)),

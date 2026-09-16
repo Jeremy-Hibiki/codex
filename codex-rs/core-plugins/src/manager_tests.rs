@@ -1940,7 +1940,7 @@ async fn install_plugin_materializes_default_command_skills() {
         &format!("---\ndescription: Oversized\n---\n{}", "x".repeat(4_000)),
     );
     write_file(
-        &source_root.join(".codex-plugin/migrated-command-skills/undeclared-command/SKILL.md"),
+        &source_root.join(".grevo-plugin/migrated-command-skills/undeclared-command/SKILL.md"),
         "---\nname: undeclared-command\ndescription: undeclared command\n---\n",
     );
     let result = PluginStore::new(codex_home.path().to_path_buf())
@@ -1951,7 +1951,7 @@ async fn install_plugin_materializes_default_command_skills() {
         .unwrap();
     let migrated_skill = result
         .installed_path
-        .join(".codex-plugin/migrated-command-skills/source-command-pr-review/SKILL.md");
+        .join(".grevo-plugin/migrated-command-skills/source-command-pr-review/SKILL.md");
     let expected_migrated_skill = "---\nname: \"source-command-pr-review\"\ndescription: \"Review a pull request\"\n---\n\n# source-command-pr-review\n\nUse this skill when the user asks to run the migrated source command `pr-review`.\n\n## Command Template\n\nInspect the proposed changes.\n";
     assert_eq!(
         fs::read_to_string(&migrated_skill).unwrap(),
@@ -1960,13 +1960,13 @@ async fn install_plugin_materializes_default_command_skills() {
     assert!(
         !result
             .installed_path
-            .join(".codex-plugin/migrated-command-skills/undeclared-command")
+            .join(".grevo-plugin/migrated-command-skills/undeclared-command")
             .exists()
     );
     assert!(
         !result
             .installed_path
-            .join(".codex-plugin/migrated-command-skills/source-command-oversized")
+            .join(".grevo-plugin/migrated-command-skills/source-command-oversized")
             .exists()
     );
 
@@ -1999,7 +1999,7 @@ async fn install_plugin_materializes_default_command_skills() {
             .unwrap(),
             AbsolutePathBuf::from_absolute_path_checked(
                 fs::canonicalize(result.installed_path.join(
-                    ".codex-plugin/migrated-command-skills/source-command-summarize/SKILL.md"
+                    ".grevo-plugin/migrated-command-skills/source-command-summarize/SKILL.md"
                 ))
                 .unwrap()
             )
@@ -2031,7 +2031,7 @@ fn install_plugin_ignores_invalid_commands_manifest_field() {
     assert!(
         !result
             .installed_path
-            .join(".codex-plugin/migrated-command-skills")
+            .join(".grevo-plugin/migrated-command-skills")
             .exists()
     );
 }
@@ -3150,7 +3150,7 @@ async fn install_plugin_writes_marketplace_manifest_fallback_when_missing_plugin
     assert_eq!(interface.developer_name.as_deref(), Some("Byron Grogan"));
     assert_eq!(interface.category.as_deref(), Some("code-review"));
     let fallback_json: serde_json::Value = serde_json::from_str(
-        &fs::read_to_string(installed_path.join(".codex-plugin/plugin.json")).unwrap(),
+        &fs::read_to_string(installed_path.join(".grevo-plugin/plugin.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(
@@ -3161,7 +3161,7 @@ async fn install_plugin_writes_marketplace_manifest_fallback_when_missing_plugin
     assert_eq!(
         fs::read_to_string(
             installed_path
-                .join(".codex-plugin/migrated-command-skills/source-command-review/SKILL.md")
+                .join(".grevo-plugin/migrated-command-skills/source-command-review/SKILL.md")
         )
         .unwrap(),
         "---\nname: \"source-command-review\"\ndescription: \"Review code\"\n---\n\n# source-command-review\n\nUse this skill when the user asks to run the migrated source command `review`.\n\n## Command Template\n\nReview the current change.\n"

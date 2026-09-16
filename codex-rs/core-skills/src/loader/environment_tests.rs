@@ -30,7 +30,7 @@ async fn loads_plugin_namespace_dependencies_and_policy() {
     )
     .expect("skill");
     fs::write(
-        skill_dir.join("agents/openai.yaml"),
+        skill_dir.join("agents/grevo.yaml"),
         r#"
 dependencies:
   tools:

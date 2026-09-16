@@ -451,7 +451,7 @@ def validate_skill_manifest(skill_root: Path, errors: list[str]) -> None:
         errors.append(
             f"skill `{skill_root.name}` frontmatter field `disable-model-invocation` must be false"
         )
-    agent_yaml_path = skill_root / "agents" / "openai.yaml"
+    agent_yaml_path = skill_root / "agents" / "grevo.yaml"
     if agent_yaml_path.is_file():
         validate_skill_agent_manifest(
             plugin_root=skill_root.parent.parent,

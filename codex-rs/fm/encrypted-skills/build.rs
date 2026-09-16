@@ -7,8 +7,10 @@ fn main() {
     {
         return;
     }
-    let lib_dir = env::var("DEP_FMSH_UKEY_SDK_LIB_DIR")
-        .expect("DEP_FMSH_UKEY_SDK_LIB_DIR missing; fmsh-ukey-core must be a direct dependency");
+    let lib_dir = match env::var("DEP_FMSH_UKEY_SDK_LIB_DIR") {
+        Ok(dir) => dir,
+        Err(_) => panic!("DEP_FMSH_UKEY_SDK_LIB_DIR missing; fmsh-ukey-core must be a direct dependency"),
+    };
     println!("cargo:rustc-link-search=native={lib_dir}");
     println!("cargo:rustc-link-lib=dylib=fmsh_ukey_sdk");
     println!("cargo:rustc-link-arg=-Wl,-rpath,{lib_dir}");

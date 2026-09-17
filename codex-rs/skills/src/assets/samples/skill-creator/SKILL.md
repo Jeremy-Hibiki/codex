@@ -37,7 +37,7 @@ skill-name/
 |   |-- YAML frontmatter     Required name and description
 |   `-- Markdown body        Instructions loaded when the skill is used
 |-- agents/                  Optional UI metadata and invocation policy
-|   `-- openai.yaml
+|   `-- grevo.yaml
 |-- scripts/                 Optional executable helpers
 |-- references/              Optional documentation loaded as needed
 `-- assets/                  Optional files used in generated output
@@ -52,6 +52,14 @@ The YAML frontmatter identifies the skill and determines when it should be consi
 The Markdown body is loaded only when the skill is used. Put the purpose, essential workflow, real constraints, and useful links there. Keep detailed procedures and examples in supporting references when they are relevant only to particular modes.
 
 Skill information is disclosed in three stages:
+
+- UI-facing metadata for skill lists and chips
+- Read references/grevo_yaml.md before generating values and follow its descriptions and constraints
+- Create: human-facing `display_name`, `short_description`, and `default_prompt` by reading the skill
+- Generate deterministically by passing the values as `--interface key=value` to `scripts/generate_grevo_yaml.py` or `scripts/init_skill.py`
+- On updates: validate `agents/grevo.yaml` still matches SKILL.md; regenerate if stale
+- Only include other optional interface fields (icons, brand color) if explicitly provided
+- See references/grevo_yaml.md for field definitions and examples
 
 1. **Name and description:** Available during skill selection, so keep them concise and discriminating.
 2. **SKILL.md body:** Loaded when the skill applies, so keep its instructions relevant to that task.
@@ -89,7 +97,7 @@ Use `assets/` for files that belong in generated output rather than in the model
 
 ### UI Metadata and Invocation Policy
 
-`agents/openai.yaml` can provide UI-facing metadata such as `display_name`, `short_description`, and `default_prompt`, along with invocation policy. When creating or updating those settings, read [references/openai_yaml.md](references/openai_yaml.md) and keep the values consistent with the skill.
+`agents/grevo.yaml` can provide UI-facing metadata such as `display_name`, `short_description`, and `default_prompt`, along with invocation policy. When creating or updating those settings, read [references/grevo_yaml.md](references/grevo_yaml.md) and keep the values consistent with the skill.
 
 Automatic skill selection is allowed by default. Change that default only when the user explicitly requests an explicit-only skill:
 
@@ -98,15 +106,15 @@ policy:
   allow_implicit_invocation: false
 ```
 
-This keeps the skill available when explicitly invoked as `$skill-name` without adding it to the model context automatically. Preserve unrelated existing UI, policy, and dependency fields when updating `agents/openai.yaml`.
+This keeps the skill available when explicitly invoked as `$skill-name` without adding it to the model context automatically. Preserve unrelated existing UI, policy, and dependency fields when updating `agents/grevo.yaml`.
 
 The initializer creates this file automatically. For new or interface-only metadata, generate it with:
 
 ```bash
-scripts/generate_openai_yaml.py <path/to/skill-folder> --interface key=value
+scripts/generate_grevo_yaml.py <path/to/skill-folder> --interface key=value
 ```
 
-The generator replaces the entire file. If an existing file contains `policy` or `dependencies`, update only the intended fields in place instead of regenerating it.
+The generator replaces the entire file. If an existing file contains `policy` or `dependencies`, update only the intended fields in place instead of regenerating it. For full field descriptions and examples, see references/grevo_yaml.md.
 
 Include optional interface fields only when the user provides or requests them.
 
@@ -184,7 +192,7 @@ scripts/init_skill.py my-skill --path "${GREVO_HOME:-$HOME/.grevo}/skills" --res
 
 Request only the resource directories the skill needs. Use `--examples` only when concrete placeholders would help, and replace or remove them before finishing. Do not initialize an existing skill again.
 
-The initializer creates the skill directory, a concise `SKILL.md` starter, and `agents/openai.yaml`. It creates resource directories and example files only when requested. Pass generated UI values as `--interface key=value` when needed.
+The initializer creates the skill directory, a concise `SKILL.md` starter, and `agents/grevo.yaml`. It creates resource directories and example files only when requested. Pass generated UI values as `--interface key=value` when needed.
 
 ### Write the Instructions
 

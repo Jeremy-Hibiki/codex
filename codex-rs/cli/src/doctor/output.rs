@@ -1196,7 +1196,7 @@ mod tests {
             )
             .detail("terminal title source: default")
             .detail("terminal title items: activity, project-name")
-            .detail("terminal title project value: codex"),
+            .detail("terminal title project value: grevo"),
             DoctorCheck::new(
                 "state.paths",
                 "state",
@@ -1282,10 +1282,10 @@ Environment
       version                  git version 2.54.0
       repo detected            true
   ⚠ terminal     narrow terminal
-  ✓ title        default · project codex
+  ✓ title        default · project grevo
       title source             default
       title items              activity, project-name
-      project value            codex
+      project value            grevo
   ✓ state        state paths inspectable
 
 Configuration
@@ -1401,7 +1401,7 @@ Environment
   ✓ search       search is OK (bundled)
   ✓ git          git version 2.54.0
   ⚠ terminal     narrow terminal
-  ✓ title        default · project codex
+  ✓ title        default · project grevo
   ✓ state        state paths inspectable
 
 Configuration
@@ -1509,7 +1509,7 @@ Environment
   [ok] search       search is OK (bundled)
   [ok] git          git version 2.54.0
   [!!] terminal     narrow terminal
-  [ok] title        default | project codex
+  [ok] title        default | project grevo
   [ok] state        state paths inspectable
 
 Configuration

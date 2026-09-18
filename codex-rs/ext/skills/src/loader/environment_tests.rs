@@ -33,7 +33,7 @@ async fn direct_environment_loader_preserves_plugin_dependencies_and_product_pol
     )
     .expect("skill");
     fs::write(
-        skill_dir.join("agents/openai.yaml"),
+        skill_dir.join("agents/grevo.yaml"),
         r#"
 dependencies:
   tools:
@@ -93,7 +93,7 @@ async fn executor_bundle_parser_matches_direct_environment_loader() {
     let plugin_manifest = root.path().join(".codex-plugin/plugin.json");
     let nested_manifest = root.path().join("nested/.claude-plugin/plugin.json");
     let deploy_skill = root.path().join("skills/deploy/SKILL.md");
-    let deploy_metadata = root.path().join("skills/deploy/agents/openai.yaml");
+    let deploy_metadata = root.path().join("skills/deploy/agents/grevo.yaml");
     let audit_skill = root.path().join("nested/skills/audit/SKILL.md");
     for (path, contents) in [
         (&plugin_manifest, r#"{"name":"demo"}"#),

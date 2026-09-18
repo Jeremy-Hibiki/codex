@@ -10,7 +10,7 @@ use crate::SkillInterface;
 const MAX_NAME_LEN: usize = 64;
 const MAX_DESCRIPTION_LEN: usize = 1024;
 
-/// Interface metadata deserialized from a skill's `agents/openai.yaml` file.
+/// Interface metadata deserialized from a skill's `agents/grevo.yaml` file.
 #[derive(Debug, Default, Deserialize)]
 pub struct SkillInterfaceFile {
     display_name: Option<String>,

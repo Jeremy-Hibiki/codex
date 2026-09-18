@@ -37,7 +37,7 @@ fn write_skill(root: &TempDir, directory: &str, frontmatter: &str) -> AbsolutePa
 fn write_metadata(root: &TempDir, directory: &str, contents: &str) {
     let metadata_dir = root.path().join(directory).join("agents");
     fs::create_dir_all(&metadata_dir).expect("create metadata directory");
-    fs::write(metadata_dir.join("openai.yaml"), contents).expect("write metadata");
+    fs::write(metadata_dir.join("grevo.yaml"), contents).expect("write metadata");
 }
 
 fn root_for(temp_dir: &TempDir, scope: SkillScope) -> HostSkillRoot {

@@ -181,7 +181,7 @@ metrics_exporter = {{ otlp-http = {{ endpoint = "{collector_url}/v1/metrics", pr
     let bin_dir = package.path().join("bin");
     std::fs::create_dir(&bin_dir)?;
     let executable = bin_dir.join(format!("codex{}", std::env::consts::EXE_SUFFIX));
-    std::fs::copy(codex_utils_cargo_bin::cargo_bin("codex")?, &executable)?;
+    std::fs::copy(codex_utils_cargo_bin::cargo_bin("grevo")?, &executable)?;
     let manifest = package.path().join("codex-package.json");
     std::fs::write(&manifest, r#"{"version":"1.2.3-alpha.4"}"#)?;
 

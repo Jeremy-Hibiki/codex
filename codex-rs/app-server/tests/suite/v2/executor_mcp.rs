@@ -142,7 +142,7 @@ async fn selected_executor_discovers_browser_mcp_with_executor_only_bearer_token
     )?;
     // Browser auth tokens are not inherited by spawned executors, so use the production
     // WebSocket connection and put the token directly in the executor's environment.
-    let mut executor = Command::new(codex_utils_cargo_bin::cargo_bin("codex")?)
+    let mut executor = Command::new(codex_utils_cargo_bin::cargo_bin("grevo")?)
         .args(["exec-server", "--listen", "ws://127.0.0.1:0"])
         .stdout(Stdio::piped())
         .kill_on_drop(true)
@@ -285,7 +285,7 @@ async fn legacy_executor_skips_required_browser_and_keeps_host_owned_mcp() -> Re
         ),
     )?;
 
-    let mut executor = Command::new(codex_utils_cargo_bin::cargo_bin("codex")?)
+    let mut executor = Command::new(codex_utils_cargo_bin::cargo_bin("grevo")?)
         .args(["exec-server", "--listen", "ws://127.0.0.1:0"])
         .stdout(Stdio::piped())
         .kill_on_drop(true)
@@ -428,7 +428,7 @@ async fn guardian_review_does_not_discover_executor_mcp() -> Result<()> {
         .write(codex_home.path())?;
     std::fs::write(executor_home.path().join("config.toml"), "")?;
     let codex_bin = toml::Value::String(
-        codex_utils_cargo_bin::cargo_bin("codex")?
+        codex_utils_cargo_bin::cargo_bin("grevo")?
             .to_string_lossy()
             .into_owned(),
     );

@@ -176,7 +176,7 @@ async fn product_filtered_native_skill_does_not_hide_migrated_command() {
     let metadata_dir = fixture.native_root.join("review/agents");
     fs::create_dir_all(&metadata_dir).expect("create metadata directory");
     fs::write(
-        metadata_dir.join("openai.yaml"),
+        metadata_dir.join("grevo.yaml"),
         "policy:\n  products: [CHATGPT]\n",
     )
     .expect("write product policy");

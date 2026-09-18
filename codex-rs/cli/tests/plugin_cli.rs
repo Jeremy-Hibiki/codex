@@ -1262,7 +1262,7 @@ impl RemoteMarketplaceFixture {
     }
 
     async fn run(&self, args: &[&str]) -> Result<Output> {
-        Ok(Command::new(codex_utils_cargo_bin::cargo_bin("codex")?)
+        Ok(Command::new(codex_utils_cargo_bin::cargo_bin("grevo")?)
             .current_dir(self.home.path())
             .env("CODEX_HOME", self.home.path())
             .env("HOME", self.home.path())

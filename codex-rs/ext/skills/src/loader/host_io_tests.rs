@@ -37,7 +37,7 @@ async fn host_loading_reuses_walk_inventory_for_symlinked_skill_pack() {
         )
         .expect("skill");
     }
-    let metadata_path = skills_root.join("first/agents/openai.yaml");
+    let metadata_path = skills_root.join("first/agents/grevo.yaml");
     fs::create_dir_all(metadata_path.parent().expect("metadata parent")).expect("metadata dir");
     fs::write(
         &metadata_path,
@@ -125,7 +125,7 @@ async fn host_loading_reuses_walk_inventory_for_symlinked_skill_pack() {
         calls
             .metadata_files
             .iter()
-            .all(|path| path.basename().as_deref() != Some("openai.yaml"))
+            .all(|path| path.basename().as_deref() != Some("grevo.yaml"))
     );
     let manifest_uri =
         PathUri::from_host_native_path(dunce::canonicalize(manifest_path).unwrap()).unwrap();

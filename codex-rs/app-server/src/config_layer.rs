@@ -6,7 +6,7 @@ use codex_config::ConfigLayerMetadata;
 use codex_config::ConfigLayerSource;
 
 /// Converts a config-layer source owned by `codex-config` into the app-server wire type owned by
-/// `codex-app-server-protocol`.
+/// `grevo-app-server-protocol`.
 ///
 /// The types stay separate so app-server protocol ownership does not leak into the config domain
 /// crate. Because this crate owns neither type, Rust's orphan rules require an explicit conversion
@@ -36,7 +36,7 @@ pub(crate) fn config_layer_source_to_api(source: ConfigLayerSource) -> ApiConfig
 }
 
 /// Converts config-layer metadata owned by `codex-config` into the app-server wire type owned by
-/// `codex-app-server-protocol`.
+/// `grevo-app-server-protocol`.
 ///
 /// The types stay separate so app-server protocol ownership does not leak into the config domain
 /// crate. Because this crate owns neither type, Rust's orphan rules require an explicit conversion
@@ -51,7 +51,7 @@ pub(crate) fn config_layer_metadata_to_api(
 }
 
 /// Converts a config layer owned by `codex-config` into the app-server wire type owned by
-/// `codex-app-server-protocol`.
+/// `grevo-app-server-protocol`.
 ///
 /// The types stay separate so app-server protocol ownership does not leak into the config domain
 /// crate. Because this crate owns neither type, Rust's orphan rules require an explicit conversion

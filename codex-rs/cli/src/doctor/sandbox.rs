@@ -97,7 +97,7 @@ pub(super) fn sandbox_check(config: &Config, arg0_paths: &Arg0DispatchPaths) -> 
     ));
     push_path_detail(
         &mut details,
-        "codex-linux-sandbox helper",
+        "grevo-linux-sandbox helper",
         arg0_paths.codex_linux_sandbox_exe.as_deref(),
     );
     push_path_detail(

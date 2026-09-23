@@ -188,12 +188,12 @@ class AppServerClient:
         )
         self._stdout_thread = threading.Thread(
             target=self._read_stdout,
-            name="codex-app-server-stdout",
+            name="grevo-app-server-stdout",
             daemon=True,
         )
         self._stderr_thread = threading.Thread(
             target=self._read_stderr,
-            name="codex-app-server-stderr",
+            name="grevo-app-server-stderr",
             daemon=True,
         )
         self._stdout_thread.start()

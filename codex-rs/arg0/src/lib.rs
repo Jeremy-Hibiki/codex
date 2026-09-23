@@ -21,7 +21,7 @@ use tempfile::TempDir;
 const APPLY_PATCH_ARG0: &str = "apply_patch";
 const MISSPELLED_APPLY_PATCH_ARG0: &str = "applypatch";
 #[cfg(unix)]
-const EXECVE_WRAPPER_ARG0: &str = "codex-execve-wrapper";
+const EXECVE_WRAPPER_ARG0: &str = "grevo-execve-wrapper";
 const LOCK_FILENAME: &str = ".lock";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -199,14 +199,14 @@ fn prepare_path_env_var_with_aliases(
 /// Linux (but not Windows).
 ///
 /// When the current executable is invoked through the hard-link or alias named
-/// `codex-linux-sandbox` we *directly* execute
+/// `grevo-linux-sandbox` we *directly* execute
 /// [`codex_linux_sandbox::run_main`] (which never returns). Otherwise we:
 ///
 /// 1.  Load `.env` values from `~/.codex/.env` before creating any threads.
 /// 2.  Spawn a main runtime thread with a controlled stack size.
 /// 3.  Construct a Tokio multi-thread runtime.
 /// 4.  Capture the current executable path and derive the
-///     `codex-linux-sandbox` helper path (falling back to the current
+///     `grevo-linux-sandbox` helper path (falling back to the current
 ///     executable if needed) so children can re-invoke the sandbox when running
 ///     on Linux.
 /// 5.  Execute the provided async `main_fn` inside that runtime, forwarding any
@@ -279,7 +279,7 @@ fn linux_sandbox_exe_path(
     path_entry_guard: Option<&Arg0PathEntryGuard>,
     current_exe: Option<PathBuf>,
 ) -> Option<PathBuf> {
-    // Prefer the `codex-linux-sandbox` alias when available so callers can
+    // Prefer the `grevo-linux-sandbox` alias when available so callers can
     // re-exec through a path whose basename still triggers arg0 dispatch on
     // bubblewrap builds that do not support `--argv0`.
     path_entry_guard
@@ -577,7 +577,7 @@ mod tests {
         let arg0_dir = temp_dir.path().join("arg0");
         let package_dir = temp_dir.path().join("package");
         let bin_dir = package_dir.join("bin");
-        let path_dir = package_dir.join("codex-path");
+        let path_dir = package_dir.join("grevo-path");
         let existing_dir = temp_dir.path().join("existing-bin");
         fs::create_dir_all(&arg0_dir)?;
         fs::create_dir_all(&bin_dir)?;
@@ -651,7 +651,7 @@ mod tests {
     fn linux_sandbox_exe_path_prefers_codex_linux_sandbox_alias() -> std::io::Result<()> {
         let temp_dir = TempDir::new()?;
         let lock_file = create_lock(temp_dir.path())?;
-        let alias_path = temp_dir.path().join("codex-linux-sandbox");
+        let alias_path = temp_dir.path().join("grevo-linux-sandbox");
         let path_entry = Arg0PathEntryGuard::new(
             temp_dir,
             lock_file,

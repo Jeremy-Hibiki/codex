@@ -42,7 +42,7 @@ def main() -> None:
             "cargo",
             "test",
             "-p",
-            "codex-app-server-protocol",
+            "grevo-app-server-protocol",
             "--lib",
             "schema_fixtures_tests::write_schema_fixtures_from_env",
             "--",

@@ -149,7 +149,7 @@ pub use crate::transport::auth::WebsocketAuthCliMode;
 pub use crate::transport::take_remote_control_disabled_env;
 
 const LOG_FORMAT_ENV_VAR: &str = "LOG_FORMAT";
-const OTEL_SERVICE_NAME: &str = "codex-app-server";
+const OTEL_SERVICE_NAME: &str = "grevo-app-server";
 #[cfg(debug_assertions)]
 const TEST_USER_CONFIG_FILE_ENV_VAR: &str = "CODEX_APP_SERVER_TEST_USER_CONFIG_FILE";
 
@@ -1440,7 +1440,7 @@ mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn debug_test_user_config_file_overrides_loader_path() {
-        let path = std::env::temp_dir().join("codex-app-server-test-config.toml");
+        let path = std::env::temp_dir().join("grevo-app-server-test-config.toml");
         let loader_overrides = loader_overrides_with_test_user_config_file(
             LoaderOverrides::default(),
             Some(path.clone()),

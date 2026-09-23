@@ -76,8 +76,8 @@
 
 ### Round 1 验证
 - workspace check 0 error;clippy(全部涉及 crate)0 error;fmt 干净
-- fm-encrypted-skills 211/211(serial);fm-license 12/12(bypass,skip child);codex-core lib 2467 过/10 败(7 基线 + 3 负载 flake,隔离全过);codex-app-server 失败集 ⊆ 基线
-- tui composer 333 过;codex-exec 78 过
+- fm-encrypted-skills 211/211(serial);fm-license 12/12(bypass,skip child);codex-core lib 2467 过/10 败(7 基线 + 3 负载 flake,隔离全过);grevo-app-server 失败集 ⊆ 基线
+- tui composer 333 过;grevo-exec 78 过
 
 
 ---
@@ -121,7 +121,7 @@
 **G3 勘误**:工单示例 `$CODEX_HOME/../x/.codex/config.toml` 归一后在 home 外,本就允许(合法);真正被堵的是 `$CODEX_HOME/sub/../config.toml` 回拼写法。AbsolutePathBuf 反序列化即解析 `..`,RPC 路径 `..` 到不了守卫。
 
 ### Round 2 验证
-- workspace check 0 错;clippy(fm-encrypted-skills/fm-license/codex-core/codex-app-server/codex-exec --all-targets)0 错(修掉 G1 引入的 2 处 needless_borrow + 1 处 useless_format)
+- workspace check 0 错;clippy(fm-encrypted-skills/fm-license/codex-core/grevo-app-server/grevo-exec --all-targets)0 错(修掉 G1 引入的 2 处 needless_borrow + 1 处 useless_format)
 - fm-encrypted-skills 211/211(serial);fm-license 12/12(bypass,skip child);encrypted_skills 集成 20/20;core lib 2469 通过/12 失败(10 个既有基线+2 个负载 flake:stdin_approval_preserves_the_reviewed_terminal、multi_agent_v2_does_not_expose_model_overrides_by_default 隔离运行均过;基线 7 + guardian_ephemeral_retry/isolated 过往 flake)
 
 ---

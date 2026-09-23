@@ -182,7 +182,7 @@ metrics_exporter = {{ otlp-http = {{ endpoint = "{collector_url}/v1/metrics", pr
     std::fs::create_dir(&bin_dir)?;
     let executable = bin_dir.join(format!("codex{}", std::env::consts::EXE_SUFFIX));
     std::fs::copy(codex_utils_cargo_bin::cargo_bin("grevo")?, &executable)?;
-    let manifest = package.path().join("codex-package.json");
+    let manifest = package.path().join("grevo-package.json");
     std::fs::write(&manifest, r#"{"version":"1.2.3-alpha.4"}"#)?;
 
     let mut command = tokio::process::Command::new(executable);

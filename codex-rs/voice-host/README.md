@@ -1,6 +1,6 @@
 # Private voice helper foundation
 
-`codex-voice-host` establishes the inherited-pipe lifecycle for the proposed
+`grevo-voice-host` establishes the inherited-pipe lifecycle for the proposed
 bundled voice process and owns WebRTC negotiation and opt-in local devices.
 It does not enable voice in the TUI. The existing CLI is unchanged.
 
@@ -64,7 +64,7 @@ Bazel stamps the binary with `STABLE_GIT_COMMIT`. Cargo builders must provide th
 same variable; an unstamped source build reports `dev` via `--build-commit` and is
 not a distributable build identity. The client/control crate has no native audio
 dependencies. `VoiceHost` resolves only the physical package's
-`codex-resources/voice/bin/codex-voice-host[.exe]`, filters the child environment,
+`grevo-resources/voice/bin/grevo-voice-host[.exe]`, filters the child environment,
 and owns process cleanup through `codex-utils-pty`. Its runtime must remain alive
 to reap a dropped helper; explicit `close` waits for process exit.
 
@@ -99,7 +99,7 @@ integration stages; a prepared runtime is required for packaged lifecycle calls.
 
 The ignored `packaged_runtime` integration test uses real libraries prepared for
 the host platform. From `codex-rs`, run
-`CODEX_TEST_VOICE_RUNTIME=/absolute/prepared/runtime just test -p codex-voice-host --test packaged_runtime --run-ignored all`.
+`CODEX_TEST_VOICE_RUNTIME=/absolute/prepared/runtime just test -p grevo-voice-host --test packaged_runtime --run-ignored all`.
 It copies and relocates the runtime with the real helper, checks client
 initialization and close, and rejects duplicate initialization. This requires
 native inputs separately; ordinary CI does not run this ignored test. It tests

@@ -33,7 +33,7 @@ async fn load_mock_mentions(responses: MockResponses) -> Result<(ConnectorsSnaps
             let request_id = request.id.clone();
             let response = match request.method.as_str() {
                 "initialize" => {
-                    json!({ "id": request_id, "result": { "userAgent": "codex-tui-test" } })
+                    json!({ "id": request_id, "result": { "userAgent": "grevo-tui-test" } })
                 }
                 "app/installed" => {
                     assert_eq!(

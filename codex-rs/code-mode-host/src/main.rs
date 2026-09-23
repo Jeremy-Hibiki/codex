@@ -63,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
     if let Some(trace_transport) = trace_transport.as_ref() {
         let listen_addr = trace_transport.listen_addr();
-        tracing::info!("codex-code-mode-host OTEL trace websocket listening on ws://{listen_addr}");
+        tracing::info!("grevo-code-mode-host OTEL trace websocket listening on ws://{listen_addr}");
     }
     tracing::info_span!(
         "code_mode_host.startup",
@@ -91,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
 fn build_trace_provider(endpoint: &str) -> anyhow::Result<OtelProvider> {
     OtelProvider::try_new(&OtelSettings {
         environment: "code-mode-host".to_string(),
-        service_name: "codex-code-mode-host".to_string(),
+        service_name: "grevo-code-mode-host".to_string(),
         service_version: env!("CARGO_PKG_VERSION").to_string(),
         codex_home: PathBuf::from("/tmp"),
         exporter: OtelExporter::None,

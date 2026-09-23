@@ -152,7 +152,7 @@ pub fn add_originator_header(headers: &mut HeaderMap, originator_value: &str) {
 
 pub fn is_first_party_originator(originator_value: &str) -> bool {
     originator_value == DEFAULT_ORIGINATOR
-        || originator_value == "codex-tui"
+        || originator_value == "grevo-tui"
         || originator_value == "codex_vscode"
         || originator_value.starts_with("Codex ")
 }

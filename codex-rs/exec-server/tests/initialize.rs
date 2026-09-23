@@ -27,7 +27,7 @@ async fn exec_server_accepts_initialize(version: Option<&str>) -> anyhow::Result
     std::fs::create_dir(&bin_dir)?;
     let executable = bin_dir.join(format!("codex{}", std::env::consts::EXE_SUFFIX));
     std::fs::copy(std::env::current_exe()?, &executable)?;
-    let manifest = package.path().join("codex-package.json");
+    let manifest = package.path().join("grevo-package.json");
     if let Some(version) = version {
         std::fs::write(
             &manifest,

@@ -1,14 +1,14 @@
-# codex-app-server-client
+# grevo-app-server-client
 
 Shared in-process app-server client used by conversational CLI surfaces:
 
-- `codex-exec`
-- `codex-tui`
+- `grevo-exec`
+- `grevo-tui`
 
 ## Purpose
 
 This crate centralizes startup and lifecycle management for an in-process
-`codex-app-server` runtime, so CLI clients do not need to duplicate:
+`grevo-app-server` runtime, so CLI clients do not need to duplicate:
 
 - app-server bootstrap and initialize handshake
 - in-memory request/event transport wiring

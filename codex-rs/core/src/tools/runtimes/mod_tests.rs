@@ -189,16 +189,16 @@ fn runtime_path_prepends_records_runtime_path_prepend() {
     let mut env = HashMap::from([("PATH".to_string(), "/usr/bin:/bin".to_string())]);
     let mut runtime_path_prepends = RuntimePathPrepends::default();
 
-    runtime_path_prepends.prepend(&mut env, PathBuf::from("/package/codex-path").as_path());
+    runtime_path_prepends.prepend(&mut env, PathBuf::from("/package/grevo-path").as_path());
 
     assert_eq!(
         env.get("PATH").map(String::as_str),
-        Some("/package/codex-path:/usr/bin:/bin"),
+        Some("/package/grevo-path:/usr/bin:/bin"),
         "runtime PATH prepend should update the live exec environment"
     );
     assert_eq!(
         runtime_path_prepends.entries,
-        vec!["/package/codex-path"],
+        vec!["/package/grevo-path"],
         "runtime PATH prepend should be recorded for snapshot replay"
     );
 }
@@ -208,20 +208,20 @@ fn runtime_path_prepends_records_runtime_path_prepend() {
 fn runtime_path_prepends_drops_empty_path_entries() {
     let mut env = HashMap::from([(
         "PATH".to_string(),
-        ":/usr/bin:/package/codex-path::/bin:".to_string(),
+        ":/usr/bin:/package/grevo-path::/bin:".to_string(),
     )]);
     let mut runtime_path_prepends = RuntimePathPrepends::default();
 
-    runtime_path_prepends.prepend(&mut env, PathBuf::from("/package/codex-path").as_path());
+    runtime_path_prepends.prepend(&mut env, PathBuf::from("/package/grevo-path").as_path());
 
     assert_eq!(
         env.get("PATH").map(String::as_str),
-        Some("/package/codex-path:/usr/bin:/bin"),
+        Some("/package/grevo-path:/usr/bin:/bin"),
         "empty PATH entries should be dropped instead of preserving current-directory lookup"
     );
     assert_eq!(
         runtime_path_prepends.entries,
-        vec!["/package/codex-path"],
+        vec!["/package/grevo-path"],
         "deduped runtime PATH prepend should still be recorded once"
     );
 }
@@ -255,15 +255,15 @@ fn apply_zsh_fork_path_prepend_uses_shell_parent() {
     apply_zsh_fork_path_prepend(
         &mut env,
         &mut runtime_path_prepends,
-        PathBuf::from("/package/codex-resources/zsh/bin/zsh").as_path(),
+        PathBuf::from("/package/grevo-resources/zsh/bin/zsh").as_path(),
     );
 
-    let expected = "/package/codex-resources/zsh/bin:/usr/bin:/bin";
+    let expected = "/package/grevo-resources/zsh/bin:/usr/bin:/bin";
     assert_eq!(env.get("PATH").map(String::as_str), Some(expected));
     assert_eq!(
         runtime_path_prepends,
         RuntimePathPrepends {
-            entries: vec!["/package/codex-resources/zsh/bin".to_string()]
+            entries: vec!["/package/grevo-resources/zsh/bin".to_string()]
         }
     );
 }
@@ -273,7 +273,7 @@ fn apply_zsh_fork_path_prepend_uses_shell_parent() {
 fn apply_zsh_fork_path_prepend_moves_existing_shell_parent_to_front() {
     let mut env = HashMap::from([(
         "PATH".to_string(),
-        "/usr/bin:/package/codex-resources/zsh/bin:/bin:/package/codex-resources/zsh/bin"
+        "/usr/bin:/package/grevo-resources/zsh/bin:/bin:/package/grevo-resources/zsh/bin"
             .to_string(),
     )]);
     let mut runtime_path_prepends = RuntimePathPrepends::default();
@@ -281,17 +281,17 @@ fn apply_zsh_fork_path_prepend_moves_existing_shell_parent_to_front() {
     apply_zsh_fork_path_prepend(
         &mut env,
         &mut runtime_path_prepends,
-        PathBuf::from("/package/codex-resources/zsh/bin/zsh").as_path(),
+        PathBuf::from("/package/grevo-resources/zsh/bin/zsh").as_path(),
     );
 
     assert_eq!(
         env.get("PATH").map(String::as_str),
-        Some("/package/codex-resources/zsh/bin:/usr/bin:/bin")
+        Some("/package/grevo-resources/zsh/bin:/usr/bin:/bin")
     );
     assert_eq!(
         runtime_path_prepends,
         RuntimePathPrepends {
-            entries: vec!["/package/codex-resources/zsh/bin".to_string()]
+            entries: vec!["/package/grevo-resources/zsh/bin".to_string()]
         }
     );
 }
@@ -1138,7 +1138,7 @@ fn run_snapshot_path_probe_with_runtime_path_prepend(
         "-lc".to_string(),
         "printf '%s' \"$PATH\"".to_string(),
     ];
-    let package_path_dir = dir.path().join("codex-path");
+    let package_path_dir = dir.path().join("grevo-path");
     let mut env = HashMap::from([("PATH".to_string(), "/worktree/bin".to_string())]);
     let mut runtime_path_prepends = RuntimePathPrepends::default();
     runtime_path_prepends.prepend(&mut env, package_path_dir.as_path());
@@ -1184,7 +1184,7 @@ fn maybe_wrap_shell_lc_with_snapshot_preserves_zsh_fork_path_prepend() {
     ];
     let zsh_path = dir
         .path()
-        .join("codex-resources")
+        .join("grevo-resources")
         .join("zsh")
         .join("bin")
         .join("zsh");

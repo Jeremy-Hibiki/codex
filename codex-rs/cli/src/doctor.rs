@@ -3148,8 +3148,8 @@ mod tests {
         ]);
         let arg0_paths = Arg0DispatchPaths {
             codex_self_exe: Some(PathBuf::from("/bin/codex")),
-            codex_linux_sandbox_exe: Some(PathBuf::from("/bin/codex-linux-sandbox")),
-            main_execve_wrapper_exe: Some(PathBuf::from("/bin/codex-execve-wrapper")),
+            codex_linux_sandbox_exe: Some(PathBuf::from("/bin/grevo-linux-sandbox")),
+            main_execve_wrapper_exe: Some(PathBuf::from("/bin/grevo-execve-wrapper")),
         };
 
         let overrides = config_overrides_from_interactive(&interactive, &arg0_paths);

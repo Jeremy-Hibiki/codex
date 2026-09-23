@@ -15,7 +15,7 @@ release_source="github"
 BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"
 BIN_PATH="$BIN_DIR/grevo"
 LEGACY_BIN_PATH="$BIN_DIR/codex"
-CODE_MODE_HOST_BIN_PATH="$BIN_DIR/codex-code-mode-host"
+CODE_MODE_HOST_BIN_PATH="$BIN_DIR/grevo-code-mode-host"
 GREVO_HOME_DIR="${GREVO_HOME:-${CODEX_HOME:-$HOME/.grevo}}"
 STANDALONE_ROOT="$GREVO_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
@@ -957,10 +957,10 @@ install_package_release() {
   tar -xzf "$archive_path" -C "$stage_release"
   chmod 0755 \
     "$stage_release/bin/codex" \
-    "$stage_release/bin/codex-code-mode-host" \
-    "$stage_release/codex-path/rg"
-  if [ -f "$stage_release/codex-resources/bwrap" ]; then
-    chmod 0755 "$stage_release/codex-resources/bwrap"
+    "$stage_release/bin/grevo-code-mode-host" \
+    "$stage_release/grevo-path/rg"
+  if [ -f "$stage_release/grevo-resources/bwrap" ]; then
+    chmod 0755 "$stage_release/grevo-resources/bwrap"
   fi
   ln -sf "bin/codex" "$stage_release/codex"
 
@@ -980,15 +980,15 @@ install_legacy_platform_npm_release() {
 
   mkdir -p "$RELEASES_DIR"
   rm -rf "$stage_release" "$extract_dir"
-  mkdir -p "$stage_release/codex-resources" "$extract_dir"
+  mkdir -p "$stage_release/grevo-resources" "$extract_dir"
   tar -xzf "$archive_path" -C "$extract_dir"
 
   cp "$vendor_root/codex/codex" "$stage_release/codex"
-  cp "$vendor_root/path/rg" "$stage_release/codex-resources/rg"
-  chmod 0755 "$stage_release/codex" "$stage_release/codex-resources/rg"
-  if [ -f "$vendor_root/codex-resources/bwrap" ]; then
-    cp "$vendor_root/codex-resources/bwrap" "$stage_release/codex-resources/bwrap"
-    chmod 0755 "$stage_release/codex-resources/bwrap"
+  cp "$vendor_root/path/rg" "$stage_release/grevo-resources/rg"
+  chmod 0755 "$stage_release/codex" "$stage_release/grevo-resources/rg"
+  if [ -f "$vendor_root/grevo-resources/bwrap" ]; then
+    cp "$vendor_root/grevo-resources/bwrap" "$stage_release/grevo-resources/bwrap"
+    chmod 0755 "$stage_release/grevo-resources/bwrap"
   fi
 
   if [ -e "$release_dir" ] || [ -L "$release_dir" ]; then
@@ -1009,16 +1009,16 @@ release_dir_is_complete() {
 
   case "$layout" in
     package)
-      [ -f "$release_dir/codex-package.json" ] &&
+      [ -f "$release_dir/grevo-package.json" ] &&
         [ -x "$release_dir/bin/codex" ] &&
-        [ -x "$release_dir/bin/codex-code-mode-host" ] &&
+        [ -x "$release_dir/bin/grevo-code-mode-host" ] &&
         [ -x "$release_dir/codex" ] &&
-        [ -x "$release_dir/codex-path/rg" ] ||
+        [ -x "$release_dir/grevo-path/rg" ] ||
         return 1
       ;;
     legacy-platform-npm)
       [ -x "$release_dir/codex" ] &&
-        [ -x "$release_dir/codex-resources/rg" ] ||
+        [ -x "$release_dir/grevo-resources/rg" ] ||
         return 1
       ;;
     *)
@@ -1028,7 +1028,7 @@ release_dir_is_complete() {
 
   case "$layout:$expected_target" in
     package:*linux* | legacy-platform-npm:*linux*)
-      [ -x "$release_dir/codex-resources/bwrap" ] || return 1
+      [ -x "$release_dir/grevo-resources/bwrap" ] || return 1
       ;;
   esac
 
@@ -1082,13 +1082,13 @@ update_visible_command() {
   tmp_link="$BIN_DIR/.codex.$$"
   replace_path_with_symlink "$LEGACY_BIN_PATH" "$CURRENT_LINK/$codex_relative_path" "$tmp_link"
 
-  if [ "$os" = "darwin" ] && [ -x "$release_dir/bin/codex-code-mode-host" ]; then
+  if [ "$os" = "darwin" ] && [ -x "$release_dir/bin/grevo-code-mode-host" ]; then
     replace_path_with_symlink \
       "$CODE_MODE_HOST_BIN_PATH" \
-      "$CURRENT_LINK/bin/codex-code-mode-host" \
+      "$CURRENT_LINK/bin/grevo-code-mode-host" \
       "$tmp_link"
   elif [ "$(readlink "$CODE_MODE_HOST_BIN_PATH" 2>/dev/null || true)" = \
-    "$CURRENT_LINK/bin/codex-code-mode-host" ]; then
+    "$CURRENT_LINK/bin/grevo-code-mode-host" ]; then
     rm -f "$CODE_MODE_HOST_BIN_PATH"
   fi
 }

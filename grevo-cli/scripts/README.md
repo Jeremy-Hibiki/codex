@@ -7,7 +7,7 @@ example, to stage the CLI, responses proxy, and SDK packages for version `0.6.0`
 ./scripts/stage_npm_packages.py \
   --release-version 0.6.0 \
   --package codex \
-  --package codex-responses-api-proxy \
+  --package grevo-responses-api-proxy \
   --package codex-sdk
 ```
 

@@ -149,8 +149,8 @@ fn event_target(value: &str) -> Option<&'static str> {
     let package = parts.iter().any(|part| part.starts_with("openai.codex_"));
     let trusted = package || parts.windows(2).any(|pair| pair == ["openai", "codex"]);
     match name {
-        "codex-windows-sandbox-setup.exe" => Some("sandbox_setup"),
-        "codex-command-runner.exe" => Some("command_runner"),
+        "grevo-windows-sandbox-setup.exe" => Some("sandbox_setup"),
+        "grevo-command-runner.exe" => Some("command_runner"),
         "codex.exe" => Some("codex"),
         "codex-desktop.exe" => Some("codex_desktop"),
         "chatgpt.exe" | "electron.exe" if trusted => Some("codex_desktop"),

@@ -69,7 +69,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean \
     && apt-get update && apt-get install -y --no-install-recommends \
     bash curl git ca-certificates xz-utils pkg-config make perl cmake upx-ucl \
-    gcc-10 g++-10 \
+    gcc-10 g++-10 libcap-dev \
     && update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-10 100 \
     && update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-10 100 \
     && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 100 \
@@ -141,12 +141,24 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     set -eu; \
     export FMSH_UKEY_SDK_LINK FMSH_UKEY_LIBSTDCPP; \
     if [ "$CARGO_PROFILE" = "debug" ]; then \
-    cargo build -p codex-cli --bin grevo \
-    && cp target/debug/grevo /codex-grevo; \
+    cargo build --bin bwrap \
+    && cp target/debug/bwrap /codex-bwrap; \
     else \
-    cargo build --release -p codex-cli --bin grevo \
+    cargo build --release --bin bwrap \
+    && strip --strip-debug --strip-unneeded target/release/bwrap \
+    && cp target/release/bwrap /codex-bwrap; \
+    fi \
+    && export CODEX_BWRAP_SHA256="$(sha256sum /codex-bwrap | awk '{print $1}')" \
+    && echo "embedded CODEX_BWRAP_SHA256: ${CODEX_BWRAP_SHA256}" \
+    && if [ "$CARGO_PROFILE" = "debug" ]; then \
+    cargo build -p codex-cli -p codex-code-mode-host --bin grevo \
+    && cp target/debug/grevo /codex-grevo \
+    && cp target/debug/grevo-code-mode-host /grevo-code-mode-host; \
+    else \
+    cargo build --release -p codex-cli -p codex-code-mode-host --bin grevo \
     && strip target/release/grevo \
-    && cp target/release/grevo /codex-grevo; \
+    && cp target/release/grevo /codex-grevo \
+    && cp target/release/grevo-code-mode-host /grevo-code-mode-host; \
     fi
 
 # ── bundle runtime libs ───────────────────────────────────────────────────
@@ -156,8 +168,11 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
 # the host: Ubuntu 22.04 ships libssl3).
 ARG FMSH_UKEY_SDK_LINK
 RUN --mount=type=cache,target=/root/.cargo/git,sharing=locked \
-    mkdir -p /codex/lib \
+    mkdir -p /codex/lib /codex/grevo-resources \
     && cp /codex-grevo /codex/grevo \
+    && cp /grevo-code-mode-host /codex/grevo-code-mode-host \
+    && cp /codex-bwrap /codex/grevo-resources/bwrap \
+    && chmod 0755 /codex/grevo-resources/bwrap \
     && SDK_LIB="$(find /root/.cargo/git/checkouts/fmsh-ukey-lib-* -path '*/vendor/fmsh-ukey-sdk/linux/lib' | head -1)" \
     && if [ "$FMSH_UKEY_SDK_LINK" != "static" ]; then \
     cp -fL "$SDK_LIB"/libfmsh_ukey_sdk.so.0 /codex/lib/; \
@@ -181,7 +196,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     $( [ "$FMSH_UKEY_SDK_LINK" = "static" ] || echo libssl3 )
 
 COPY --from=builder /codex/grevo /usr/local/bin/grevo
+COPY --from=builder /codex/grevo-code-mode-host /usr/local/bin/grevo-code-mode-host
+COPY --from=builder /codex/grevo-resources /usr/local/bin/grevo-resources
 COPY --from=builder /codex/lib /usr/local/bin/lib
-RUN chmod +x /usr/local/bin/grevo
+RUN chmod +x /usr/local/bin/grevo /usr/local/bin/grevo-code-mode-host /usr/local/bin/grevo-resources/bwrap
 
 ENTRYPOINT ["grevo"]

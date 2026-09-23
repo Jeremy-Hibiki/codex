@@ -125,7 +125,7 @@ metrics_exporter = {{ otlp-http = {{ endpoint = "{}/metrics", protocol = "json" 
     let provider = codex_core::otel_init::build_provider(
         &config,
         "test",
-        Some("codex-app-server"),
+        Some("grevo-app-server"),
         /*default_analytics_enabled*/ false,
     )
     .map_err(|error| anyhow::anyhow!(error.to_string()))?
@@ -158,7 +158,7 @@ metrics_exporter = {{ otlp-http = {{ endpoint = "{}/metrics", protocol = "json" 
         enable_codex_api_key_env: false,
         initialize: InitializeParams {
             client_info: ClientInfo {
-                name: "codex-app-server-tests".to_string(),
+                name: "grevo-app-server-tests".to_string(),
                 title: None,
                 version: "test".to_string(),
             },

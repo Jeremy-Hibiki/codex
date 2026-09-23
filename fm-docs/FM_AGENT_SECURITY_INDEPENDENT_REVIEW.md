@@ -118,6 +118,6 @@ core/src 净 **+506/-351 = +155 行**（23 文件），core 净增长。但增�
 ### 最终验证
 
 - `just fmt` 通过。
-- `cargo check -p fm-encrypted-skills -p fm-product-policy -p codex-core -p codex-app-server -p codex-cli` 全通过（唯一 warning 是既有的 `before_tool_with_runtime_and_binds` dead code，非本次引入）。
+- `cargo check -p fm-encrypted-skills -p fm-product-policy -p codex-core -p grevo-app-server -p codex-cli` 全通过（唯一 warning 是既有的 `before_tool_with_runtime_and_binds` dead code，非本次引入）。
 - `just test -p fm-encrypted-skills -p fm-product-policy` → **190/190 通过**。
 - `just test -p codex-core agent_security spawn` → **106/106 通过**。

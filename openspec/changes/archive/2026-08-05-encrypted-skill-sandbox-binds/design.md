@@ -20,7 +20,7 @@
 
 ### 1. `ReadonlyBind` 放 protocol，`readonly_binds` serde 默认空
 
-`FileSystemSandboxPolicy` 通过 JSON 在 core → codex-linux-sandbox → bwrap 间传递；加字段并 `#[serde(default)]` 保证旧请求/远程 exec-server 兼容。
+`FileSystemSandboxPolicy` 通过 JSON 在 core → grevo-linux-sandbox → bwrap 间传递；加字段并 `#[serde(default)]` 保证旧请求/远程 exec-server 兼容。
 
 ### 2. bwrap 挂载顺序与缺失 target
 

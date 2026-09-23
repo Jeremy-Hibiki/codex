@@ -1,8 +1,8 @@
 use std::env;
 use std::path::PathBuf;
 
-const SETUP_BIN: &str = "codex-windows-sandbox-setup";
-const SETUP_MANIFEST: &str = "codex-windows-sandbox-setup.manifest";
+const SETUP_BIN: &str = "grevo-windows-sandbox-setup";
+const SETUP_MANIFEST: &str = "grevo-windows-sandbox-setup.manifest";
 
 fn main() -> Result<(), String> {
     println!("cargo:rerun-if-changed={SETUP_MANIFEST}");

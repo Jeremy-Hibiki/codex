@@ -202,7 +202,7 @@ async fn thread_start_rejects_paginated_history_without_list_support() -> Result
     timeout(
         DEFAULT_READ_TIMEOUT,
         mcp.initialize_with_client_info(ClientInfo {
-            name: "codex-app-server-tests".to_string(),
+            name: "grevo-app-server-tests".to_string(),
             title: None,
             version: "0.1.0".to_string(),
         }),
@@ -485,7 +485,7 @@ async fn start_in_process_client(
         enable_codex_api_key_env: false,
         initialize: InitializeParams {
             client_info: ClientInfo {
-                name: "codex-app-server-tests".to_string(),
+                name: "grevo-app-server-tests".to_string(),
                 title: None,
                 version: "0.1.0".to_string(),
             },

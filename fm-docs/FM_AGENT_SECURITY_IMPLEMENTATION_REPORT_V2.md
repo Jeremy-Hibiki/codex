@@ -75,7 +75,7 @@
 |---|---|
 | codex-encrypted-skills | 75/75 |
 | codex-core-skills | 131/131（含 3 个 frontmatter 解析 + 4 个注入分支测试） |
-| codex-app-server-protocol | 277/277（含 schema 一致性） |
+| grevo-app-server-protocol | 277/277（含 schema 一致性） |
 | codex-config | 227/227 |
 | codex-core（client_common / guard / spawn） | 8 / 8 / 4 |
 | core/suite `encrypted_skills` 集成 | 5/5：rollout 只含 Token；请求带 framed 内容且无 `/dev/shm`；原地址改写执行 + 输出脱敏；直接读取被拦；TTL 内重提复用同一 token；导出明文拦截 |
@@ -339,7 +339,7 @@ TTL sweep 原只在 **turn 边界**（`build_skills_and_plugins`）执行——�
 - **明文默认语义**：`encrypted: false, encryption: None` 即「明文常规 Skill」，加载/执行走原有 `load_plaintext_skill` 路径（直接读 SKILL.md），`is_encrypted()` 为 false 时不进入加解密分支——明文 Skill 行为零变化；
 - **wire 层缺省**：v2 协议字段已带 `#[serde(default)]`，JSON 缺省即明文；只有 Rust 字面量需要显式；
 - **为何不用 `..Default::default()`**：`SkillMetadata` 含 `AbsolutePathBuf`、`EnvironmentSkillMetadata` 含 `PathUri`，均无 `Default`（需手写占位路径，语义差）；且展开语法会静默重置漏写的旧字段（隐患）。显式两字段是当前最小且清晰的修复；
-- 验证：`cargo check --workspace --all-targets` 全绿；codex-skills-extension 15/15、codex-tui bottom_pane 758/758、composer_submission 40/40。
+- 验证：`cargo check --workspace --all-targets` 全绿；codex-skills-extension 15/15、grevo-tui bottom_pane 758/758、composer_submission 40/40。
 
 ### 发现的问题（P1）
 

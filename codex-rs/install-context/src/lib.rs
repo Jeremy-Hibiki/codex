@@ -9,14 +9,14 @@ use serde::Deserialize;
 
 const BIN_DIRNAME: &str = "bin";
 const CODE_MODE_HOST_EXECUTABLE_NAME: &str = if cfg!(windows) {
-    "codex-code-mode-host.exe"
+    "grevo-code-mode-host.exe"
 } else {
-    "codex-code-mode-host"
+    "grevo-code-mode-host"
 };
-const PACKAGE_METADATA_FILENAME: &str = "codex-package.json";
-const PATH_DIRNAME: &str = "codex-path";
+const PACKAGE_METADATA_FILENAME: &str = "grevo-package.json";
+const PATH_DIRNAME: &str = "grevo-path";
 const RELEASES_DIRNAME: &str = "releases";
-const RESOURCES_DIRNAME: &str = "codex-resources";
+const RESOURCES_DIRNAME: &str = "grevo-resources";
 const STANDALONE_PACKAGES_DIRNAME: &str = "standalone";
 const ZSH_DIRNAME: &str = "zsh";
 static INSTALL_CONTEXT: OnceLock<InstallContext> = OnceLock::new();
@@ -58,7 +58,7 @@ pub enum InstallMethod {
         /// such as
         /// `~/.codex/packages/standalone/releases/0.111.0-x86_64-unknown-linux-musl`.
         /// Package-layout installs use the package root that contains `bin/`,
-        /// `codex-resources/`, and `codex-path/`.
+        /// `grevo-resources/`, and `grevo-path/`.
         release_dir: AbsolutePathBuf,
         /// The bundled resource directory for managed dependencies.
         resources_dir: Option<AbsolutePathBuf>,
@@ -174,7 +174,7 @@ impl InstallContext {
     }
 
     pub fn code_mode_host_program(&self) -> PathBuf {
-        // prefer the one packed under codex-resources
+        // prefer the one packed under grevo-resources
         self.bundled_resource(CODE_MODE_HOST_EXECUTABLE_NAME)
             .map_or_else(
                 || self.code_mode_host_program_from_exe(std::env::current_exe().ok().as_deref()),
@@ -547,8 +547,8 @@ mod tests {
   "target": "x86_64-unknown-linux-musl",
   "variant": "codex",
   "entrypoint": "bin/codex",
-  "resourcesDir": "codex-resources",
-  "pathDir": "codex-path"
+  "resourcesDir": "grevo-resources",
+  "pathDir": "grevo-path"
 }
 "#,
         )?;

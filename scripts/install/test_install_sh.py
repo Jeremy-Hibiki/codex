@@ -124,12 +124,12 @@ class InstallShTest(unittest.TestCase):
             current = root / "codex-home" / "packages" / "standalone" / "current"
             codex_path = install_bin / "codex"
             grevo_path = install_bin / "grevo"
-            host_path = install_bin / "codex-code-mode-host"
+            host_path = install_bin / "grevo-code-mode-host"
             self.assertEqual(os.readlink(codex_path), str(current / "bin" / "codex"))
             self.assertEqual(os.readlink(grevo_path), str(current / "bin" / "codex"))
             self.assertEqual(
                 os.readlink(host_path),
-                str(current / "bin" / "codex-code-mode-host"),
+                str(current / "bin" / "grevo-code-mode-host"),
             )
             self.assertTrue(os.access(host_path, os.X_OK))
 
@@ -711,17 +711,17 @@ def create_package_release(
 ) -> tuple[Path, Path, str]:
     package_dir = root / "package"
     (package_dir / "bin").mkdir(parents=True)
-    (package_dir / "codex-path").mkdir()
-    (package_dir / "codex-package.json").write_text("{}\n", encoding="utf-8")
+    (package_dir / "grevo-path").mkdir()
+    (package_dir / "grevo-package.json").write_text("{}\n", encoding="utf-8")
     write_executable(
         package_dir / "bin" / "codex",
         f"#!/bin/sh\nprintf 'codex-cli {VERSION}\\n'\n",
     )
     write_executable(
-        package_dir / "bin" / "codex-code-mode-host",
+        package_dir / "bin" / "grevo-code-mode-host",
         "#!/bin/sh\nexit 0\n",
     )
-    write_executable(package_dir / "codex-path" / "rg", "#!/bin/sh\nexit 0\n")
+    write_executable(package_dir / "grevo-path" / "rg", "#!/bin/sh\nexit 0\n")
 
     asset = "codex-package-aarch64-apple-darwin.tar.gz"
     archive_path = root / asset

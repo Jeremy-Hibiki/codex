@@ -92,7 +92,7 @@ fn stage_windows_sandbox_helpers() -> anyhow::Result<()> {
     let test_exe_dir = test_exe
         .parent()
         .context("Windows test executable should have a parent directory")?;
-    let resources_dir = test_exe_dir.join("codex-resources");
+    let resources_dir = test_exe_dir.join("grevo-resources");
     match std::fs::create_dir_all(&resources_dir) {
         Ok(()) => {}
         Err(err)
@@ -102,7 +102,7 @@ fn stage_windows_sandbox_helpers() -> anyhow::Result<()> {
                 .with_context(|| format!("create resources dir {}", resources_dir.display()));
         }
     }
-    for helper_name in ["codex-windows-sandbox-setup", "codex-command-runner"] {
+    for helper_name in ["grevo-windows-sandbox-setup", "grevo-command-runner"] {
         let helper = codex_utils_cargo_bin::cargo_bin(helper_name)?;
         let file_name = Path::new(helper_name).with_extension("exe");
         let destination = resources_dir.join(file_name);
@@ -131,21 +131,21 @@ fn escape_toml_path(path: &Path) -> String {
 
 fn stage_windows_sandbox_cli(fixture_bin: &Path) -> anyhow::Result<(PathBuf, PathBuf)> {
     std::fs::create_dir_all(fixture_bin)?;
-    let resources_dir = fixture_bin.join("codex-resources");
+    let resources_dir = fixture_bin.join("grevo-resources");
     std::fs::create_dir_all(&resources_dir)?;
 
     let codex_source = codex_utils_cargo_bin::cargo_bin("grevo")?;
     let codex = fixture_bin.join("codex.exe");
     std::fs::copy(&codex_source, &codex)
         .with_context(|| format!("copy {} to {}", codex_source.display(), codex.display()))?;
-    for helper_name in ["codex-windows-sandbox-setup", "codex-command-runner"] {
+    for helper_name in ["grevo-windows-sandbox-setup", "grevo-command-runner"] {
         let helper = codex_utils_cargo_bin::cargo_bin(helper_name)?;
         let destination = resources_dir.join(Path::new(helper_name).with_extension("exe"));
         std::fs::copy(&helper, &destination)
             .with_context(|| format!("copy {} to {}", helper.display(), destination.display()))?;
     }
 
-    let probe_source = codex_utils_cargo_bin::cargo_bin("codex-windows-managed-deny-probe")?;
+    let probe_source = codex_utils_cargo_bin::cargo_bin("grevo-windows-managed-deny-probe")?;
     let probe = fixture_bin.join("managed-deny-probe.exe");
     std::fs::copy(&probe_source, &probe)
         .with_context(|| format!("copy {} to {}", probe_source.display(), probe.display()))?;

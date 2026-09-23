@@ -743,11 +743,11 @@ fn create_test_package_app_server(codex_home: &Path, zsh_path: &Path) -> Result<
     };
     std::fs::create_dir_all(&bin_dir)?;
     std::fs::create_dir_all(zsh_bin_dir)?;
-    std::fs::write(package_dir.join("codex-package.json"), "{}")?;
+    std::fs::write(package_dir.join("grevo-package.json"), "{}")?;
 
-    let app_server = bin_dir.join("codex-app-server");
+    let app_server = bin_dir.join("grevo-app-server");
     copy_with_permissions(
-        &codex_utils_cargo_bin::cargo_bin("codex-app-server")?,
+        &codex_utils_cargo_bin::cargo_bin("grevo-app-server")?,
         &app_server,
     )?;
     copy_with_permissions(zsh_path, &package_zsh_path)?;
@@ -757,7 +757,7 @@ fn create_test_package_app_server(codex_home: &Path, zsh_path: &Path) -> Result<
 fn packaged_zsh_path(codex_home: &Path) -> PathBuf {
     codex_home
         .join("test-package")
-        .join("codex-resources")
+        .join("grevo-resources")
         .join("zsh")
         .join("bin")
         .join("zsh")

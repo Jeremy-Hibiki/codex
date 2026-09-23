@@ -66,7 +66,7 @@ class SmokePackage:
                 tarfile.open(fileobj=source, mode="r|") as archive,
             ):
                 archive.extractall(extracted, filter="data")
-            manifest = json.loads((extracted / "codex-package.json").read_text())
+            manifest = json.loads((extracted / "grevo-package.json").read_text())
             extracted_packages.append(
                 (
                     extracted,
@@ -191,9 +191,9 @@ def code_mode_host_debug_symbols(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Path:
     target = pytestconfig.getoption("package_target")
-    binaries = {"codex", "codex-app-server", "codex-code-mode-host"}
+    binaries = {"codex", "grevo-app-server", "grevo-code-mode-host"}
     if "windows" in target:
-        binaries.update({"codex-command-runner", "codex-windows-sandbox-setup"})
+        binaries.update({"grevo-command-runner", "grevo-windows-sandbox-setup"})
 
     if "apple-darwin" in target:
         markers = {
@@ -221,7 +221,7 @@ def code_mode_host_debug_symbols(
                 if not matches:
                     continue
                 found.add(binary)
-                if binary == "codex-code-mode-host":
+                if binary == "grevo-code-mode-host":
                     archive.extract(member, destination, filter="data")
                     symbol_path = destination / member.name
                 break

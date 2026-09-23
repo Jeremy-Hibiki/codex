@@ -15,7 +15,7 @@ use codex_connectors::ConnectorToolSummary;
 use codex_connectors::metadata::connector_install_url;
 
 /// Converts connector-domain app metadata owned by `codex-connectors` into the app-server wire
-/// type owned by `codex-app-server-protocol`.
+/// type owned by `grevo-app-server-protocol`.
 ///
 /// The types stay separate so app-server protocol ownership does not leak into the connector
 /// domain crate. Because this crate owns neither type, Rust's orphan rules require an explicit

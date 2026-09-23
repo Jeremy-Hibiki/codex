@@ -53,12 +53,12 @@
 | fm-encrypted-skills | 142 / 142 |
 | codex-protocol | 265 / 265 |
 | codex-cli | 289 通过 / 40 忽略（插件/市场原测试 `#[ignore]`） |
-| codex-app-server | 902 通过 / 130 忽略（4 个 zsh-fork 用例全量负载下超时、单独重跑全绿） |
-| codex-linux-sandbox | 122 / 124（2 个已知环境性网络用例失败，与改动无关） |
+| grevo-app-server | 902 通过 / 130 忽略（4 个 zsh-fork 用例全量负载下超时、单独重跑全绿） |
+| grevo-linux-sandbox | 122 / 124（2 个已知环境性网络用例失败，与改动无关） |
 | codex-core（加密相关过滤） | encrypted_skills + guard + agent_security = 96 / 96 |
 | codex-core 全量 | 环境相关失败约 21 + 1 超时（真实 `~/.agents/skills` 污染、项目信任状态、代理网络、MCP 超时），与本分支改动文件无关 |
 | `just clippy`（workspace，含 tests） | 通过（仅 rmcp 弃用警告） |
-| bazel build | `//codex-rs/cli:codex`、`//codex-rs/app-server:codex-app-server`、`//codex-rs/linux-sandbox:codex-linux-sandbox`、`//codex-rs/fm/encrypted-skills:encrypted-skills` 成功 |
+| bazel build | `//codex-rs/cli:codex`、`//codex-rs/app-server:grevo-app-server`、`//codex-rs/linux-sandbox:grevo-linux-sandbox`、`//codex-rs/fm/encrypted-skills:encrypted-skills` 成功 |
 
 ### 1.5 分支状态
 
@@ -97,7 +97,7 @@
 ### 2.4 环境相关未闭环项（非本分支代码问题）
 
 - codex-core 全量测试中约 21 个失败 + 1 个超时：真实 `~/.agents/skills` 污染 skills 目录测试、项目信任状态、代理网络下的 approvals/network/unified_exec、MCP 超时。
-- codex-linux-sandbox 2 个网络用例（wget/socketpair）在代理环境超时。
+- grevo-linux-sandbox 2 个网络用例（wget/socketpair）在代理环境超时。
 - app-server 4 个 zsh-fork 用例在全量负载下偶发超时，单独重跑全绿。
 - 这些用例在干净 CI/网络环境下应可复现为绿色；与本分支改动文件无关。
 

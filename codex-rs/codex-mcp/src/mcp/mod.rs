@@ -156,7 +156,7 @@ pub struct McpConfig {
     pub environment_cwds: HashMap<String, PathUri>,
     /// Explicit server permissions; unresolved or unavailable servers have no entry.
     pub server_permission_profiles: HashMap<String, PermissionProfile>,
-    /// Optional path to `codex-linux-sandbox` for sandboxed MCP tool execution.
+    /// Optional path to `grevo-linux-sandbox` for sandboxed MCP tool execution.
     pub codex_linux_sandbox_exe: Option<PathBuf>,
     /// Whether to use legacy Landlock behavior in the MCP sandbox state.
     // TODO(anp): Reconcile this runtime-wide copy with TurnEnvironment::sandbox_context

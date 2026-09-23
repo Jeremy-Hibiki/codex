@@ -158,13 +158,13 @@ impl RealtimeWebrtcSession {
 
 // Availability is not proof of runtime integrity, device access, or session connectivity.
 fn package_has_runtime(package: &std::path::Path) -> bool {
-    let voice = package.join("codex-resources/voice");
+    let voice = package.join("grevo-resources/voice");
     let (helper, runtime) = if cfg!(target_os = "macos") {
-        ("bin/codex-voice-host", "lib/libgstreamer-1.0.0.dylib")
+        ("bin/grevo-voice-host", "lib/libgstreamer-1.0.0.dylib")
     } else if cfg!(windows) {
-        ("bin/codex-voice-host.exe", "bin/gstreamer-1.0-0.dll")
+        ("bin/grevo-voice-host.exe", "bin/gstreamer-1.0-0.dll")
     } else {
-        ("bin/codex-voice-host", "lib/libgstreamer-1.0.so.0")
+        ("bin/grevo-voice-host", "lib/libgstreamer-1.0.so.0")
     };
     voice.join(helper).is_file() && voice.join(runtime).is_file()
 }

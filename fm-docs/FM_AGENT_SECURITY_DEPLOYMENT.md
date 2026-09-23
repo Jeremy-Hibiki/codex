@@ -6,7 +6,7 @@
 
 ## 0. 部署模型回顾
 
-- **执行容器**（本文档主体）：跑 `codex-app-server` + `codex-exec-server`，
+- **执行容器**（本文档主体）：跑 `grevo-app-server` + `codex-exec-server`，
   存放加密 skill 包（`.zip.enc`）与解密明文（`/dev/shm`），**不开 SSH**；
 - **OpenChamber 容器**（用户 SSH + VSCode）：只经 HTTP(S) 与执行容器通信，
   **不得**挂载 skill 目录或 `/dev/shm`；
@@ -18,8 +18,8 @@
 
 ## 1. 示例 Docker Compose
 
-镜像来自 `release/Dockerfile`（构建产物含 `codex`、`codex-app-server`、
-`codex-exec-server`、`codex-linux-sandbox`、`codex-bwrap`。Cargo 发布构建
+镜像来自 `release/Dockerfile`（构建产物含 `codex`、`grevo-app-server`、
+`codex-exec-server`、`grevo-linux-sandbox`、`codex-bwrap`。Cargo 发布构建
 `release/build-fm-cargo.sh` 默认静态链入 fmsh-ukey SDK 与 libcrypto，
 二进制 NEEDED 仅剩 `libstdc++.so.6` 与 glibc 基础库（lmclient v1.3.0 起 curl 亦为 vendored 静态；目标平台 Ubuntu 22.04+），
 `$ORIGIN/lib` 里只需放 dlopen 的 GM3000 provider，见 `release/BUILD.md`）。
@@ -76,7 +76,7 @@ services:
       - "127.0.0.1:18080:8080"   # app-server websocket API（仅本机可达）
     # 入口：启动 app-server（--listen ws://0.0.0.0:8080）并拉起配套 exec-server
     # （exec-server 监听端口与启动方式随版本演进，按实际部署入口脚本配置）
-    command: ["/usr/local/bin/codex-app-server", "--listen", "ws://0.0.0.0:8080"]
+    command: ["/usr/local/bin/grevo-app-server", "--listen", "ws://0.0.0.0:8080"]
 ```
 
 要点：
@@ -196,11 +196,11 @@ bwrap \
   -- bash -lc "<用户命令>"
 ```
 
-实际运行走 `codex-linux-sandbox` helper（等价形式，`readonly_binds` 以
+实际运行走 `grevo-linux-sandbox` helper（等价形式，`readonly_binds` 以
 `--ro-bind SOURCE TARGET` 成对传入）：
 
 ```bash
-codex-linux-sandbox \
+grevo-linux-sandbox \
   --sandbox-policy-cwd /workspace/proj \
   --command-cwd /workspace/proj \
   --permission-profile '<权限档案 JSON>' \
@@ -312,7 +312,7 @@ docker logs codex-agent-<user> | rg -i "ukey|sdk|encrypted"
 LicenseService checkout 一次，持有到进程结束；校验失败进程直接退出，运行时
 心跳耗尽则拒绝“发起新工作”的请求（JSON-RPC `-32002`）但不杀进程。所有能启动
 agent 的入口（`codex` / `codex exec` / `codex app-server` / `codex mcp-server`
-/ `codex-exec` 等）都会校验；`codex cloud`、`exec-server` 不占用 license。
+/ `grevo-exec` 等）都会校验；`codex cloud`、`exec-server` 不占用 license。
 
 ### 启动必需（缺失即失败）
 

@@ -75,7 +75,7 @@ bash -c '
   trap codex_remote_env_cleanup EXIT
 
   cd codex-rs
-  just test -p codex-app-server --test all
+  just test -p grevo-app-server --test all
 '
 ```
 

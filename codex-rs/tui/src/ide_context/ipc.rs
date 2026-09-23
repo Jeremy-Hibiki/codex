@@ -20,7 +20,7 @@ const IDE_CONTEXT_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 #[cfg(any(unix, windows))]
 const MAX_IPC_FRAME_BYTES: usize = 256 * 1024 * 1024;
 #[cfg(any(unix, windows))]
-const TUI_SOURCE_CLIENT_ID: &str = "codex-tui";
+const TUI_SOURCE_CLIENT_ID: &str = "grevo-tui";
 #[cfg(any(unix, windows))]
 const OPEN_IDE_HINT: &str =
     "Open this project in VS Code or Cursor with the Codex extension active.";

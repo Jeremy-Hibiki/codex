@@ -23,11 +23,11 @@ fn bazel_build_rejects_tampered_bundled_bwrap() {
         std::fs::read(&bwrap_binary).expect("built bwrap should be readable");
 
     let package = tempfile::tempdir().expect("package directory should be created");
-    let resources = package.path().join("codex-resources");
+    let resources = package.path().join("grevo-resources");
     std::fs::create_dir(&resources).expect("package resource directory should be created");
 
-    let sandbox_binary = package.path().join("codex-linux-sandbox");
-    std::fs::copy(env!("CARGO_BIN_EXE_codex-linux-sandbox"), &sandbox_binary)
+    let sandbox_binary = package.path().join("grevo-linux-sandbox");
+    std::fs::copy(env!("CARGO_BIN_EXE_grevo-linux-sandbox"), &sandbox_binary)
         .expect("sandbox binary should be copied into the package");
 
     let bundled_bwrap = resources.join("bwrap");

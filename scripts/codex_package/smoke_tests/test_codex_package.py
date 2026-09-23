@@ -3,19 +3,19 @@
 ROOT_OF_EXTRACTED_PACKAGE
 ├── bin
 │   ├── codex[.exe]                       # CLI package only
-│   ├── codex-app-server[.exe]            # app-server package only
-│   └── codex-code-mode-host[.exe]
-├── codex-package.json
-├── codex-path
+│   ├── grevo-app-server[.exe]            # app-server package only
+│   └── grevo-code-mode-host[.exe]
+├── grevo-package.json
+├── grevo-path
 │   └── rg[.exe]
-└── codex-resources
+└── grevo-resources
     ├── bwrap                             # Linux only
-    ├── codex-command-runner.exe          # Windows only
-    ├── codex-windows-sandbox-setup.exe   # Windows only
+    ├── grevo-command-runner.exe          # Windows only
+    ├── grevo-windows-sandbox-setup.exe   # Windows only
     └── zsh/bin/zsh                       # supported Unix targets only
 
 Debug symbols for all shipped binaries arrive in a separate companion archive.
-Each package contains one entrypoint, not both codex and codex-app-server.
+Each package contains one entrypoint, not both codex and grevo-app-server.
 """
 
 import json
@@ -55,7 +55,7 @@ def test_cli_public_commands(
     assert expected in output if expected is not None else output.strip()
 
 
-@pytest.mark.parametrize("entrypoint", ["codex", "codex-app-server"])
+@pytest.mark.parametrize("entrypoint", ["codex", "grevo-app-server"])
 def test_app_server_runs_code_mode_through_python_sdk(
     package: SmokePackage,
     responses_server: MockResponsesServer,
@@ -225,7 +225,7 @@ def test_windows_debug_symbols_resolve_packaged_code(
         code_mode_host_debug_symbols.with_name("codex_code_mode_host.pdb")
     )
     host = symbols.with_suffix(".exe")
-    shutil.copy2(package.cli.with_name("codex-code-mode-host.exe"), host)
+    shutil.copy2(package.cli.with_name("grevo-code-mode-host.exe"), host)
     result = subprocess.run(
         ["dumpbin", "/PDBPATH", str(host)],
         cwd=package.directory,

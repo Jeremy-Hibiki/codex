@@ -1,4 +1,4 @@
-# codex-execpolicy
+# grevo-execpolicy
 
 ## Overview
 
@@ -64,7 +64,7 @@ codex execpolicy check \
 - You can also run the standalone dev binary directly during development:
 
 ```bash
-cargo run -p codex-execpolicy -- check --rules path/to/policy.rules git status
+cargo run -p grevo-execpolicy -- check --rules path/to/policy.rules git status
 ```
 
 - Example outcomes:

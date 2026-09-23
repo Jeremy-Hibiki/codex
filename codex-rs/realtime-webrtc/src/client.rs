@@ -115,11 +115,11 @@ impl VoiceHost {
     pub async fn connect(package: &CodexPackageLayout, build_commit: &str) -> Result<Self> {
         let root = package.package_dir.as_path().canonicalize()?;
         let name = if cfg!(windows) {
-            "codex-voice-host.exe"
+            "grevo-voice-host.exe"
         } else {
-            "codex-voice-host"
+            "grevo-voice-host"
         };
-        let path = root.join("codex-resources/voice/bin").join(name);
+        let path = root.join("grevo-resources/voice/bin").join(name);
         ensure!(
             path.canonicalize()? == path,
             "voice helper must be inside the physical package"

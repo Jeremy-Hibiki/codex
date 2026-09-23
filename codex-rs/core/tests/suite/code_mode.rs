@@ -319,7 +319,7 @@ async fn missing_process_host_falls_back_to_direct_tools_and_warns_once() -> Res
     let server = responses::start_mock_server().await;
     let mut builder = test_codex()
         .with_model("test-gpt-5.1-codex")
-        .with_code_mode_host_program("codex-code-mode-host-does-not-exist".into())
+        .with_code_mode_host_program("grevo-code-mode-host-does-not-exist".into())
         .with_config(|config| {
             config
                 .features
@@ -338,7 +338,7 @@ async fn missing_process_host_falls_back_to_direct_tools_and_warns_once() -> Res
     assert!(
         first_warnings.iter().any(|warning| {
             warning.contains("Code Mode is unavailable")
-                && warning.contains("codex-code-mode-host-does-not-exist")
+                && warning.contains("grevo-code-mode-host-does-not-exist")
         }),
         "missing host should produce an actionable warning: {first_warnings:?}"
     );
@@ -361,7 +361,7 @@ async fn missing_process_host_keeps_code_mode_only_and_fails_closed() -> Result<
     let server = responses::start_mock_server().await;
     let builder = test_codex()
         .with_model("test-gpt-5.1-codex")
-        .with_code_mode_host_program("codex-code-mode-host-does-not-exist".into())
+        .with_code_mode_host_program("grevo-code-mode-host-does-not-exist".into())
         .with_config(|config| {
             config
                 .features
@@ -389,7 +389,7 @@ async fn missing_process_host_keeps_code_mode_only_and_fails_closed() -> Result<
     );
     let (output, _) = custom_tool_output_body_and_success(&request, "call-1");
     assert!(
-        output.contains("codex-code-mode-host-does-not-exist"),
+        output.contains("grevo-code-mode-host-does-not-exist"),
         "code-mode-only must report the host failure: {output}"
     );
 
@@ -403,7 +403,7 @@ async fn missing_process_host_fails_closed_when_direct_fallback_is_disabled() ->
     let server = responses::start_mock_server().await;
     let builder = test_codex()
         .with_model("test-gpt-5.1-codex")
-        .with_code_mode_host_program("codex-code-mode-host-does-not-exist".into())
+        .with_code_mode_host_program("grevo-code-mode-host-does-not-exist".into())
         .with_config(|config| {
             config
                 .features
@@ -426,7 +426,7 @@ async fn missing_process_host_fails_closed_when_direct_fallback_is_disabled() ->
     );
     let (output, _) = custom_tool_output_body_and_success(&request, "call-1");
     assert!(
-        output.contains("codex-code-mode-host-does-not-exist"),
+        output.contains("grevo-code-mode-host-does-not-exist"),
         "disabled fallback must report the host failure: {output}"
     );
 

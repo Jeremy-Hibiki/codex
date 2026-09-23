@@ -2759,7 +2759,7 @@ fn fake_agent_identity_jwt_with_plan_type(
     let header_b64 = encode(br#"{"alg":"EdDSA","typ":"JWT"}"#);
     let payload = json!({
         "iss": "https://chatgpt.com/codex-backend/agent-identity",
-        "aud": "codex-app-server",
+        "aud": "grevo-app-server",
         "iat": 1_700_000_000usize,
         "exp": 4_000_000_000usize,
         "agent_runtime_id": record.agent_runtime_id,
@@ -2785,7 +2785,7 @@ fn signed_agent_identity_jwt(
         &header,
         &json!({
             "iss": "https://chatgpt.com/codex-backend/agent-identity",
-            "aud": "codex-app-server",
+            "aud": "grevo-app-server",
             "iat": 1_700_000_000usize,
             "exp": 4_000_000_000usize,
             "agent_runtime_id": record.agent_runtime_id,

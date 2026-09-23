@@ -5,7 +5,7 @@ use pretty_assertions::assert_eq;
 fn top_cli_parses_resume_prompt_after_config_flag() {
     const PROMPT: &str = "echo resume-with-global-flags-after-subcommand";
     let cli = TopCli::parse_from([
-        "codex-exec",
+        "grevo-exec",
         "resume",
         "--strict-config",
         "--last",
@@ -47,14 +47,14 @@ fn top_cli_parses_resume_prompt_after_config_flag() {
 /// the process must refuse to start the run with a visible error.
 #[test]
 fn exec_refuses_to_start_when_license_is_force_lost() {
-    let bin = codex_utils_cargo_bin::cargo_bin("codex-exec")
-        .expect("codex-exec binary should be built for tests");
+    let bin = codex_utils_cargo_bin::cargo_bin("grevo-exec")
+        .expect("grevo-exec binary should be built for tests");
     let output = std::process::Command::new(bin)
         .arg("validate-license-gate")
         .env("FMSH_CODEX_LIC_TEST_BYPASS", "1")
         .env("FMSH_CODEX_LIC_TEST_FORCE_LOST", "1")
         .output()
-        .expect("spawn codex-exec");
+        .expect("spawn grevo-exec");
 
     assert!(
         !output.status.success(),

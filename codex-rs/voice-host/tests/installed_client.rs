@@ -36,7 +36,7 @@ const DEADLINE: Duration = Duration::from_secs(/*secs*/ 10);
 async fn build_commit() -> Result<String> {
     let output = timeout(
         DEADLINE,
-        Command::new(cargo_bin("codex-voice-host")?)
+        Command::new(cargo_bin("grevo-voice-host")?)
             .arg("--build-commit")
             .kill_on_drop(true)
             .output(),
@@ -83,13 +83,13 @@ fn install_startup_libraries(runtime: &Path) -> Result<()> {
 
 fn install_helper(root: &Path) -> Result<CodexPackageLayout> {
     let bin = root.join("bin");
-    let helper_dir = root.join("codex-resources/voice/bin");
+    let helper_dir = root.join("grevo-resources/voice/bin");
     fs::create_dir_all(&bin)?;
     fs::create_dir_all(&helper_dir)?;
-    fs::write(root.join("codex-package.json"), "{}")?;
+    fs::write(root.join("grevo-package.json"), "{}")?;
     let app = bin.join(if cfg!(windows) { "codex.exe" } else { "codex" });
     fs::write(&app, [])?;
-    let source = cargo_bin("codex-voice-host")?;
+    let source = cargo_bin("grevo-voice-host")?;
     let helper = helper_dir.join(source.file_name().context("helper binary file name")?);
     fs::copy(&source, &helper)?;
     install_startup_libraries(helper_dir.parent().context("helper runtime directory")?)?;
@@ -109,10 +109,10 @@ async fn installed_client_rejects_mixed_builds_and_missing_helper() -> Result<()
         .tempdir()?;
     let package = install_helper(directory.path())?;
     let bin = directory.path().join("bin");
-    let source = cargo_bin("codex-voice-host")?;
+    let source = cargo_bin("grevo-voice-host")?;
     let helper = directory
         .path()
-        .join("codex-resources/voice/bin")
+        .join("grevo-resources/voice/bin")
         .join(source.file_name().context("helper binary file name")?);
     VoiceHost::connect(&package, &build_commit().await?)
         .await?
@@ -153,13 +153,13 @@ async fn installed_client_accepts_non_utf8_package_path() -> Result<()> {
         .path()
         .join(OsString::from_vec(b"voice-\xff".to_vec()));
     let bin = root.join("bin");
-    let helper_dir = root.join("codex-resources/voice/bin");
+    let helper_dir = root.join("grevo-resources/voice/bin");
     fs::create_dir_all(&bin)?;
     fs::create_dir_all(&helper_dir)?;
-    fs::write(root.join("codex-package.json"), "{}")?;
+    fs::write(root.join("grevo-package.json"), "{}")?;
     let app = bin.join("codex");
     fs::write(&app, [])?;
-    let source = cargo_bin("codex-voice-host")?;
+    let source = cargo_bin("grevo-voice-host")?;
     fs::copy(&source, helper_dir.join(source.file_name().unwrap()))?;
     install_startup_libraries(helper_dir.parent().unwrap())?;
     let package = InstallContext::from_exe(

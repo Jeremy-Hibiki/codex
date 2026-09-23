@@ -1355,7 +1355,7 @@ async fn start_resource_in_process_client(
         enable_codex_api_key_env: false,
         initialize: InitializeParams {
             client_info: ClientInfo {
-                name: "codex-app-server-tests".to_string(),
+                name: "grevo-app-server-tests".to_string(),
                 title: None,
                 version: "0.1.0".to_string(),
             },

@@ -243,7 +243,7 @@ pub(super) async fn start_recording_app_server_with_history(
                             serde_json::to_string(&JSONRPCMessage::Response(JSONRPCResponse {
                                 id: request.id,
                                 result: serde_json::json!({
-                                    "userAgent": "codex-tui-test",
+                                    "userAgent": "grevo-tui-test",
                                     "codexHome": codex_home,
                                 }),
                             }))?

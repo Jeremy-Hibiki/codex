@@ -626,7 +626,7 @@ impl TestCodexBuilder {
         #[cfg(target_os = "linux")]
         let codex_linux_sandbox_exe = Some(
             crate::find_codex_linux_sandbox_exe()
-                .context("should find binary for codex-linux-sandbox")?,
+                .context("should find binary for grevo-linux-sandbox")?,
         );
         #[cfg(not(target_os = "linux"))]
         let codex_linux_sandbox_exe = None;
@@ -712,7 +712,7 @@ impl TestCodexBuilder {
         let code_mode_host_program = self
             .code_mode_host_program
             .take()
-            .or_else(|| codex_utils_cargo_bin::cargo_bin("codex-code-mode-host").ok());
+            .or_else(|| codex_utils_cargo_bin::cargo_bin("grevo-code-mode-host").ok());
         let thread_manager = if config.features.enabled(Feature::CodeModeHost)
             && let Some(code_mode_host_program) = code_mode_host_program
         {
@@ -841,15 +841,15 @@ impl TestCodexBuilder {
         config.model_provider = model_provider;
         if let Ok(path) = codex_utils_cargo_bin::cargo_bin("grevo") {
             config.codex_self_exe = Some(path);
-        } else if let Ok(path) = codex_utils_cargo_bin::cargo_bin("codex-exec") {
-            // `codex-exec` also supports `--codex-run-as-apply-patch`, so use it
+        } else if let Ok(path) = codex_utils_cargo_bin::cargo_bin("grevo-exec") {
+            // `grevo-exec` also supports `--codex-run-as-apply-patch`, so use it
             // when the multitool binary is not available in test builds.
             config.codex_self_exe = Some(path);
         } else if let Ok(exe) = std::env::current_exe()
             && let Some(bin_dir) = exe.parent().and_then(|parent| parent.parent())
         {
             let codex = bin_dir.join("codex");
-            let codex_exec = bin_dir.join("codex-exec");
+            let codex_exec = bin_dir.join("grevo-exec");
             if codex.is_file() {
                 config.codex_self_exe = Some(codex);
             } else if codex_exec.is_file() {

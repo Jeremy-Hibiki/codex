@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Verify codex-tui does not depend on or import codex-core directly."""
+"""Verify grevo-tui does not depend on or import codex-core directly."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def main() -> int:
     if not failures:
         return 0
 
-    print("codex-tui must not depend on or import codex-core directly.")
+    print("grevo-tui must not depend on or import codex-core directly.")
     print(
         "Use the app-server protocol/client boundary instead; temporary embedded "
         "startup gaps belong behind codex_app_server_client::legacy_core."

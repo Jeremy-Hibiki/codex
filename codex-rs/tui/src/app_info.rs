@@ -9,7 +9,7 @@ use codex_connectors::AppMetadata;
 use codex_connectors::AppReview;
 use codex_connectors::AppScreenshot;
 
-/// Converts the app-server wire type owned by `codex-app-server-protocol` into connector-domain
+/// Converts the app-server wire type owned by `grevo-app-server-protocol` into connector-domain
 /// app metadata owned by `codex-connectors`.
 ///
 /// The types stay separate so app-server protocol ownership does not leak into the connector

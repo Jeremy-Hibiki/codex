@@ -86,7 +86,7 @@ async fn thread_rollback_does_not_emit_deprecation_notice_to_codex_tui() -> Resu
     let initialized = timeout(
         DEFAULT_READ_TIMEOUT,
         mcp.initialize_with_client_info(ClientInfo {
-            name: "codex-tui".to_string(),
+            name: "grevo-tui".to_string(),
             title: None,
             version: "0.1.0".to_string(),
         }),

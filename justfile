@@ -21,7 +21,7 @@ grevo *args:
 exec *args:
     cargo run --bin grevo -- exec {args}
 
-# Start `grevo exec-server` and run codex-tui.
+# Start `grevo exec-server` and run grevo-tui.
 [no-cd]
 [positional-arguments]
 [unix]
@@ -30,11 +30,11 @@ tui-with-exec-server *args:
 
 # Run the CLI version of the file-search crate.
 file-search *args:
-    cargo run --bin codex-file-search -- {args}
+    cargo run --bin grevo-file-search -- {args}
 
 # Run the standalone code-mode host from source.
 code-mode-host *args:
-    cargo run --bin codex-code-mode-host -- {args}
+    cargo run --bin grevo-code-mode-host -- {args}
 
 # Assemble a local Codex package.
 [no-cd]
@@ -134,11 +134,11 @@ bazel-grevo *args:
 [no-cd]
 [unix]
 bazel-code-mode-host *args:
-    bazel run //codex-rs/code-mode-host:codex-code-mode-host --run_under="cd $PWD &&" -- "$@"
+    bazel run //codex-rs/code-mode-host:grevo-code-mode-host --run_under="cd $PWD &&" -- "$@"
 
 [windows]
 bazel-code-mode-host *args:
-    bazel run //codex-rs/code-mode-host:codex-code-mode-host --run_under='cd /d "{{ invocation_directory_native() }}" &&' -- @($args | Select-Object -Skip 1)
+    bazel run //codex-rs/code-mode-host:grevo-code-mode-host --run_under='cd /d "{{ invocation_directory_native() }}" &&' -- @($args | Select-Object -Skip 1)
 
 [no-cd]
 bazel-lock-update:
@@ -171,11 +171,11 @@ build-for-release:
 
 # Regenerate the json schema for config.toml from the current config types.
 write-config-schema:
-    cargo run -p codex-config-schema --bin codex-write-config-schema
+    cargo run -p codex-config-schema --bin grevo-write-config-schema
 
 # Regenerate vendored app-server protocol schema artifacts.
 write-app-server-schema *args:
-    cargo run -p codex-app-server-protocol --bin write_schema_fixtures -- {args}
+    cargo run -p grevo-app-server-protocol --bin write_schema_fixtures -- {args}
 
 [no-cd]
 write-hooks-schema:

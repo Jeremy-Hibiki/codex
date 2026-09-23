@@ -121,14 +121,14 @@ fn package_availability_requires_helper_and_native_runtime() {
         .unwrap()
         .as_nanos();
     let root = std::env::temp_dir().join(format!("voice-package-{}-{unique}", std::process::id()));
-    let voice = root.join("codex-resources/voice");
+    let voice = root.join("grevo-resources/voice");
     std::fs::create_dir_all(voice.join("bin")).unwrap();
     std::fs::create_dir_all(voice.join("lib")).unwrap();
     assert!(!package_has_runtime(&root));
     let helper = voice.join(if cfg!(windows) {
-        "bin/codex-voice-host.exe"
+        "bin/grevo-voice-host.exe"
     } else {
-        "bin/codex-voice-host"
+        "bin/grevo-voice-host"
     });
     std::fs::write(&helper, b"synthetic helper").unwrap();
     assert!(!package_has_runtime(&root));

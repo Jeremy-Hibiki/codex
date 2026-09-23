@@ -168,7 +168,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
 # the host: Ubuntu 22.04 ships libssl3).
 ARG FMSH_UKEY_SDK_LINK
 RUN --mount=type=cache,target=/root/.cargo/git,sharing=locked \
-    mkdir -p /codex/lib \
+    mkdir -p /codex/lib /codex/grevo-resources \
     && cp /codex-grevo /codex/grevo \
     && cp /grevo-code-mode-host /codex/grevo-code-mode-host \
     && cp /codex-bwrap /codex/grevo-resources/bwrap \

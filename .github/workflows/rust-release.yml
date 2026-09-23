@@ -1127,7 +1127,7 @@ jobs:
           verify_signed_binary "${package_dir}/bin/grevo-code-mode-host" "grevo-code-mode-host"
 
           for resource in \
-            "${package_dir}/codex-path/rg" \
+            "${package_dir}/grevo-path/rg" \
             "${package_dir}/grevo-resources/zsh/bin/zsh"
           do
             chmod 0755 "$resource"

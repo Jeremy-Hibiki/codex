@@ -40,7 +40,7 @@ def build_package_dir(
 ) -> None:
     bin_dir = package_dir / "bin"
     resources_dir = package_dir / "grevo-resources"
-    path_dir = package_dir / "codex-path"
+    path_dir = package_dir / "grevo-path"
     bin_dir.mkdir()
     resources_dir.mkdir()
     path_dir.mkdir()
@@ -89,9 +89,9 @@ def build_package_dir(
         "variant": variant.name,
         "entrypoint": f"bin/{entrypoint_name}",
         "resourcesDir": "grevo-resources",
-        "pathDir": "codex-path",
+        "pathDir": "grevo-path",
     }
-    write_json(package_dir / "codex-package.json", metadata)
+    write_json(package_dir / "grevo-package.json", metadata)
 
 
 def validate_package_dir(
@@ -104,16 +104,16 @@ def validate_package_dir(
     required_dirs = [
         Path("bin"),
         Path("grevo-resources"),
-        Path("codex-path"),
+        Path("grevo-path"),
     ]
     for relative_dir in required_dirs:
         path = package_dir / relative_dir
         if not path.is_dir():
             raise RuntimeError(f"Missing package directory: {relative_dir}")
 
-    metadata_path = package_dir / "codex-package.json"
+    metadata_path = package_dir / "grevo-package.json"
     if not metadata_path.is_file():
-        raise RuntimeError("Missing package metadata: codex-package.json")
+        raise RuntimeError("Missing package metadata: grevo-package.json")
 
     with open(metadata_path, encoding="utf-8") as fh:
         metadata = json.load(fh)
@@ -124,7 +124,7 @@ def validate_package_dir(
         "variant": variant.name,
         "entrypoint": f"bin/{variant.entrypoint_name(spec)}",
         "resourcesDir": "grevo-resources",
-        "pathDir": "codex-path",
+        "pathDir": "grevo-path",
     }
     for key, expected in expected_metadata.items():
         actual = metadata.get(key)
@@ -136,7 +136,7 @@ def validate_package_dir(
     required_files = [
         Path("bin") / variant.entrypoint_name(spec),
         Path("bin") / f"grevo-code-mode-host{spec.exe_suffix}",
-        Path("codex-path") / spec.rg_name,
+        Path("grevo-path") / spec.rg_name,
     ]
     executable_files = list(required_files)
 

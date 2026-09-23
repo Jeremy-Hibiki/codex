@@ -50,7 +50,7 @@ class PackageLayoutTest(unittest.TestCase):
 
                         self.assertEqual(
                             {
-                                "rg": (package_dir / "codex-path" / "rg").read_bytes(),
+                                "rg": (package_dir / "grevo-path" / "rg").read_bytes(),
                                 "zsh": (
                                     package_dir
                                     / "grevo-resources"

@@ -26,7 +26,7 @@ from release_version import normalize_codex_version  # noqa: E402
 SDK_DISTRIBUTION_NAME = "openai-codex"
 RUNTIME_DISTRIBUTION_NAME = "openai-codex-cli-bin"
 RUNTIME_PACKAGE_ROOT = Path("src") / "codex_cli_bin"
-CODEX_PACKAGE_METADATA = "codex-package.json"
+CODEX_PACKAGE_METADATA = "grevo-package.json"
 
 
 def repo_root() -> Path:
@@ -264,7 +264,7 @@ def _validate_codex_package_layout(package_dir: Path, package_archive: Path) -> 
     missing_entries = []
     if not (package_dir / CODEX_PACKAGE_METADATA).is_file():
         missing_entries.append(CODEX_PACKAGE_METADATA)
-    for entry in ("bin", "grevo-resources", "codex-path"):
+    for entry in ("bin", "grevo-resources", "grevo-path"):
         if not (package_dir / entry).is_dir():
             missing_entries.append(entry)
     package_binary = package_dir / "bin" / runtime_binary_name()

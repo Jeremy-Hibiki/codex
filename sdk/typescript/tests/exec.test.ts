@@ -151,10 +151,10 @@ describe("CodexExec", () => {
     const vendorRoot = mkdtempSync(path.join(tmpdir(), "codex-sdk-vendor-"));
     const packageRoot = path.join(vendorRoot, "x86_64-unknown-linux-musl");
     const binDir = path.join(packageRoot, "bin");
-    const pathDir = path.join(packageRoot, "codex-path");
+    const pathDir = path.join(packageRoot, "grevo-path");
     mkdirSync(binDir, { recursive: true });
     mkdirSync(pathDir, { recursive: true });
-    writeFileSync(path.join(packageRoot, "codex-package.json"), "{}");
+    writeFileSync(path.join(packageRoot, "grevo-package.json"), "{}");
     writeFileSync(path.join(binDir, "codex"), "");
 
     expect(resolveNativePackage(vendorRoot, "x86_64-unknown-linux-musl", "codex")).toEqual({
@@ -181,7 +181,7 @@ describe("CodexExec", () => {
 
   it("prepends package PATH entries without duplicating them", async () => {
     const { prependPathDirs } = await import("../src/exec");
-    const pathDir = path.join(tmpdir(), "codex-path");
+    const pathDir = path.join(tmpdir(), "grevo-path");
     const env = { PATH: `/usr/bin${path.delimiter}${pathDir}` };
 
     prependPathDirs(env, [pathDir]);
@@ -191,7 +191,7 @@ describe("CodexExec", () => {
 
   it("preserves the Windows Path key when prepending package PATH entries", async () => {
     const { prependPathDirs } = await import("../src/exec");
-    const pathDir = path.join(tmpdir(), "codex-path");
+    const pathDir = path.join(tmpdir(), "grevo-path");
     const env = { PATH: "/usr/bin", Path: `C\\Windows${path.delimiter}${pathDir}` };
 
     prependPathDirs(env, [pathDir], "win32");

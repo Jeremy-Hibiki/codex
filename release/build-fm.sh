@@ -171,7 +171,12 @@ static_sdk_env() {
 build_local() {
     local codex_src="$repo_root/codex-rs"
     local out_dir="$repo_root/dist"
-    local bin="$out_dir/grevo"
+    # Canonical package layout, matching the upstream installed tree:
+    #   bin/{grevo,grevo-code-mode-host,lib/}
+    #   grevo-resources/bwrap
+    #   grevo-path/rg
+    #   grevo-package.json
+    local bin="$out_dir/bin/grevo"
     local staged_bin
 
     local cargo_profile_flag="--profile release"
@@ -206,7 +211,10 @@ build_local() {
         FM_BUILD_SUFFIX="$suffix" cargo build $cargo_profile_flag -p codex-cli -p codex-code-mode-host --timings
     )
 
-    mkdir -p "$out_dir/lib"
+    # Drop stale flat-layout artifacts from previous builds.
+    rm -f "$out_dir/grevo" "$out_dir/grevo-code-mode-host"
+    rm -rf "$out_dir/lib"
+    mkdir -p "$out_dir/bin/lib" "$out_dir/grevo-resources" "$out_dir/grevo-path"
 
     # Replacing by rename keeps concurrent `mv` safe even when an old dist
     # binary is still running; Linux otherwise rejects truncating ETXTBSY files.
@@ -221,16 +229,38 @@ build_local() {
     mv -f "$staged_bin" "$bin"
 
     # code-mode resolves the host as a sibling of the current executable.
-    staged_host="$(mktemp "$out_dir/grevo-code-mode-host.XXXXXX")"
+    staged_host="$(mktemp "$out_dir/bin/grevo-code-mode-host.XXXXXX")"
     rm "$staged_host"
     cp "$codex_src/target/$target_subdir/grevo-code-mode-host" "$staged_host"
-    mv -f "$staged_host" "$out_dir/grevo-code-mode-host"
+    mv -f "$staged_host" "$out_dir/bin/grevo-code-mode-host"
 
-    # grevo finds the vendored sandbox via the legacy sibling layout
-    # (<exe_dir>/grevo-resources/bwrap); canonical package layout is not required.
-    mkdir -p "$out_dir/grevo-resources"
+    # grevo finds the vendored sandbox via the package layout
+    # (<pkg>/grevo-resources/bwrap), legacy sibling lookup, or system bwrap.
     cp "$codex_src/target/$target_subdir/bwrap" "$out_dir/grevo-resources/bwrap"
     chmod 0755 "$out_dir/grevo-resources/bwrap"
+
+    # Bundled ripgrep for grevo-path/ (prepended to PATH when the package
+    # layout is detected). Absent system rg => absent grevo-path, which
+    # install-context tolerates.
+    if command -v rg >/dev/null 2>&1; then
+        cp -f "$(command -v rg)" "$out_dir/grevo-path/rg"
+        chmod 0755 "$out_dir/grevo-path/rg"
+        echo "  bundled rg: $(command -v rg) → $out_dir/grevo-path/rg"
+    else
+        echo "  WARNING: system rg not found; grevo-path/ left empty" >&2
+    fi
+
+    cat >"$out_dir/grevo-package.json" <<PKGJSON
+{
+  "layoutVersion": 1,
+  "version": "$version",
+  "target": "$(rustc -vV | awk '/^host:/ {print $2}')",
+  "variant": "grevo",
+  "entrypoint": "bin/grevo",
+  "resourcesDir": "grevo-resources",
+  "pathDir": "grevo-path"
+}
+PKGJSON
 
     echo "== bundling fmsh-ukey SDK libs =="
     local sdk_lib_dir
@@ -239,18 +269,22 @@ build_local() {
         # Static mode embeds the SDK + libcrypto; only the dlopened GM3000
         # provider ships. Shared mode bundles the SDK .so as well.
         if [[ "$sdk_link" == "shared" ]]; then
-            cp -fL "$sdk_lib_dir"/libfmsh_ukey_sdk.so.0 "$out_dir/lib/" 2>/dev/null || true
+            cp -fL "$sdk_lib_dir"/libfmsh_ukey_sdk.so.0 "$out_dir/bin/lib/" 2>/dev/null || true
         fi
-        cp -fL "$sdk_lib_dir"/libgm3000.1.0.so "$out_dir/lib/" 2>/dev/null || true
-        echo "  SDK libs: $sdk_lib_dir → $out_dir/lib/"
+        cp -fL "$sdk_lib_dir"/libgm3000.1.0.so "$out_dir/bin/lib/" 2>/dev/null || true
+        echo "  SDK libs: $sdk_lib_dir → $out_dir/bin/lib/"
     else
         echo "  WARNING: fmsh-ukey SDK lib dir not found — .so files not bundled" >&2
         echo "  Set FMSH_UKEY_SDK_DIR or build via Docker (default mode)." >&2
     fi
 
     echo "== verifying =="
-    [[ -x "$out_dir/grevo-code-mode-host" ]] || {
+    [[ -x "$out_dir/bin/grevo-code-mode-host" ]] || {
         echo "ERROR: grevo-code-mode-host missing next to grevo in $out_dir" >&2
+        exit 1
+    }
+    [[ -f "$out_dir/grevo-package.json" ]] || {
+        echo "ERROR: grevo-package.json missing in $out_dir" >&2
         exit 1
     }
     if ldd "$bin" 2>/dev/null | grep -q "not found"; then
@@ -264,15 +298,16 @@ build_local() {
     }
     # License gate requires env vars; just check --version with them stubbed.
     FMSH_CODEX_LIC_FEATURE=x FMSH_CODEX_LIC_VERSION=x \
-        LD_LIBRARY_PATH="$out_dir/lib" \
+        LD_LIBRARY_PATH="$out_dir/bin/lib" \
         "$bin" --version 2>/dev/null || true
 
     echo ""
     echo "Build complete:"
-    echo "  binary: $bin (+ $out_dir/grevo-code-mode-host)"
+    echo "  package root: $out_dir (grevo-package.json)"
+    echo "  binary: $bin (+ $out_dir/bin/grevo-code-mode-host)"
     echo "  sandbox: $out_dir/grevo-resources/bwrap (sha256-verified)"
-    echo "  libs:   $out_dir/lib/"
-    echo "  version: $(FMSH_CODEX_LIC_FEATURE=x FMSH_CODEX_LIC_VERSION=x LD_LIBRARY_PATH="$out_dir/lib" "$bin" --version 2>&1 || echo '(license gate active)')"
+    echo "  libs:   $out_dir/bin/lib/"
+    echo "  version: $(FMSH_CODEX_LIC_FEATURE=x FMSH_CODEX_LIC_VERSION=x LD_LIBRARY_PATH="$out_dir/bin/lib" "$bin" --version 2>&1 || echo '(license gate active)')"
 }
 
 # ── Docker build ───────────────────────────────────────────────────────────

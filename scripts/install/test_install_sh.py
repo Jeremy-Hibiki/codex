@@ -711,8 +711,8 @@ def create_package_release(
 ) -> tuple[Path, Path, str]:
     package_dir = root / "package"
     (package_dir / "bin").mkdir(parents=True)
-    (package_dir / "codex-path").mkdir()
-    (package_dir / "codex-package.json").write_text("{}\n", encoding="utf-8")
+    (package_dir / "grevo-path").mkdir()
+    (package_dir / "grevo-package.json").write_text("{}\n", encoding="utf-8")
     write_executable(
         package_dir / "bin" / "codex",
         f"#!/bin/sh\nprintf 'codex-cli {VERSION}\\n'\n",
@@ -721,7 +721,7 @@ def create_package_release(
         package_dir / "bin" / "grevo-code-mode-host",
         "#!/bin/sh\nexit 0\n",
     )
-    write_executable(package_dir / "codex-path" / "rg", "#!/bin/sh\nexit 0\n")
+    write_executable(package_dir / "grevo-path" / "rg", "#!/bin/sh\nexit 0\n")
 
     asset = "codex-package-aarch64-apple-darwin.tar.gz"
     archive_path = root / asset

@@ -67,12 +67,12 @@ def _load_release_version_module():
 def _write_fake_codex_package(package_dir: Path, script) -> Path:
     (package_dir / "bin").mkdir(parents=True)
     (package_dir / "grevo-resources").mkdir()
-    (package_dir / "codex-path").mkdir()
-    (package_dir / "codex-package.json").write_text('{"variant":"codex"}\n')
+    (package_dir / "grevo-path").mkdir()
+    (package_dir / "grevo-package.json").write_text('{"variant":"codex"}\n')
     (package_dir / "bin" / script.runtime_binary_name()).write_text("fake codex\n")
     (package_dir / "bin" / script.runtime_code_mode_host_name()).write_text("fake code mode host\n")
     (package_dir / "grevo-resources" / "bwrap").write_text("fake bwrap\n")
-    (package_dir / "codex-path" / "rg").write_text("fake rg\n")
+    (package_dir / "grevo-path" / "rg").write_text("fake rg\n")
     return package_dir
 
 
@@ -670,10 +670,10 @@ def test_runtime_package_is_wheel_only_and_builds_platform_specific_wheels() -> 
     assert pyproject["tool"]["hatch"]["build"]["targets"]["wheel"] == {
         "packages": ["src/codex_cli_bin"],
         "include": [
-            "src/codex_cli_bin/codex-package.json",
+            "src/codex_cli_bin/grevo-package.json",
             "src/codex_cli_bin/bin/**",
             "src/codex_cli_bin/grevo-resources/**",
-            "src/codex_cli_bin/codex-path/**",
+            "src/codex_cli_bin/grevo-path/**",
         ],
         "hooks": {"custom": {}},
     }
@@ -702,11 +702,11 @@ def test_stage_runtime_release_copies_package_layout_and_sets_version(
     package_root = script.staged_runtime_package_root(staged)
 
     assert {
-        "metadata": (package_root / "codex-package.json").read_text(),
+        "metadata": (package_root / "grevo-package.json").read_text(),
         "codex": (package_root / "bin" / script.runtime_binary_name()).read_text(),
         "code_mode_host": (package_root / "bin" / script.runtime_code_mode_host_name()).read_text(),
         "bwrap": (package_root / "grevo-resources" / "bwrap").read_text(),
-        "rg": (package_root / "codex-path" / "rg").read_text(),
+        "rg": (package_root / "grevo-path" / "rg").read_text(),
     } == {
         "metadata": '{"variant":"codex"}\n',
         "codex": "fake codex\n",
@@ -830,10 +830,10 @@ def test_runtime_package_layout_is_included_by_wheel_config(
 
     pyproject = tomllib.loads((staged / "pyproject.toml").read_text())
     assert pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]["include"] == [
-        "src/codex_cli_bin/codex-package.json",
+        "src/codex_cli_bin/grevo-package.json",
         "src/codex_cli_bin/bin/**",
         "src/codex_cli_bin/grevo-resources/**",
-        "src/codex_cli_bin/codex-path/**",
+        "src/codex_cli_bin/grevo-path/**",
     ]
 
 
@@ -1020,7 +1020,7 @@ def test_default_runtime_is_resolved_from_installed_runtime_package(
 def test_runtime_path_dir_is_prepended_without_duplicates(tmp_path: Path) -> None:
     from openai_codex import client as client_module
 
-    path_dir = tmp_path / "codex-path"
+    path_dir = tmp_path / "grevo-path"
     env = {"PATH": os.pathsep.join(["/usr/bin", str(path_dir), "/bin"])}
 
     client_module._prepend_path_dirs(env, (path_dir,))
@@ -1034,7 +1034,7 @@ def test_runtime_path_dir_preserves_windows_path_key(
 ) -> None:
     from openai_codex import client as client_module
 
-    path_dir = tmp_path / "codex-path"
+    path_dir = tmp_path / "grevo-path"
     monkeypatch.setattr(client_module.os, "name", "nt")
     env = {
         "PATH": "/usr/bin",

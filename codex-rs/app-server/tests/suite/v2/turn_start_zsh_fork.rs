@@ -746,7 +746,7 @@ fn create_test_package_app_server(codex_home: &Path, zsh_path: &Path) -> Result<
     };
     std::fs::create_dir_all(&bin_dir)?;
     std::fs::create_dir_all(zsh_bin_dir)?;
-    std::fs::write(package_dir.join("codex-package.json"), "{}")?;
+    std::fs::write(package_dir.join("grevo-package.json"), "{}")?;
 
     let app_server = bin_dir.join("grevo-app-server");
     copy_with_permissions(

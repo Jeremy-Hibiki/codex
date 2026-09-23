@@ -958,7 +958,7 @@ install_package_release() {
   chmod 0755 \
     "$stage_release/bin/codex" \
     "$stage_release/bin/grevo-code-mode-host" \
-    "$stage_release/codex-path/rg"
+    "$stage_release/grevo-path/rg"
   if [ -f "$stage_release/grevo-resources/bwrap" ]; then
     chmod 0755 "$stage_release/grevo-resources/bwrap"
   fi
@@ -1009,11 +1009,11 @@ release_dir_is_complete() {
 
   case "$layout" in
     package)
-      [ -f "$release_dir/codex-package.json" ] &&
+      [ -f "$release_dir/grevo-package.json" ] &&
         [ -x "$release_dir/bin/codex" ] &&
         [ -x "$release_dir/bin/grevo-code-mode-host" ] &&
         [ -x "$release_dir/codex" ] &&
-        [ -x "$release_dir/codex-path/rg" ] ||
+        [ -x "$release_dir/grevo-path/rg" ] ||
         return 1
       ;;
     legacy-platform-npm)

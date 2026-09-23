@@ -8,7 +8,7 @@ The builder creates a canonical Codex package directory:
 
 ```text
 .
-├── codex-package.json
+├── grevo-package.json
 ├── bin
 │   ├── <entrypoint>[.exe]
 │   └── grevo-code-mode-host[.exe]
@@ -17,7 +17,7 @@ The builder creates a canonical Codex package directory:
 │   ├── zsh/bin/zsh                       # supported Unix targets only
 │   ├── grevo-command-runner.exe          # Windows only
 │   └── grevo-windows-sandbox-setup.exe   # Windows only
-└── codex-path
+└── grevo-path
     └── rg[.exe]
 ```
 
@@ -31,7 +31,7 @@ artifacts; pass a GNU Linux target explicitly for native glibc local builds. If
 prints its path after the package is built.
 
 The `--variant` flag selects the package entrypoint. Supported variants are
-`codex` and `grevo-app-server`. The `version` field in `codex-package.json` is
+`codex` and `grevo-app-server`. The `version` field in `grevo-package.json` is
 read from `[workspace.package].version` in `codex-rs/Cargo.toml`.
 
 ## Source-built artifacts

@@ -706,10 +706,10 @@ function Test-PackageContentsAreComplete {
     }
 
     $expectedFiles = @(
-        "codex-package.json",
+        "grevo-package.json",
         "bin\codex.exe",
         "bin\grevo-code-mode-host.exe",
-        "codex-path\rg.exe",
+        "grevo-path\rg.exe",
         "grevo-resources\grevo-command-runner.exe",
         "grevo-resources\grevo-windows-sandbox-setup.exe"
     )

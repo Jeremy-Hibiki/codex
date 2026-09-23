@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 PACKAGE_NAME = "openai-codex-cli-bin"
-PACKAGE_METADATA_FILENAME = "codex-package.json"
+PACKAGE_METADATA_FILENAME = "grevo-package.json"
 
 
 def bundled_package_dir() -> Path:
@@ -26,7 +26,7 @@ def bundled_codex_path() -> Path:
 
 
 def bundled_path_dir() -> Path | None:
-    path = bundled_package_dir() / "codex-path"
+    path = bundled_package_dir() / "grevo-path"
     return path if path.is_dir() else None
 
 

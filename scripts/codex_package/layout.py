@@ -39,7 +39,7 @@ def build_package_dir(
     inputs: PackageInputs,
 ) -> None:
     bin_dir = package_dir / "bin"
-    resources_dir = package_dir / "codex-resources"
+    resources_dir = package_dir / "grevo-resources"
     path_dir = package_dir / "codex-path"
     bin_dir.mkdir()
     resources_dir.mkdir()
@@ -88,7 +88,7 @@ def build_package_dir(
         "target": spec.target,
         "variant": variant.name,
         "entrypoint": f"bin/{entrypoint_name}",
-        "resourcesDir": "codex-resources",
+        "resourcesDir": "grevo-resources",
         "pathDir": "codex-path",
     }
     write_json(package_dir / "codex-package.json", metadata)
@@ -103,7 +103,7 @@ def validate_package_dir(
 ) -> None:
     required_dirs = [
         Path("bin"),
-        Path("codex-resources"),
+        Path("grevo-resources"),
         Path("codex-path"),
     ]
     for relative_dir in required_dirs:
@@ -123,7 +123,7 @@ def validate_package_dir(
         "target": spec.target,
         "variant": variant.name,
         "entrypoint": f"bin/{variant.entrypoint_name(spec)}",
-        "resourcesDir": "codex-resources",
+        "resourcesDir": "grevo-resources",
         "pathDir": "codex-path",
     }
     for key, expected in expected_metadata.items():
@@ -141,19 +141,19 @@ def validate_package_dir(
     executable_files = list(required_files)
 
     if include_zsh:
-        zsh_path = Path("codex-resources") / ZSH_RESOURCE_PATH
+        zsh_path = Path("grevo-resources") / ZSH_RESOURCE_PATH
         required_files.append(zsh_path)
         executable_files.append(zsh_path)
 
     if spec.is_linux:
-        required_files.append(Path("codex-resources") / "bwrap")
-        executable_files.append(Path("codex-resources") / "bwrap")
+        required_files.append(Path("grevo-resources") / "bwrap")
+        executable_files.append(Path("grevo-resources") / "bwrap")
 
     if spec.is_windows:
         required_files.extend(
             [
-                Path("codex-resources") / "grevo-command-runner.exe",
-                Path("codex-resources") / "grevo-windows-sandbox-setup.exe",
+                Path("grevo-resources") / "grevo-command-runner.exe",
+                Path("grevo-resources") / "grevo-windows-sandbox-setup.exe",
             ]
         )
 

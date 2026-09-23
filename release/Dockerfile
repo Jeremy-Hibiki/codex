@@ -171,8 +171,8 @@ RUN --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     mkdir -p /codex/lib \
     && cp /codex-grevo /codex/grevo \
     && cp /grevo-code-mode-host /codex/grevo-code-mode-host \
-    && cp /codex-bwrap /codex/codex-resources/bwrap \
-    && chmod 0755 /codex/codex-resources/bwrap \
+    && cp /codex-bwrap /codex/grevo-resources/bwrap \
+    && chmod 0755 /codex/grevo-resources/bwrap \
     && SDK_LIB="$(find /root/.cargo/git/checkouts/fmsh-ukey-lib-* -path '*/vendor/fmsh-ukey-sdk/linux/lib' | head -1)" \
     && if [ "$FMSH_UKEY_SDK_LINK" != "static" ]; then \
     cp -fL "$SDK_LIB"/libfmsh_ukey_sdk.so.0 /codex/lib/; \
@@ -197,8 +197,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 COPY --from=builder /codex/grevo /usr/local/bin/grevo
 COPY --from=builder /codex/grevo-code-mode-host /usr/local/bin/grevo-code-mode-host
-COPY --from=builder /codex/codex-resources /usr/local/bin/codex-resources
+COPY --from=builder /codex/grevo-resources /usr/local/bin/grevo-resources
 COPY --from=builder /codex/lib /usr/local/bin/lib
-RUN chmod +x /usr/local/bin/grevo /usr/local/bin/grevo-code-mode-host /usr/local/bin/codex-resources/bwrap
+RUN chmod +x /usr/local/bin/grevo /usr/local/bin/grevo-code-mode-host /usr/local/bin/grevo-resources/bwrap
 
 ENTRYPOINT ["grevo"]

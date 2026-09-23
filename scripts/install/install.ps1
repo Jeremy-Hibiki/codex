@@ -710,8 +710,8 @@ function Test-PackageContentsAreComplete {
         "bin\codex.exe",
         "bin\grevo-code-mode-host.exe",
         "codex-path\rg.exe",
-        "codex-resources\grevo-command-runner.exe",
-        "codex-resources\grevo-windows-sandbox-setup.exe"
+        "grevo-resources\grevo-command-runner.exe",
+        "grevo-resources\grevo-windows-sandbox-setup.exe"
     )
     foreach ($name in $expectedFiles) {
         if (-not (Test-Path -LiteralPath (Join-Path $PackageDir $name) -PathType Leaf)) {
@@ -733,9 +733,9 @@ function Test-LegacyPlatformNpmContentsAreComplete {
 
     $expectedFiles = @(
         "codex.exe",
-        "codex-resources\grevo-command-runner.exe",
-        "codex-resources\grevo-windows-sandbox-setup.exe",
-        "codex-resources\rg.exe"
+        "grevo-resources\grevo-command-runner.exe",
+        "grevo-resources\grevo-windows-sandbox-setup.exe",
+        "grevo-resources\rg.exe"
     )
     foreach ($name in $expectedFiles) {
         if (-not (Test-Path -LiteralPath (Join-Path $PackageDir $name) -PathType Leaf)) {
@@ -1013,13 +1013,13 @@ try {
                 tar -xzf $archivePath -C $extractDir
 
                 $vendorRoot = Join-Path $extractDir "package/vendor/$target"
-                $resourcesDir = Join-Path $stagingDir "codex-resources"
+                $resourcesDir = Join-Path $stagingDir "grevo-resources"
                 New-Item -ItemType Directory -Force -Path $resourcesDir | Out-Null
                 $copyMap = @{
                     "codex/codex.exe" = "codex.exe"
-                    "codex/grevo-command-runner.exe" = "codex-resources\grevo-command-runner.exe"
-                    "codex/grevo-windows-sandbox-setup.exe" = "codex-resources\grevo-windows-sandbox-setup.exe"
-                    "path/rg.exe" = "codex-resources\rg.exe"
+                    "codex/grevo-command-runner.exe" = "grevo-resources\grevo-command-runner.exe"
+                    "codex/grevo-windows-sandbox-setup.exe" = "grevo-resources\grevo-windows-sandbox-setup.exe"
+                    "path/rg.exe" = "grevo-resources\rg.exe"
                 }
 
                 foreach ($relativeSource in $copyMap.Keys) {

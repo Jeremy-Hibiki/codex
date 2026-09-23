@@ -53,7 +53,7 @@ class PackageLayoutTest(unittest.TestCase):
                                 "rg": (package_dir / "codex-path" / "rg").read_bytes(),
                                 "zsh": (
                                     package_dir
-                                    / "codex-resources"
+                                    / "grevo-resources"
                                     / "zsh"
                                     / "bin"
                                     / "zsh"

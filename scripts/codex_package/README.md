@@ -12,7 +12,7 @@ The builder creates a canonical Codex package directory:
 ├── bin
 │   ├── <entrypoint>[.exe]
 │   └── grevo-code-mode-host[.exe]
-├── codex-resources
+├── grevo-resources
 │   ├── bwrap                             # Linux only
 │   ├── zsh/bin/zsh                       # supported Unix targets only
 │   ├── grevo-command-runner.exe          # Windows only
@@ -78,6 +78,6 @@ The patched zsh fork used by `shell_zsh_fork` is fetched from the DotSlash
 manifest at `scripts/codex_package/codex-zsh` when the selected target has a
 matching prebuilt artifact. Downloaded archives are cached under
 `$TMPDIR/codex-package/<target>-zsh` and installed at
-`codex-resources/zsh/bin/zsh`. Pass `--zsh-bin` to package a prebuilt, signed
+`grevo-resources/zsh/bin/zsh`. Pass `--zsh-bin` to package a prebuilt, signed
 executable, or `--zsh-manifest` to use a different DotSlash manifest, such as
 the manifest published with a standalone zsh artifact release.

@@ -9,7 +9,7 @@ const BIN_DIRNAME: &str = "bin";
 const PACKAGE_METADATA_FILENAME: &str = "codex-package.json";
 const PATH_DIRNAME: &str = "codex-path";
 const RELEASES_DIRNAME: &str = "releases";
-const RESOURCES_DIRNAME: &str = "codex-resources";
+const RESOURCES_DIRNAME: &str = "grevo-resources";
 const STANDALONE_PACKAGES_DIRNAME: &str = "standalone";
 const ZSH_DIRNAME: &str = "zsh";
 static INSTALL_CONTEXT: OnceLock<InstallContext> = OnceLock::new();
@@ -45,7 +45,7 @@ pub enum InstallMethod {
         /// such as
         /// `~/.codex/packages/standalone/releases/0.111.0-x86_64-unknown-linux-musl`.
         /// Package-layout installs use the package root that contains `bin/`,
-        /// `codex-resources/`, and `codex-path/`.
+        /// `grevo-resources/`, and `codex-path/`.
         release_dir: AbsolutePathBuf,
         /// The bundled resource directory for managed dependencies.
         resources_dir: Option<AbsolutePathBuf>,

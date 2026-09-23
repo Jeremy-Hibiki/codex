@@ -227,10 +227,10 @@ build_local() {
     mv -f "$staged_host" "$out_dir/grevo-code-mode-host"
 
     # grevo finds the vendored sandbox via the legacy sibling layout
-    # (<exe_dir>/codex-resources/bwrap); canonical package layout is not required.
-    mkdir -p "$out_dir/codex-resources"
-    cp "$codex_src/target/$target_subdir/bwrap" "$out_dir/codex-resources/bwrap"
-    chmod 0755 "$out_dir/codex-resources/bwrap"
+    # (<exe_dir>/grevo-resources/bwrap); canonical package layout is not required.
+    mkdir -p "$out_dir/grevo-resources"
+    cp "$codex_src/target/$target_subdir/bwrap" "$out_dir/grevo-resources/bwrap"
+    chmod 0755 "$out_dir/grevo-resources/bwrap"
 
     echo "== bundling fmsh-ukey SDK libs =="
     local sdk_lib_dir
@@ -258,7 +258,7 @@ build_local() {
         ldd "$bin" >&2
         exit 1
     fi
-    "$out_dir/codex-resources/bwrap" --version >/dev/null 2>&1 || {
+    "$out_dir/grevo-resources/bwrap" --version >/dev/null 2>&1 || {
         echo "ERROR: bundled bwrap failed --version smoke" >&2
         exit 1
     }
@@ -270,7 +270,7 @@ build_local() {
     echo ""
     echo "Build complete:"
     echo "  binary: $bin (+ $out_dir/grevo-code-mode-host)"
-    echo "  sandbox: $out_dir/codex-resources/bwrap (sha256-verified)"
+    echo "  sandbox: $out_dir/grevo-resources/bwrap (sha256-verified)"
     echo "  libs:   $out_dir/lib/"
     echo "  version: $(FMSH_CODEX_LIC_FEATURE=x FMSH_CODEX_LIC_VERSION=x LD_LIBRARY_PATH="$out_dir/lib" "$bin" --version 2>&1 || echo '(license gate active)')"
 }
@@ -306,7 +306,7 @@ build_docker() {
     echo "  id=\$(docker create $tag)"
     echo "  docker cp \"\$id:/usr/local/bin/grevo\" ./grevo"
     echo "  docker cp \"\$id:/usr/local/bin/grevo-code-mode-host\" ./grevo-code-mode-host"
-    echo "  docker cp \"\$id:/usr/local/bin/codex-resources\" ./codex-resources"
+    echo "  docker cp \"\$id:/usr/local/bin/grevo-resources\" ./grevo-resources"
     echo "  docker cp \"\$id:/usr/local/bin/lib\" ./lib"
     echo "  docker rm \"\$id\""
 }
@@ -346,7 +346,7 @@ build_appimage() {
 
     docker cp "$FM_APPIMAGE_CONTAINER:/usr/local/bin/grevo" "$stage/app/usr/bin/grevo"
     docker cp "$FM_APPIMAGE_CONTAINER:/usr/local/bin/grevo-code-mode-host" "$stage/app/usr/bin/grevo-code-mode-host"
-    docker cp "$FM_APPIMAGE_CONTAINER:/usr/local/bin/codex-resources" "$stage/app/usr/bin/codex-resources"
+    docker cp "$FM_APPIMAGE_CONTAINER:/usr/local/bin/grevo-resources" "$stage/app/usr/bin/grevo-resources"
     docker cp "$FM_APPIMAGE_CONTAINER:/usr/local/bin/lib/." "$stage/app/usr/lib/"
 
     # Collect closure libs (skip glibc) for a portable AppImage.
@@ -372,7 +372,7 @@ export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/bin/lib${LD_LIBRARY_PATH:+:$
 exec "$APPDIR/usr/bin/grevo" "$@"
 RUNEOF
     chmod +x "$stage/app/AppRun" "$stage/app/usr/bin/grevo" "$stage/app/usr/bin/grevo-code-mode-host" \
-        "$stage/app/usr/bin/codex-resources/bwrap"
+        "$stage/app/usr/bin/grevo-resources/bwrap"
 
     # Download AppImage tooling through proxy if needed.
     local gh_proxy="${ghfast_top_proxy:-https://ghfast.top/github.com}"

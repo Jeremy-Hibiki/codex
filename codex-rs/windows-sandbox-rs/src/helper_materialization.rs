@@ -17,7 +17,7 @@ use crate::sandbox_bin_dir;
 
 const DEV_BUILD_VERSION_SENTINEL: &str = "0.0.0";
 pub(crate) const BIN_DIRNAME: &str = "bin";
-pub(crate) const RESOURCES_DIRNAME: &str = "codex-resources";
+pub(crate) const RESOURCES_DIRNAME: &str = "grevo-resources";
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum HelperExecutable {

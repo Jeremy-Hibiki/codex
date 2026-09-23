@@ -81,7 +81,7 @@ fn stage_windows_sandbox_helpers() -> anyhow::Result<()> {
     let test_exe_dir = test_exe
         .parent()
         .context("Windows test executable should have a parent directory")?;
-    let resources_dir = test_exe_dir.join("codex-resources");
+    let resources_dir = test_exe_dir.join("grevo-resources");
     match std::fs::create_dir_all(&resources_dir) {
         Ok(()) => {}
         Err(err)

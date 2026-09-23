@@ -959,8 +959,8 @@ install_package_release() {
     "$stage_release/bin/codex" \
     "$stage_release/bin/grevo-code-mode-host" \
     "$stage_release/codex-path/rg"
-  if [ -f "$stage_release/codex-resources/bwrap" ]; then
-    chmod 0755 "$stage_release/codex-resources/bwrap"
+  if [ -f "$stage_release/grevo-resources/bwrap" ]; then
+    chmod 0755 "$stage_release/grevo-resources/bwrap"
   fi
   ln -sf "bin/codex" "$stage_release/codex"
 
@@ -980,15 +980,15 @@ install_legacy_platform_npm_release() {
 
   mkdir -p "$RELEASES_DIR"
   rm -rf "$stage_release" "$extract_dir"
-  mkdir -p "$stage_release/codex-resources" "$extract_dir"
+  mkdir -p "$stage_release/grevo-resources" "$extract_dir"
   tar -xzf "$archive_path" -C "$extract_dir"
 
   cp "$vendor_root/codex/codex" "$stage_release/codex"
-  cp "$vendor_root/path/rg" "$stage_release/codex-resources/rg"
-  chmod 0755 "$stage_release/codex" "$stage_release/codex-resources/rg"
-  if [ -f "$vendor_root/codex-resources/bwrap" ]; then
-    cp "$vendor_root/codex-resources/bwrap" "$stage_release/codex-resources/bwrap"
-    chmod 0755 "$stage_release/codex-resources/bwrap"
+  cp "$vendor_root/path/rg" "$stage_release/grevo-resources/rg"
+  chmod 0755 "$stage_release/codex" "$stage_release/grevo-resources/rg"
+  if [ -f "$vendor_root/grevo-resources/bwrap" ]; then
+    cp "$vendor_root/grevo-resources/bwrap" "$stage_release/grevo-resources/bwrap"
+    chmod 0755 "$stage_release/grevo-resources/bwrap"
   fi
 
   if [ -e "$release_dir" ] || [ -L "$release_dir" ]; then
@@ -1018,7 +1018,7 @@ release_dir_is_complete() {
       ;;
     legacy-platform-npm)
       [ -x "$release_dir/codex" ] &&
-        [ -x "$release_dir/codex-resources/rg" ] ||
+        [ -x "$release_dir/grevo-resources/rg" ] ||
         return 1
       ;;
     *)
@@ -1028,7 +1028,7 @@ release_dir_is_complete() {
 
   case "$layout:$expected_target" in
     package:*linux* | legacy-platform-npm:*linux*)
-      [ -x "$release_dir/codex-resources/bwrap" ] || return 1
+      [ -x "$release_dir/grevo-resources/bwrap" ] || return 1
       ;;
   esac
 

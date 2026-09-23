@@ -350,15 +350,15 @@ jobs:
           if [[ "${{ matrix.target }}" == *linux* && "${{ matrix.bundle }}" == "primary" ]]; then
             bundle_root="${RUNNER_TEMP}/codex-${{ matrix.target }}-bundle"
             rm -rf "$bundle_root"
-            mkdir -p "$bundle_root/codex-resources"
+            mkdir -p "$bundle_root/grevo-resources"
             cp "$dest/codex-${{ matrix.target }}" "$bundle_root/codex"
             cp "$dest/grevo-code-mode-host-${{ matrix.target }}" "$bundle_root/grevo-code-mode-host"
-            cp "$dest/bwrap-${{ matrix.target }}" "$bundle_root/codex-resources/bwrap"
+            cp "$dest/bwrap-${{ matrix.target }}" "$bundle_root/grevo-resources/bwrap"
             chmod 0755 \
               "$bundle_root/codex" \
               "$bundle_root/grevo-code-mode-host" \
-              "$bundle_root/codex-resources/bwrap"
-            tar -C "$bundle_root" -cf - codex grevo-code-mode-host codex-resources/bwrap |
+              "$bundle_root/grevo-resources/bwrap"
+            tar -C "$bundle_root" -cf - codex grevo-code-mode-host grevo-resources/bwrap |
               zstd -T0 -19 -o "$dest/codex-${{ matrix.target }}-bundle.tar.zst"
           fi
 
@@ -1128,7 +1128,7 @@ jobs:
 
           for resource in \
             "${package_dir}/codex-path/rg" \
-            "${package_dir}/codex-resources/zsh/bin/zsh"
+            "${package_dir}/grevo-resources/zsh/bin/zsh"
           do
             chmod 0755 "$resource"
             lipo "$resource" -verify_arch "$expected_arch"

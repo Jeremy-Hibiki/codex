@@ -66,12 +66,12 @@ def _load_release_version_module():
 
 def _write_fake_codex_package(package_dir: Path, script) -> Path:
     (package_dir / "bin").mkdir(parents=True)
-    (package_dir / "codex-resources").mkdir()
+    (package_dir / "grevo-resources").mkdir()
     (package_dir / "codex-path").mkdir()
     (package_dir / "codex-package.json").write_text('{"variant":"codex"}\n')
     (package_dir / "bin" / script.runtime_binary_name()).write_text("fake codex\n")
     (package_dir / "bin" / script.runtime_code_mode_host_name()).write_text("fake code mode host\n")
-    (package_dir / "codex-resources" / "bwrap").write_text("fake bwrap\n")
+    (package_dir / "grevo-resources" / "bwrap").write_text("fake bwrap\n")
     (package_dir / "codex-path" / "rg").write_text("fake rg\n")
     return package_dir
 
@@ -672,7 +672,7 @@ def test_runtime_package_is_wheel_only_and_builds_platform_specific_wheels() -> 
         "include": [
             "src/codex_cli_bin/codex-package.json",
             "src/codex_cli_bin/bin/**",
-            "src/codex_cli_bin/codex-resources/**",
+            "src/codex_cli_bin/grevo-resources/**",
             "src/codex_cli_bin/codex-path/**",
         ],
         "hooks": {"custom": {}},
@@ -705,7 +705,7 @@ def test_stage_runtime_release_copies_package_layout_and_sets_version(
         "metadata": (package_root / "codex-package.json").read_text(),
         "codex": (package_root / "bin" / script.runtime_binary_name()).read_text(),
         "code_mode_host": (package_root / "bin" / script.runtime_code_mode_host_name()).read_text(),
-        "bwrap": (package_root / "codex-resources" / "bwrap").read_text(),
+        "bwrap": (package_root / "grevo-resources" / "bwrap").read_text(),
         "rg": (package_root / "codex-path" / "rg").read_text(),
     } == {
         "metadata": '{"variant":"codex"}\n',
@@ -832,7 +832,7 @@ def test_runtime_package_layout_is_included_by_wheel_config(
     assert pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]["include"] == [
         "src/codex_cli_bin/codex-package.json",
         "src/codex_cli_bin/bin/**",
-        "src/codex_cli_bin/codex-resources/**",
+        "src/codex_cli_bin/grevo-resources/**",
         "src/codex_cli_bin/codex-path/**",
     ]
 

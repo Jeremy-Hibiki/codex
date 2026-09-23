@@ -760,7 +760,7 @@ fn create_test_package_app_server(codex_home: &Path, zsh_path: &Path) -> Result<
 fn packaged_zsh_path(codex_home: &Path) -> PathBuf {
     codex_home
         .join("test-package")
-        .join("codex-resources")
+        .join("grevo-resources")
         .join("zsh")
         .join("bin")
         .join("zsh")

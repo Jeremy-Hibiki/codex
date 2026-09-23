@@ -237,7 +237,7 @@ async fn missing_process_host_falls_back_to_in_process_code_mode() -> Result<()>
     let server = responses::start_mock_server().await;
     let builder = test_codex()
         .with_model("test-gpt-5.1-codex")
-        .with_code_mode_host_program("codex-code-mode-host-does-not-exist".into())
+        .with_code_mode_host_program("grevo-code-mode-host-does-not-exist".into())
         .with_config(|config| {
             config
                 .features
@@ -266,7 +266,7 @@ async fn missing_process_host_fails_when_in_process_fallback_is_disabled() -> Re
     let server = responses::start_mock_server().await;
     let builder = test_codex()
         .with_model("test-gpt-5.1-codex")
-        .with_code_mode_host_program("codex-code-mode-host-does-not-exist".into())
+        .with_code_mode_host_program("grevo-code-mode-host-does-not-exist".into())
         .with_config(|config| {
             config
                 .features
@@ -280,7 +280,7 @@ async fn missing_process_host_fails_when_in_process_fallback_is_disabled() -> Re
 
     let (output, _) =
         custom_tool_output_body_and_success(&follow_up_mock.single_request(), "call-1");
-    assert!(output.contains("failed to spawn code-mode host codex-code-mode-host-does-not-exist"));
+    assert!(output.contains("failed to spawn code-mode host grevo-code-mode-host-does-not-exist"));
 
     Ok(())
 }
@@ -291,7 +291,7 @@ async fn missing_process_host_error_is_bounded_when_in_process_fallback_is_disab
     skip_if_no_network!(Ok(()));
 
     let server = responses::start_mock_server().await;
-    let executable = "codex-code-mode-host-does-not-exist";
+    let executable = "grevo-code-mode-host-does-not-exist";
     let host_program = format!("{}{executable}", "missing-directory/".repeat(/*n*/ 64));
     let builder = test_codex()
         .with_model("test-gpt-5.1-codex")

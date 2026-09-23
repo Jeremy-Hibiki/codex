@@ -473,9 +473,9 @@ function Test-OldStandaloneBinLayout {
     $knownFiles = @(
         "codex.exe",
         "rg.exe",
-        "codex-command-runner.exe",
+        "grevo-command-runner.exe",
         "codex-windows-sandbox.exe",
-        "codex-windows-sandbox-setup.exe"
+        "grevo-windows-sandbox-setup.exe"
     )
     foreach ($child in Get-ChildItem -LiteralPath $VisibleBinDir -Force) {
         if ($child.PSIsContainer) {
@@ -708,10 +708,10 @@ function Test-PackageContentsAreComplete {
     $expectedFiles = @(
         "codex-package.json",
         "bin\codex.exe",
-        "bin\codex-code-mode-host.exe",
+        "bin\grevo-code-mode-host.exe",
         "codex-path\rg.exe",
-        "codex-resources\codex-command-runner.exe",
-        "codex-resources\codex-windows-sandbox-setup.exe"
+        "codex-resources\grevo-command-runner.exe",
+        "codex-resources\grevo-windows-sandbox-setup.exe"
     )
     foreach ($name in $expectedFiles) {
         if (-not (Test-Path -LiteralPath (Join-Path $PackageDir $name) -PathType Leaf)) {
@@ -733,8 +733,8 @@ function Test-LegacyPlatformNpmContentsAreComplete {
 
     $expectedFiles = @(
         "codex.exe",
-        "codex-resources\codex-command-runner.exe",
-        "codex-resources\codex-windows-sandbox-setup.exe",
+        "codex-resources\grevo-command-runner.exe",
+        "codex-resources\grevo-windows-sandbox-setup.exe",
         "codex-resources\rg.exe"
     )
     foreach ($name in $expectedFiles) {
@@ -1017,8 +1017,8 @@ try {
                 New-Item -ItemType Directory -Force -Path $resourcesDir | Out-Null
                 $copyMap = @{
                     "codex/codex.exe" = "codex.exe"
-                    "codex/codex-command-runner.exe" = "codex-resources\codex-command-runner.exe"
-                    "codex/codex-windows-sandbox-setup.exe" = "codex-resources\codex-windows-sandbox-setup.exe"
+                    "codex/grevo-command-runner.exe" = "codex-resources\grevo-command-runner.exe"
+                    "codex/grevo-windows-sandbox-setup.exe" = "codex-resources\grevo-windows-sandbox-setup.exe"
                     "path/rg.exe" = "codex-resources\rg.exe"
                 }
 

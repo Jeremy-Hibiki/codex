@@ -60,7 +60,7 @@ def runtime_binary_name() -> str:
 
 
 def runtime_code_mode_host_name() -> str:
-    return "codex-code-mode-host.exe" if _is_windows() else "codex-code-mode-host"
+    return "grevo-code-mode-host.exe" if _is_windows() else "grevo-code-mode-host"
 
 
 def staged_runtime_package_root(root: Path) -> Path:

@@ -64,7 +64,7 @@ struct HostClient {
 
 impl HostHarness {
     async fn start() -> Result<Self> {
-        let host_program = codex_utils_cargo_bin::cargo_bin("codex-code-mode-host")?;
+        let host_program = codex_utils_cargo_bin::cargo_bin("grevo-code-mode-host")?;
         let mut command = Command::new(host_program);
         command
             .args(["--listen", "ws://127.0.0.1:0"])

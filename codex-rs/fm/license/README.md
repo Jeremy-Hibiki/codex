@@ -26,9 +26,9 @@
 | `codex app-server`（含 ACP 适配器、Python SDK、IDE 扩展） | `cli_main` `AppServer` 且无子命令 |
 | `codex mcp-server`（Agents SDK 指南的接入方式） | `cli_main` `McpServer` 分支 |
 | `codex remote-control`（前台运行 app-server） | `cli_main` `RemoteControl` 且无子命令 |
-| `codex-exec`（独立二进制） | `codex-rs/exec/src/main.rs` |
-| `codex-app-server`（独立二进制） | `codex-rs/app-server/src/main.rs` |
-| `codex-mcp-server`（独立二进制） | `codex-rs/mcp-server/src/main.rs` |
+| `grevo-exec`（独立二进制） | `codex-rs/exec/src/main.rs` |
+| `grevo-app-server`（独立二进制） | `codex-rs/app-server/src/main.rs` |
+| `grevo-mcp-server`（独立二进制） | `codex-rs/mcp-server/src/main.rs` |
 
 管理类命令（`login`、`mcp`、`plugin`、`doctor`、`app-server daemon start/stop`、
 `remote-control stop/pair`、schema 生成等）不启动 agent，不做校验。daemon 实际拉起
@@ -92,7 +92,7 @@ SIGINT/SIGTERM 后，收到信号先 `check_in_now()`（`lmCheckIn` + `lmExit`�
 - `codex app-server`（ACP 适配器、Python SDK、IDE 扩展实际拉起的进程）之前没有安装
   处理器，ACP 断开时 `codex-acp` 对进程发 SIGTERM，license 不会立即归还；现在
   `cli_main` 对**所有**持有 license 的子命令统一安装处理器，断开即归还。
-- 独立 `codex-app-server` 二进制同样安装处理器。
+- 独立 `grevo-app-server` 二进制同样安装处理器。
 
 ## License Client 连接复用（研究结论）
 
@@ -151,7 +151,7 @@ SIGKILL/断开时由 TTL 兜底回收，从结构上解决“进程被杀不归�
 - `codex-rs/app-server/src/main.rs`、`message_processor.rs`、`error_code.rs`：
   独立二进制校验、信号处理器与 app-server 请求门禁。
 - `codex-rs/mcp-server/src/main.rs`、`codex_tool_runner.rs`：独立二进制校验与工具门禁。
-- `codex-rs/exec/src/main.rs`：独立 `codex-exec` 校验。
+- `codex-rs/exec/src/main.rs`：独立 `grevo-exec` 校验。
 - 各测试 harness：注入全构建模式生效的 bypass。
 
 ## 验证

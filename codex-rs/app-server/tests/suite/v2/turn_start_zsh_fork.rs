@@ -748,9 +748,9 @@ fn create_test_package_app_server(codex_home: &Path, zsh_path: &Path) -> Result<
     std::fs::create_dir_all(zsh_bin_dir)?;
     std::fs::write(package_dir.join("codex-package.json"), "{}")?;
 
-    let app_server = bin_dir.join("codex-app-server");
+    let app_server = bin_dir.join("grevo-app-server");
     copy_with_permissions(
-        &codex_utils_cargo_bin::cargo_bin("codex-app-server")?,
+        &codex_utils_cargo_bin::cargo_bin("grevo-app-server")?,
         &app_server,
     )?;
     copy_with_permissions(zsh_path, &package_zsh_path)?;

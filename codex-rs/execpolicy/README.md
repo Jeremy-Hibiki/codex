@@ -1,4 +1,4 @@
-# codex-execpolicy
+# grevo-execpolicy
 
 ## Overview
 

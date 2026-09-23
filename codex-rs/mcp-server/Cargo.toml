@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "codex-mcp-server"
+name = "grevo-mcp-server"
 path = "src/main.rs"
 
 [lib]

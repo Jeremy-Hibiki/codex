@@ -13,7 +13,7 @@ foo = "bar"
 "#,
     )?;
 
-    let output = Command::new(codex_utils_cargo_bin::cargo_bin("codex-app-server")?)
+    let output = Command::new(codex_utils_cargo_bin::cargo_bin("grevo-app-server")?)
         .env("GREVO_HOME", codex_home.path())
         .env("FMSH_CODEX_LIC_TEST_BYPASS", "1")
         .env(

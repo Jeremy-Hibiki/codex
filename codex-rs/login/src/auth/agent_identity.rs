@@ -498,7 +498,7 @@ mod tests {
             &header,
             &json!({
                 "iss": "https://chatgpt.com/codex-backend/agent-identity",
-                "aud": "codex-app-server",
+                "aud": "grevo-app-server",
                 "iat": 1_700_000_000usize,
                 "exp": 4_000_000_000usize,
                 "agent_runtime_id": record.agent_runtime_id,

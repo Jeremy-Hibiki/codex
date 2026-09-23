@@ -53,7 +53,7 @@ def build_package_dir(
     )
     copy_executable(
         inputs.code_mode_host_bin,
-        bin_dir / f"codex-code-mode-host{spec.exe_suffix}",
+        bin_dir / f"grevo-code-mode-host{spec.exe_suffix}",
         is_windows=spec.is_windows,
     )
     copy_executable(inputs.rg_bin, path_dir / spec.rg_name, is_windows=spec.is_windows)
@@ -71,14 +71,14 @@ def build_package_dir(
     if inputs.codex_command_runner_bin is not None:
         copy_executable(
             inputs.codex_command_runner_bin,
-            resources_dir / "codex-command-runner.exe",
+            resources_dir / "grevo-command-runner.exe",
             is_windows=True,
         )
 
     if inputs.codex_windows_sandbox_setup_bin is not None:
         copy_executable(
             inputs.codex_windows_sandbox_setup_bin,
-            resources_dir / "codex-windows-sandbox-setup.exe",
+            resources_dir / "grevo-windows-sandbox-setup.exe",
             is_windows=True,
         )
 
@@ -135,7 +135,7 @@ def validate_package_dir(
 
     required_files = [
         Path("bin") / variant.entrypoint_name(spec),
-        Path("bin") / f"codex-code-mode-host{spec.exe_suffix}",
+        Path("bin") / f"grevo-code-mode-host{spec.exe_suffix}",
         Path("codex-path") / spec.rg_name,
     ]
     executable_files = list(required_files)
@@ -152,8 +152,8 @@ def validate_package_dir(
     if spec.is_windows:
         required_files.extend(
             [
-                Path("codex-resources") / "codex-command-runner.exe",
-                Path("codex-resources") / "codex-windows-sandbox-setup.exe",
+                Path("codex-resources") / "grevo-command-runner.exe",
+                Path("codex-resources") / "grevo-windows-sandbox-setup.exe",
             ]
         )
 

@@ -77,7 +77,7 @@ async fn start_recording_app_server(
                             serde_json::to_string(&JSONRPCMessage::Response(JSONRPCResponse {
                                 id: request.id,
                                 result: serde_json::json!({
-                                    "userAgent": "codex-tui-test",
+                                    "userAgent": "grevo-tui-test",
                                     "codexHome": codex_home,
                                 }),
                             }))?

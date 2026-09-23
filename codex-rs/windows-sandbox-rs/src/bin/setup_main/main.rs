@@ -13,5 +13,5 @@ fn main() {
     codex_process_hardening::disable_process_dumping()
         .unwrap_or_else(|err| eprintln!("WARNING: failed to disable process dumping: {err}"));
 
-    panic!("codex-windows-sandbox-setup is Windows-only");
+    panic!("grevo-windows-sandbox-setup is Windows-only");
 }

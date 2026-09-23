@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
+# Build the FMSH (fm) Grevo CLI using Cargo + Docker.
 #
-# Build the FMSH (fm) Codex CLI using Cargo + Docker.
-#
-# This is the Cargo counterpart to release/build-fm.sh (which uses Bazel).
-# It mirrors the same CLI interface (--local / --docker / --appimage /
+# It mirrors the Bazel release flow's CLI interface (--local / --docker / --appimage /
 # --suffix / --tag / --ubuntu-version / --base-version) so it can be used
 # as a drop-in replacement.
 #
@@ -192,25 +190,28 @@ build_local() {
     echo "== cargo build $cargo_profile_flag =="
     (
         cd "$codex_src"
-        FM_BUILD_SUFFIX="$suffix" cargo build $cargo_profile_flag -p codex-cli --timings
+        FM_BUILD_SUFFIX="$suffix" cargo build $cargo_profile_flag -p codex-cli -p codex-code-mode-host --timings
     )
 
     mkdir -p "$out_dir/lib"
 
     # Replacing by rename keeps concurrent `mv` safe even when an old dist
     # binary is still running; Linux otherwise rejects truncating ETXTBSY files.
-    staged_bin="$(mktemp "$out_dir/codex.XXXXXX")"
+    staged_bin="$(mktemp "$out_dir/grevo.XXXXXX")"
     rm "$staged_bin"
-    cp "$codex_src/target/$target_subdir/codex" "$staged_bin"
+    cp "$codex_src/target/$target_subdir/grevo" "$staged_bin"
     if [[ "$profile" == "release" ]]; then
         echo "== release build: keeping symbols =="
-    elif [[ "$profile" == "release" ]]; then
-        echo "== stripping binary =="
-        strip --strip-debug --strip-unneeded "$staged_bin"
     else
         echo "== debug build: keeping symbols =="
     fi
     mv -f "$staged_bin" "$bin"
+
+    # code-mode resolves the host as a sibling of the current executable.
+    staged_host="$(mktemp "$out_dir/grevo-code-mode-host.XXXXXX")"
+    rm "$staged_host"
+    cp "$codex_src/target/$target_subdir/grevo-code-mode-host" "$staged_host"
+    mv -f "$staged_host" "$out_dir/grevo-code-mode-host"
 
     echo "== bundling fmsh-ukey SDK libs =="
     local sdk_lib_dir
@@ -229,6 +230,10 @@ build_local() {
     fi
 
     echo "== verifying =="
+    [[ -x "$out_dir/grevo-code-mode-host" ]] || {
+        echo "ERROR: grevo-code-mode-host missing next to grevo in $out_dir" >&2
+        exit 1
+    }
     # License gate requires env vars; just check --version with them stubbed.
     FMSH_CODEX_LIC_FEATURE=x FMSH_CODEX_LIC_VERSION=x \
         LD_LIBRARY_PATH="$out_dir/lib" \
@@ -236,7 +241,7 @@ build_local() {
 
     echo ""
     echo "Build complete:"
-    echo "  binary: $bin"
+    echo "  binary: $bin (+ $out_dir/grevo-code-mode-host)"
     echo "  libs:   $out_dir/lib/"
     echo "  version: $(FMSH_CODEX_LIC_FEATURE=x FMSH_CODEX_LIC_VERSION=x LD_LIBRARY_PATH="$out_dir/lib" "$bin" --version 2>&1 || echo '(license gate active)')"
 }
@@ -271,6 +276,7 @@ build_docker() {
     echo "Extract binary:"
     echo "  id=\$(docker create $tag)"
     echo "  docker cp \"\$id:/usr/local/bin/grevo\" ./grevo"
+    echo "  docker cp \"\$id:/usr/local/bin/grevo-code-mode-host\" ./grevo-code-mode-host"
     echo "  docker cp \"\$id:/usr/local/bin/lib\" ./lib"
     echo "  docker rm \"\$id\""
 }
@@ -309,6 +315,7 @@ build_appimage() {
     mkdir -p "$stage/app/usr/bin" "$stage/app/usr/lib"
 
     docker cp "$FM_APPIMAGE_CONTAINER:/usr/local/bin/grevo" "$stage/app/usr/bin/grevo"
+    docker cp "$FM_APPIMAGE_CONTAINER:/usr/local/bin/grevo-code-mode-host" "$stage/app/usr/bin/grevo-code-mode-host"
     docker cp "$FM_APPIMAGE_CONTAINER:/usr/local/bin/lib/." "$stage/app/usr/lib/"
 
     # Collect closure libs (skip glibc) for a portable AppImage.
@@ -333,7 +340,7 @@ APPDIR="${SELF%/*}"
 export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/bin/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$APPDIR/usr/bin/grevo" "$@"
 RUNEOF
-    chmod +x "$stage/app/AppRun" "$stage/app/usr/bin/grevo"
+    chmod +x "$stage/app/AppRun" "$stage/app/usr/bin/grevo" "$stage/app/usr/bin/grevo-code-mode-host"
 
     # Download AppImage tooling through proxy if needed.
     local gh_proxy="${ghfast_top_proxy:-https://ghfast.top/github.com}"

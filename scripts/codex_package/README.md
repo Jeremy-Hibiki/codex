@@ -11,12 +11,12 @@ The builder creates a canonical Codex package directory:
 ├── codex-package.json
 ├── bin
 │   ├── <entrypoint>[.exe]
-│   └── codex-code-mode-host[.exe]
+│   └── grevo-code-mode-host[.exe]
 ├── codex-resources
 │   ├── bwrap                             # Linux only
 │   ├── zsh/bin/zsh                       # supported Unix targets only
-│   ├── codex-command-runner.exe          # Windows only
-│   └── codex-windows-sandbox-setup.exe   # Windows only
+│   ├── grevo-command-runner.exe          # Windows only
+│   └── grevo-windows-sandbox-setup.exe   # Windows only
 └── codex-path
     └── rg[.exe]
 ```
@@ -31,7 +31,7 @@ artifacts; pass a GNU Linux target explicitly for native glibc local builds. If
 prints its path after the package is built.
 
 The `--variant` flag selects the package entrypoint. Supported variants are
-`codex` and `codex-app-server`. The `version` field in `codex-package.json` is
+`codex` and `grevo-app-server`. The `version` field in `codex-package.json` is
 read from `[workspace.package].version` in `codex-rs/Cargo.toml`.
 
 ## Source-built artifacts
@@ -41,9 +41,9 @@ grouped `cargo build` command per package when they are needed and no prebuilt
 override was provided:
 
 - all targets: the selected entrypoint, unless `--entrypoint-bin` is provided
-- all targets: `codex-code-mode-host`, unless `--code-mode-host-bin` is provided
+- all targets: `grevo-code-mode-host`, unless `--code-mode-host-bin` is provided
 - Linux targets: `bwrap`, unless `--bwrap-bin` is provided
-- Windows targets: `codex-command-runner` and `codex-windows-sandbox-setup`,
+- Windows targets: `grevo-command-runner` and `grevo-windows-sandbox-setup`,
   unless the corresponding prebuilt helper flags are provided
 
 The default cargo profile is `dev-small` because local iteration should favor
@@ -57,7 +57,7 @@ the signed host executable beside the signed entrypoint.
 
 Release jobs that already built package resource binaries should also pass the
 corresponding resource flags: `--bwrap-bin` for Linux packages, and
-`--codex-command-runner-bin` plus `--codex-windows-sandbox-setup-bin` for
+`--grevo-command-runner-bin` plus `--grevo-windows-sandbox-setup-bin` for
 Windows packages. This keeps package archive creation as a pure staging step
 after signing instead of rebuilding resources.
 

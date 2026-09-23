@@ -89,11 +89,11 @@ guard test), `spawn` filter 102 passed.
   approvals/network/unified_exec、MCP 超时），与本变更涉及文件无关；其中
   `script_execution_rewrites_original_path_and_redacts_output` 因产品策略（engaged 必须
   沙箱）改为 workspace-write 配置后通过。
-- `bazel build //codex-rs/cli:codex //codex-rs/app-server:codex-app-server
-  //codex-rs/linux-sandbox:codex-linux-sandbox //codex-rs/fm/encrypted-skills:encrypted-skills`:
+- `bazel build //codex-rs/cli:codex //codex-rs/app-server:grevo-app-server
+  //codex-rs/linux-sandbox:grevo-linux-sandbox //codex-rs/fm/encrypted-skills:encrypted-skills`:
   成功；`just bazel-lock-update` 无 lockfile 变化（zip 已在依赖图中）。
 
-TODO-6/7/8/9 收尾后复跑：`codex-app-server` 全量 906/906；`codex-core`
+TODO-6/7/8/9 收尾后复跑：`grevo-app-server` 全量 906/906；`codex-core`
 `encrypted_skills`+`encrypted_skills_guard`+`agent_security` 96/96；`just fix` 干净。
 
 四种加密模式（I33）后复跑：`codex-config` 224/224；`fm-encrypted-skills` 143/143；
@@ -208,7 +208,7 @@ and unrelated to this fix set.
 
 ## TODO-1 验证记录：bwrap 只读 bind 真实执行
 
-新增 `codex-linux-sandbox` 真实执行测试 `readonly_binds_are_visible_in_real_bwrap_and_dev_shm_stays_private`：
+新增 `grevo-linux-sandbox` 真实执行测试 `readonly_binds_are_visible_in_real_bwrap_and_dev_shm_stays_private`：
 在宿主 `/dev/shm` 放置标记文件、把临时解密目录 `--ro-bind` 到逻辑技能路径后启动真实 bwrap，
 断言（1）逻辑路径下能读到绑定内容；（2）沙箱内 `/dev/shm` 为空；（3）宿主 `/dev/shm` 标记
 在沙箱内不可见。该测试在 bwrap 不可用或无法创建用户命名空间时自动跳过。

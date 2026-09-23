@@ -26,7 +26,7 @@ const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 10);
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn app_server_shares_flag_selected_code_mode_host_across_threads() -> Result<()> {
-    let host_program = codex_utils_cargo_bin::cargo_bin("codex-code-mode-host")?;
+    let host_program = codex_utils_cargo_bin::cargo_bin("grevo-code-mode-host")?;
     let mut websocket_host = Command::new(host_program)
         .args(["--listen", "ws://127.0.0.1:0"])
         .stdin(Stdio::null())

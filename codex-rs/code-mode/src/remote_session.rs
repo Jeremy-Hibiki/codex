@@ -584,9 +584,9 @@ fn resolve_host_program(
         return PathBuf::from(path);
     }
     let executable_name = if cfg!(windows) {
-        "codex-code-mode-host.exe"
+        "grevo-code-mode-host.exe"
     } else {
-        "codex-code-mode-host"
+        "grevo-code-mode-host"
     };
     if let Ok(current_exe) = current_exe
         && let Some(parent) = current_exe.parent()

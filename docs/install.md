@@ -57,7 +57,7 @@ The TUI records diagnostics in bounded local stores by default. Set `log_dir` ex
 
 ```bash
 codex -c log_dir=./.codex-log
-tail -F ./.codex-log/codex-tui.log
+tail -F ./.codex-log/grevo-tui.log
 ```
 
 The non-interactive mode (`codex exec`) defaults to `RUST_LOG=error`, but messages are printed inline, so there is no need to monitor a separate file.

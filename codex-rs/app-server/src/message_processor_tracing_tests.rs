@@ -90,7 +90,7 @@ fn init_test_tracing() -> &'static TestTracing {
         let provider = SdkTracerProvider::builder()
             .with_simple_exporter(exporter.clone())
             .build();
-        let tracer = provider.tracer("codex-app-server-message-processor-tests");
+        let tracer = provider.tracer("grevo-app-server-message-processor-tests");
         global::set_text_map_propagator(TraceContextPropagator::new());
         let subscriber =
             tracing_subscriber::registry().with(tracing_opentelemetry::layer().with_tracer(tracer));
@@ -138,7 +138,7 @@ impl TracingHarness {
                     request_id: RequestId::Integer(1),
                     params: InitializeParams {
                         client_info: ClientInfo {
-                            name: "codex-app-server-tests".to_string(),
+                            name: "grevo-app-server-tests".to_string(),
                             title: None,
                             version: "0.1.0".to_string(),
                         },

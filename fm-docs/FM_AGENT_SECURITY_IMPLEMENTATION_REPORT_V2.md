@@ -339,7 +339,7 @@ TTL sweep 原只在 **turn 边界**（`build_skills_and_plugins`）执行——�
 - **明文默认语义**：`encrypted: false, encryption: None` 即「明文常规 Skill」，加载/执行走原有 `load_plaintext_skill` 路径（直接读 SKILL.md），`is_encrypted()` 为 false 时不进入加解密分支——明文 Skill 行为零变化；
 - **wire 层缺省**：v2 协议字段已带 `#[serde(default)]`，JSON 缺省即明文；只有 Rust 字面量需要显式；
 - **为何不用 `..Default::default()`**：`SkillMetadata` 含 `AbsolutePathBuf`、`EnvironmentSkillMetadata` 含 `PathUri`，均无 `Default`（需手写占位路径，语义差）；且展开语法会静默重置漏写的旧字段（隐患）。显式两字段是当前最小且清晰的修复；
-- 验证：`cargo check --workspace --all-targets` 全绿；codex-skills-extension 15/15、codex-tui bottom_pane 758/758、composer_submission 40/40。
+- 验证：`cargo check --workspace --all-targets` 全绿；codex-skills-extension 15/15、grevo-tui bottom_pane 758/758、composer_submission 40/40。
 
 ### 发现的问题（P1）
 

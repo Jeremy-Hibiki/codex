@@ -43,7 +43,7 @@ async fn app_server_default_analytics_disabled_without_flag() -> Result<()> {
     let provider = codex_core::otel_init::build_provider(
         &config,
         SERVICE_VERSION,
-        Some("codex-app-server"),
+        Some("grevo-app-server"),
         /*default_analytics_enabled*/ false,
     )
     .map_err(|err| anyhow::anyhow!(err.to_string()))?;
@@ -68,7 +68,7 @@ async fn app_server_default_analytics_enabled_with_flag() -> Result<()> {
     let provider = codex_core::otel_init::build_provider(
         &config,
         SERVICE_VERSION,
-        Some("codex-app-server"),
+        Some("grevo-app-server"),
         /*default_analytics_enabled*/ true,
     )
     .map_err(|err| anyhow::anyhow!(err.to_string()))?;

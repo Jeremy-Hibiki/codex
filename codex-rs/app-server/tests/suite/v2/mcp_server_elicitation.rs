@@ -430,7 +430,7 @@ impl ElicitationRoundTripFixture {
             DEFAULT_READ_TIMEOUT,
             mcp.initialize_with_capabilities(
                 ClientInfo {
-                    name: "codex-app-server-tests".to_string(),
+                    name: "grevo-app-server-tests".to_string(),
                     title: None,
                     version: "0.1.0".to_string(),
                 },

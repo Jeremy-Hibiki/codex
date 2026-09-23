@@ -124,12 +124,12 @@ class InstallShTest(unittest.TestCase):
             current = root / "codex-home" / "packages" / "standalone" / "current"
             codex_path = install_bin / "codex"
             grevo_path = install_bin / "grevo"
-            host_path = install_bin / "codex-code-mode-host"
+            host_path = install_bin / "grevo-code-mode-host"
             self.assertEqual(os.readlink(codex_path), str(current / "bin" / "codex"))
             self.assertEqual(os.readlink(grevo_path), str(current / "bin" / "codex"))
             self.assertEqual(
                 os.readlink(host_path),
-                str(current / "bin" / "codex-code-mode-host"),
+                str(current / "bin" / "grevo-code-mode-host"),
             )
             self.assertTrue(os.access(host_path, os.X_OK))
 
@@ -718,7 +718,7 @@ def create_package_release(
         f"#!/bin/sh\nprintf 'codex-cli {VERSION}\\n'\n",
     )
     write_executable(
-        package_dir / "bin" / "codex-code-mode-host",
+        package_dir / "bin" / "grevo-code-mode-host",
         "#!/bin/sh\nexit 0\n",
     )
     write_executable(package_dir / "codex-path" / "rg", "#!/bin/sh\nexit 0\n")

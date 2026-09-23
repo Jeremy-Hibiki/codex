@@ -42,20 +42,20 @@
 | 现名                                                                                                    | 新名                           | 定义位置                                                     |
 |---------------------------------------------------------------------------------------------------------|--------------------------------|--------------------------------------------------------------|
 | `codex`                                                                                                 | **`grevo`**                    | `codex-rs/cli/Cargo.toml:8-10`（`[[bin]] name = "codex"`）✅  |
-| `codex-tui`                                                                                             | `grevo-tui`                    | `codex-rs/tui/Cargo.toml:8-10`                               |
-| `codex-exec`                                                                                            | `grevo-exec`                   | `codex-rs/exec/Cargo.toml:8-10`                              |
-| `codex-mcp-server`                                                                                      | `grevo-mcp-server`             | `codex-rs/mcp-server/Cargo.toml:7-9`                         |
-| `codex-app-server`                                                                                      | `grevo-app-server`             | `codex-rs/app-server/Cargo.toml:7-9`                         |
-| `codex-linux-sandbox`                                                                                   | `grevo-linux-sandbox`          | `codex-rs/linux-sandbox/Cargo.toml:7-9`                      |
-| `codex-execve-wrapper`                                                                                  | `grevo-execve-wrapper`         | `codex-rs/shell-escalation/Cargo.toml:7-9`                   |
-| `codex-execpolicy`                                                                                      | `grevo-execpolicy`             | `codex-rs/execpolicy/Cargo.toml:13-15`                       |
-| `codex-file-search`                                                                                     | `grevo-file-search`            | `codex-rs/file-search/Cargo.toml:7-9`                        |
-| `codex-code-mode-host`                                                                                  | `grevo-code-mode-host`         | `codex-rs/code-mode-host/Cargo.toml:7-9`                     |
-| `codex-responses-api-proxy`                                                                             | `grevo-responses-api-proxy`    | `codex-rs/responses-api-proxy/Cargo.toml:12-14`              |
-| `codex-stdio-to-uds`                                                                                    | `grevo-stdio-to-uds`           | `codex-rs/stdio-to-uds/Cargo.toml:7-9`                       |
-| `codex-write-config-schema`                                                                             | `grevo-write-config-schema`    | `codex-rs/core/Cargo.toml:11-13`                             |
-| `codex-command-runner`                                                                                  | `grevo-command-runner`         | `codex-rs/windows-sandbox-rs/Cargo.toml:17-19`（仅 Windows） |
-| `codex-windows-sandbox-setup`                                                                           | `grevo-windows-sandbox-setup`  | `codex-rs/windows-sandbox-rs/Cargo.toml:13-15`（仅 Windows） |
+| `grevo-tui`                                                                                             | `grevo-tui`                    | `codex-rs/tui/Cargo.toml:8-10`                               |
+| `grevo-exec`                                                                                            | `grevo-exec`                   | `codex-rs/exec/Cargo.toml:8-10`                              |
+| `grevo-mcp-server`                                                                                      | `grevo-mcp-server`             | `codex-rs/mcp-server/Cargo.toml:7-9`                         |
+| `grevo-app-server`                                                                                      | `grevo-app-server`             | `codex-rs/app-server/Cargo.toml:7-9`                         |
+| `grevo-linux-sandbox`                                                                                   | `grevo-linux-sandbox`          | `codex-rs/linux-sandbox/Cargo.toml:7-9`                      |
+| `grevo-execve-wrapper`                                                                                  | `grevo-execve-wrapper`         | `codex-rs/shell-escalation/Cargo.toml:7-9`                   |
+| `grevo-execpolicy`                                                                                      | `grevo-execpolicy`             | `codex-rs/execpolicy/Cargo.toml:13-15`                       |
+| `grevo-file-search`                                                                                     | `grevo-file-search`            | `codex-rs/file-search/Cargo.toml:7-9`                        |
+| `grevo-code-mode-host`                                                                                  | `grevo-code-mode-host`         | `codex-rs/code-mode-host/Cargo.toml:7-9`                     |
+| `grevo-responses-api-proxy`                                                                             | `grevo-responses-api-proxy`    | `codex-rs/responses-api-proxy/Cargo.toml:12-14`              |
+| `grevo-stdio-to-uds`                                                                                    | `grevo-stdio-to-uds`           | `codex-rs/stdio-to-uds/Cargo.toml:7-9`                       |
+| `grevo-write-config-schema`                                                                             | `grevo-write-config-schema`    | `codex-rs/core/Cargo.toml:11-13`                             |
+| `grevo-command-runner`                                                                                  | `grevo-command-runner`         | `codex-rs/windows-sandbox-rs/Cargo.toml:17-19`（仅 Windows） |
+| `grevo-windows-sandbox-setup`                                                                           | `grevo-windows-sandbox-setup`  | `codex-rs/windows-sandbox-rs/Cargo.toml:13-15`（仅 Windows） |
 | `codex-app-server-test-client` / `codex-app-server-test-notify-capture` / `codex-thread-manager-sample` | `grevo-*`（测试/样例，可选改） | 各自 Cargo.toml                                              |
 | `apply_patch`、`applypatch`、`bwrap`、`md-events`、`exec-server` 等                                     | 无 codex 前缀，不改            | —                                                            |
 
@@ -63,12 +63,12 @@
 
 `codex-rs/arg0/src/lib.rs` 实现单个可执行文件按 argv[0] / argv[1] 哨兵切换行为，以下硬编码字符串必须与二进制名**同批原子改名**：
 
-- `arg0/src/lib.rs:20-23`：`APPLY_PATCH_ARG0 = "apply_patch"`、`"applypatch"`、`EXECVE_WRAPPER_ARG0 = "codex-execve-wrapper"`。
-- `codex-rs/sandboxing/src/landlock.rs:7`：`CODEX_LINUX_SANDBOX_ARG0 = "codex-linux-sandbox"`（arg0 在 `arg0/src/lib.rs:95` 据此分发）。
+- `arg0/src/lib.rs:20-23`：`APPLY_PATCH_ARG0 = "apply_patch"`、`"applypatch"`、`EXECVE_WRAPPER_ARG0 = "grevo-execve-wrapper"`。
+- `codex-rs/sandboxing/src/landlock.rs:7`：`CODEX_LINUX_SANDBOX_ARG0 = "grevo-linux-sandbox"`（arg0 在 `arg0/src/lib.rs:95` 据此分发）。
 - argv[1] 哨兵参数：`"--codex-run-as-apply-patch"`（`codex-rs/apply-patch/src/lib.rs:41`）、`"--codex-run-as-fs-helper"`（`codex-rs/exec-server/src/fs_helper.rs:45`）、`"--codex-run-as-arg0-exec-helper"`（`codex-rs/exec-server/src/arg0_exec_helper.rs:4`）。
 - `arg0/src/lib.rs:292`：`ILLEGAL_ENV_VAR_PREFIX = "CODE_"`→`"GREVO_"`（禁止传入子进程的环境变量前缀）。
 - `arg0/src/lib.rs:294-300`：启动时加载 `~/.codex/.env`（跟随 §3 主目录改名）。
-- `arg0/src/lib.rs:229,353,369,382-389`：线程名 `"codex-main"`、临时目录 `codex_home/tmp/arg0`、临时前缀 `"codex-arg0"`、PATH 符号链接名（`apply_patch`/`codex-linux-sandbox`/`codex-execve-wrapper`）。
+- `arg0/src/lib.rs:229,353,369,382-389`：线程名 `"codex-main"`、临时目录 `codex_home/tmp/arg0`、临时前缀 `"codex-arg0"`、PATH 符号链接名（`apply_patch`/`grevo-linux-sandbox`/`grevo-execve-wrapper`）。
 
 ### 2.3 二进制内嵌的名称字符串
 
@@ -76,14 +76,14 @@
 - `codex-rs/cli/src/main.rs:2664`：shell 补全生成硬编码 `let name = "codex";` ✅
 - `codex-rs/cli/src/main.rs:1116`：`ExecCli::try_parse_from(["codex", "exec"])`。
 - `codex-rs/execpolicy/src/main.rs:9,11`、`stdio-to-uds/src/main.rs:17`、`core/src/bin/config_schema.rs:10`：clap `name`。
-- `codex-rs/tui/src/lib.rs:231`：日志文件名 `"codex-tui.log"` ✅；`:405,569` `client_name: "codex-tui"` ✅。
+- `codex-rs/tui/src/lib.rs:231`：日志文件名 `"grevo-tui.log"` ✅；`:405,569` `client_name: "grevo-tui"` ✅。
 - `codex-rs/install-context/src/lib.rs:9-12`：安装布局常量 `"codex-package.json"`、`"codex-path"`、`"codex-resources"` ✅。
 
 ### 2.4 沙箱/子进程边界上的二进制名
 
-- `codex-linux-sandbox`：arg0 常量（上）、`/tmp` 代理 socket 目录前缀 `"codex-linux-sandbox-proxy-"`（`codex-rs/linux-sandbox/src/proxy_routing.rs:49`，pid 解析有安全语义）、错误文案（`protocol/src/error.rs:152`）、doctor 标签（`cli/src/doctor.rs:1679` 等）。
-- Windows：`SETUP_EXE_FILENAME = "codex-windows-sandbox-setup.exe"`（`windows-sandbox-rs/src/setup.rs:54`）、**Windows 服务名** `WFP_SETUP_SERVICE_NAME = "codex-windows-sandbox-setup"`（`windows-sandbox-rs/src/wfp_setup.rs:11`，改名需处理旧服务卸载）、helper `codex-command-runner.exe`（`helper_materialization.rs:30` 等）。
-- `codex-execve-wrapper` 的 `EXEC_WRAPPER` + `CODEX_ESCALATE_SOCKET` 协议（见 §4）。
+- `grevo-linux-sandbox`：arg0 常量（上）、`/tmp` 代理 socket 目录前缀 `"grevo-linux-sandbox-proxy-"`（`codex-rs/linux-sandbox/src/proxy_routing.rs:49`，pid 解析有安全语义）、错误文案（`protocol/src/error.rs:152`）、doctor 标签（`cli/src/doctor.rs:1679` 等）。
+- Windows：`SETUP_EXE_FILENAME = "grevo-windows-sandbox-setup.exe"`（`windows-sandbox-rs/src/setup.rs:54`）、**Windows 服务名** `WFP_SETUP_SERVICE_NAME = "grevo-windows-sandbox-setup"`（`windows-sandbox-rs/src/wfp_setup.rs:11`，改名需处理旧服务卸载）、helper `grevo-command-runner.exe`（`helper_materialization.rs:30` 等）。
+- `grevo-execve-wrapper` 的 `EXEC_WRAPPER` + `CODEX_ESCALATE_SOCKET` 协议（见 §4）。
 
 ---
 
@@ -105,7 +105,7 @@
 | `.env`                                                                                                                                                                                                 | 启动时加载                | `arg0/src/lib.rs:298-300`                                                                                                                                                                                                                                                                   |
 | `AGENTS.md` / `AGENTS.override.md`                                                                                                                                                                     | 全局指令                  | `codex-home/src/instructions/mod.rs:9-10`                                                                                                                                                                                                                                                   |
 | `sessions/`、`archived_sessions/`（`rollout-*.jsonl`）                                                                                                                                                 | 会话回放                  | `rollout/src/lib.rs:25-26`、`rollout/src/recorder.rs:1553-1570`                                                                                                                                                                                                                             |
-| `log/`、`log/codex-tui.log`                                                                                                                                                                            | 日志                      | `core/src/config/mod.rs:3995`、`tui/src/lib.rs:231` ✅                                                                                                                                                                                                                                       |
+| `log/`、`log/grevo-tui.log`                                                                                                                                                                            | 日志                      | `core/src/config/mod.rs:3995`、`tui/src/lib.rs:231` ✅                                                                                                                                                                                                                                       |
 | `history.jsonl`                                                                                                                                                                                        | 历史                      | `message-history/src/lib.rs:52`                                                                                                                                                                                                                                                             |
 | `version.json`                                                                                                                                                                                         | 更新检查缓存              | `tui/src/updates_cache.rs:18-21`                                                                                                                                                                                                                                                            |
 | `skills/`（含 `.system/` 与 **`.codex-system-skills.marker`**）                                                                                                                                        | 技能                      | `skills/src/lib.rs:22-27` ✅（marker 文件名本身含 codex，需改为 `.grevo-system-skills.marker`，注意旧标记清理）                                                                                                                                                                              |
@@ -194,7 +194,7 @@ npm/Rust 双端契约：`CODEX_MANAGED_BY_*` + `CODEX_MANAGED_PACKAGE_ROOT`（`c
 | 项                           | 现值                                                                                                                                                                                                                                                                                                                                                                                          | 位置                                                                                                | 处置建议                                                                                                                                       |
 |------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
 | originator                   | `"codex_cli_rs"`                                                                                                                                                                                                                                                                                                                                                                              | `login/src/auth/default_client.rs:40` ✅（HTTP 头 `originator`，UA 亦由它派生 ：159-183）            | B：改 `grevo_cli_rs`；仅本机旧会话回放会带旧值，按普通字符串兼容即可                                                                           |
-| 一方 originator 名单         | `codex-tui`、`codex_vscode`、`codex_atlas`、`codex_chatgpt_desktop`、`starts_with("Codex ")`                                                                                                                                                                                                                                                                                                  | `default_client.rs:148-157`                                                                         | A：替换为 grevo 值；旧值识别仅在还支持读取本机旧会话时保留                                                                                     |
+| 一方 originator 名单         | `grevo-tui`、`codex_vscode`、`codex_atlas`、`codex_chatgpt_desktop`、`starts_with("Codex ")`                                                                                                                                                                                                                                                                                                  | `default_client.rs:148-157`                                                                         | A：替换为 grevo 值；旧值识别仅在还支持读取本机旧会话时保留                                                                                     |
 | residency 头                 | `x-openai-internal-codex-residency`                                                                                                                                                                                                                                                                                                                                                           | `default_client.rs:43` ✅                                                                            | A：OpenAI 专有，移除或随自建后端重定义                                                                                                         |
 | `x-codex-*` 请求头           | `x-codex-installation-id`、`x-codex-turn-state`、`x-codex-turn-metadata`、`x-codex-parent-thread-id`、`x-codex-window-id`、`x-codex-ws-stream-request-start-ms`、`x-codex-beta-features`                                                                                                                                                                                                      | `core/src/client.rs:143-153,1896` ✅；`rollout-trace/src/inference.rs:28`                            | B：语义保留（sticky routing、installation id 等），名字随自建后端改为 `x-grevo-*`；**客户端与后端必须同批切换**                                |
 | 后端 URL 路径                | `https://chatgpt.com/backend-api/codex`（`model-provider-info/src/lib.rs:38`）、`/api/codex/*`（`backend-client/src/client/rate_limit_resets.rs:82-107`、`cloud-tasks-client/src/http.rs:296,580`）、`/codex/analytics-events/events`（`analytics/src/client.rs:116`）、`/codex/device`（`login/src/device_code_auth.rs:174`）、`chatgpt.com/codex/open-app`（`login/src/success_page.rs:7`） | —                                                                                                   | A：整批替换为自建后端地址（grevo 路径）；`chatgpt.com`/`auth.openai.com` 域名删除                                                              |
@@ -202,23 +202,23 @@ npm/Rust 双端契约：`CODEX_MANAGED_BY_*` + `CODEX_MANAGED_PACKAGE_ROOT`（`c
 | JWT claim                    | `chatgpt_plan_type`、`chatgpt_account_id`、`https://api.openai.com/profile                                                                                                                                                                                                                                                                                                                    | auth` claim 键                                                                                      | `login/src/token_data.rs:34-96`                                                                                                                | A：随自有 token 格式重定义 |
 | 模型 provider 与目录         | 预设 `https://api.openai.com/v1`、`chatgpt.com/backend-api/`（`model-provider-info/src/lib.rs:257` 等）；`models-manager/models.json` 的 `gpt-5*-codex` slug 与指令模板                                                                                                                                                                                                                       | —                                                                                                   | A：接入自建模型服务时整体重写；`gpt-5*-codex` 等 OpenAI 模型 slug 不再适用（保留 `CODEX_OSS_*`→`GREVO_OSS_*` 的 ollama/lmstudio 本地模型通道） |
 | 遥测 metric 名               | `codex.*`（`cloud-config/src/metrics.rs:3-5`、`rollout/src/compression.rs:836-846`、`state/src/lib.rs:85-91`）、meter 名 `"codex"`（`otel/src/metrics/client.rs:45`）                                                                                                                                                                                                                         | —                                                                                                   | B：新前缀 `grevo.*`，自有 dashboard 直接用新名                                                                                                 |
-| OTEL service.name            | 默认跟随 originator（`core/src/otel_init.rs:80-84`）；`codex_mcp_server`（`mcp-server/src/lib.rs:56`）、`codex-app-server`（`app-server/src/lib.rs:136`）                                                                                                                                                                                                                                     | —                                                                                                   | A：替换为 grevo 值                                                                                                                             |
-| originator tag 白名单        | `codex_desktop`、`codex-app-server`、`codex_mcp_server`、`codex_cli_rs`、`codex-tui`、`codex_vscode`、`codex_exec`、`codex-cli`、`codex_sdk_ts`、`codex-app-server-sdk`…                                                                                                                                                                                                                      | `otel/src/metrics/tags.rs:14-26`                                                                    | A：替换为 grevo 枚举（后端是自己的，无需保留旧值）                                                                                             |
+| OTEL service.name            | 默认跟随 originator（`core/src/otel_init.rs:80-84`）；`codex_mcp_server`（`mcp-server/src/lib.rs:56`）、`grevo-app-server`（`app-server/src/lib.rs:136`）                                                                                                                                                                                                                                     | —                                                                                                   | A：替换为 grevo 值                                                                                                                             |
+| originator tag 白名单        | `codex_desktop`、`grevo-app-server`、`codex_mcp_server`、`codex_cli_rs`、`grevo-tui`、`codex_vscode`、`codex_exec`、`codex-cli`、`codex_sdk_ts`、`grevo-app-server-sdk`…                                                                                                                                                                                                                      | `otel/src/metrics/tags.rs:14-26`                                                                    | A：替换为 grevo 枚举（后端是自己的，无需保留旧值）                                                                                             |
 | analytics 上报               | `/codex/analytics-events/events`、`product_surface: "codex"`                                                                                                                                                                                                                                                                                                                                  | `analytics/src/client.rs:116`、`reducer.rs:2595`                                                    | B：路径与取值随自有后端一起定义                                                                                                                |
 | exec-server relay            | Noise prologue `b"codex-exec-server-relay-noise/v1"`                                                                                                                                                                                                                                                                                                                                          | `exec-server/src/noise_channel.rs:35`                                                               | B：两端同发，可改 `grevo-exec-server-relay-noise/v1`（版本错峰风险）                                                                           |
 | 会话文件内 `originator` 字段 | 旧 rollout 持久化了 `codex_cli_rs` 等                                                                                                                                                                                                                                                                                                                                                         | `protocol/src/protocol.rs:3057-3067`；resume 时 `core/src/thread_manager.rs:1449-1491` 优先复用旧值 | C：解析保持字符串兼容（只影响本机旧文件，随 §10.3-2 的迁移决策走）                                                                             |
 
 ### 5.2 MCP 边界
 
-- 对外 serverInfo：`Implementation::new("codex-mcp-server", ...).with_title("Codex")`（`mcp-server/src/message_processor.rs:241` ✅）→ `grevo-mcp-server` / `Grevo`。
+- 对外 serverInfo：`Implementation::new("grevo-mcp-server", ...).with_title("Codex")`（`mcp-server/src/message_processor.rs:241` ✅）→ `grevo-mcp-server` / `Grevo`。
 - 对外工具：`"codex"`（"Run a Codex session..."）与 `"codex-reply"`（`mcp-server/src/codex_tool_config.rs:118-123,237-241`）→ `grevo` / `grevo-reply`（**IDE 侧按工具名调用，需同步插件**）。
 - 作为客户端连外部 MCP 时的自报名：`"codex-mcp-client"` + title `Codex`（`codex-mcp/src/rmcp_client.rs:930`）。
 - 内置 hosted-apps MCP：config 键 `mcp_servers.codex_apps`、工具名 `mcp__codex_apps__*`（`core/src/mcp_tool_exposure.rs:26`、`protocol/src/models.rs:2850-2862`）→ `mcp__grevo_apps__*`（会进模型上下文，属行为变更）。
-- app-server：`clientInfo.name = "codex-tui"`（`tui/src/lib.rs:405,569` ✅）；`app-server/src/request_processors/thread_processor.rs:16` 的 `CODEX_TUI_CLIENT_NAME` 与 `tools/src/tool_discovery.rs:5` 的客户端判断需同步；`request_plugin_install.rs:138` 对 `"codex-tui"` 做等值判断（行为门控）。
+- app-server：`clientInfo.name = "grevo-tui"`（`tui/src/lib.rs:405,569` ✅）；`app-server/src/request_processors/thread_processor.rs:16` 的 `CODEX_TUI_CLIENT_NAME` 与 `tools/src/tool_discovery.rs:5` 的客户端判断需同步；`request_plugin_install.rs:138` 对 `"grevo-tui"` 做等值判断（行为门控）。
 
 ### 5.3 子进程 / IPC 边界
 
-见 §2.2、§2.4 与 §4.1（arg0 哨兵、`--codex-home` 参数（`windows-sandbox-rs/src/wrapper.rs:23`）、`CODEX_ESCALATE_SOCKET`、`/tmp/codex-linux-sandbox-proxy-*`、线程名 `codex-main`、TUI↔IDE socket 路径 `~/.codex/ipc/ipc.sock`）。
+见 §2.2、§2.4 与 §4.1（arg0 哨兵、`--codex-home` 参数（`windows-sandbox-rs/src/wrapper.rs:23`）、`CODEX_ESCALATE_SOCKET`、`/tmp/grevo-linux-sandbox-proxy-*`、线程名 `codex-main`、TUI↔IDE socket 路径 `~/.codex/ipc/ipc.sock`）。
 
 ---
 
@@ -303,7 +303,7 @@ npm/Rust 双端契约：`CODEX_MANAGED_BY_*` + `CODEX_MANAGED_PACKAGE_ROOT`（`c
 |-------------------------------------------------------------------|--------------------------------------------------------------------------------|
 | `@openai/codex`（bin: `codex`）                                   | `codex-cli/package.json:2,6-8` ✅                                               |
 | 平台子包 `@openai/codex-{linux,darwin,win32}-{x64,arm64}`（6 个） | `codex-cli/bin/codex.js:16-23`、`codex-cli/scripts/build_npm_package.py:23-66` |
-| `@openai/codex-responses-api-proxy`                               | `codex-rs/responses-api-proxy/npm/package.json:2` ✅                            |
+| `@openai/grevo-responses-api-proxy`                               | `codex-rs/responses-api-proxy/npm/package.json:2` ✅                            |
 | `@openai/codex-sdk`（导出类 `Codex`）                             | `sdk/typescript/package.json:2` ✅、`src/index.ts:29`                           |
 | npm tarball 名 `codex-npm-*.tgz`、`codex-sdk-npm-*.tgz`           | `.github/workflows/rust-release.yml:1448-1549`                                 |
 
@@ -317,7 +317,7 @@ npm/Rust 双端契约：`CODEX_MANAGED_BY_*` + `CODEX_MANAGED_PACKAGE_ROOT`（`c
 
 - `scripts/install/install.sh`：`BIN_PATH=$HOME/.local/bin/codex`、`CODEX_HOME_DIR=$HOME/.codex`、`STANDALONE_ROOT=$CODEX_HOME/packages/standalone`、下载资产 `codex-package-*.tar.gz`、`codex-package_SHA256SUMS`、`codex-npm-*.tgz`、RC 标记 `# >>> Codex installer >>>`、卸载 `@openai/codex`、`brew uninstall --cask codex`（:15-951）。`install.ps1` 对应 Windows 版。
 - R2 更新通道：对象前缀 `codex/releases/<ver>`、`codex/channels/latest`、`codex/install.sh`、`https://releases.openai.com/codex`（`.github/scripts/publish_r2_release.py:6-30`、`r2-release.yml:22-45`）→ 已定不接 OpenAI：全部换为自有通道域名与 `grevo/` 前缀。
-- 产物名：`codex-package-<triple>.tar.gz`、`codex-app-server-package-*`、`codex-<triple>.dmg`、`codex-symbols-*`、`codex-zsh`（`.github/workflows/rust-release.yml:340-1291`、`rust-release-zsh.yml`、`dotslash-config.json`、`dotslash-zsh-config.json`、macOS 签名 entitlements `codex*.entitlements.plist`）。
+- 产物名：`codex-package-<triple>.tar.gz`、`grevo-app-server-package-*`、`codex-<triple>.dmg`、`codex-symbols-*`、`codex-zsh`（`.github/workflows/rust-release.yml:340-1291`、`rust-release-zsh.yml`、`dotslash-config.json`、`dotslash-zsh-config.json`、macOS 签名 entitlements `codex*.entitlements.plist`）。
 - Docker/AppImage：见 §11 fork release。
 
 ---
@@ -367,7 +367,7 @@ npm/Rust 双端契约：`CODEX_MANAGED_BY_*` + `CODEX_MANAGED_PACKAGE_ROOT`（`c
 ## 12. 构建系统 / CI / 开发工具链（内部，需与 crate/二进制改名联动）
 
 - **Bazel**：`MODULE.bazel:1` `module(name = "codex")` ✅（模块名决定 lock/缓存键，改名会使 `MODULE.bazel.lock` 全量重算）；`codex-rs/cli/BUILD.bazel:7,25,29`（`crate_name = "codex_cli"`、target `codex`、`codex-help`）；`//codex-rs/cli:release_binaries`（`bazel/platforms/release_binaries.bzl`）；`defs.bzl:185` 宏名 `codex_rust_crate`、`:290-291,349-624` 的 `"codex-rs/"` 字符串运算与 remap-path-prefix；`bazel/rules/e2e_benchmark.bzl:7` `codex_e2e_benchmark`。
-- **justfile**（根）✅：`c`/`codex` 别名、`cargo run --bin codex*`、`bazel run //codex-rs/cli:codex`、`-p codex-core --bin codex-write-config-schema` 等约 15 处。
+- **justfile**（根）✅：`c`/`codex` 别名、`cargo run --bin codex*`、`bazel run //codex-rs/cli:codex`、`-p codex-core --bin grevo-write-config-schema` 等约 15 处。
 - **根 package.json / pnpm-workspace** ✅：`codex-monorepo`、workspace 成员 `codex-cli`、`codex-rs/responses-api-proxy/npm`、`sdk/typescript`；`write-hooks-schema -p codex-hooks`。
 - **CI（.github/workflows，62 文件）**：`rust-release.yml`（全量产物名/矩阵）、`r2-release.yml`、`python-*` 三个发布流、`sdk.yml`（`//codex-rs/cli:codex`、`CODEX_EXEC_PATH`）、`issue-deduplicator/labeler/translator`（配套 `.github/codex/` agent 自动化目录）、`bazel.yml`/`rust-ci*`（路径引用）、`Dockerfile.bazel` + `rbe.bzl`（RBE 镜像 `mbolin491/codex-bazel`）、`.bazelrc:97` `REPO_URL=https://github.com/openai/codex.git`。
 - **签名/打包脚本**：`.github/scripts/build-codex-package-archive.sh`、`build_codex_package.py`、`scripts/stage_npm_packages.py`、macOS entitlements、code-sign actions 默认 binaries 列表。
@@ -414,7 +414,7 @@ npm/Rust 双端契约：`CODEX_MANAGED_BY_*` + `CODEX_MANAGED_PACKAGE_ROOT`（`c
 > **扩展实施（同日，用户追加要求）**：crate 包名/库名与环境变量也已全量改名——
 > - **crate**：全部 129 个 `codex-*` 包名 → `grevo-*`（含 lib 名、`[workspace.dependencies]` 别名、全部 `use`/路径引用、BUILD.bazel `crate_name`、Cargo.lock）。**crate 目录名未改**（`codex-rs/`、`codex-api/` 等 bazel 标签与工作区成员路径保持原样，避免雪崩）。
 > - **环境变量**：全部 `CODEX_*` → `GREVO_*`（含 `CODEX_SANDBOX*`、`CODEX_HOME`、`CODEX_THREAD_ID`、测试变量），并同步 npm shim（`codex.js`）、TS/Python SDK、安装器、CI 工作流、`.bazelrc`/测试启动模板、AGENTS.md 条款。两个刻意保留：home-dir 的 `CODEX_HOME` 旧名回落（兼容既有脚本），以及本机旧会话等落盘数据不受影响。
-> - **保持不变**：辅助 bin 名（`codex-tui`、`codex-linux-sandbox` 等，与 arg0 哨兵值/CI 矩阵/安装布局强耦合）、app-server schema fixture 文件名（`codex_app_server_protocol*.json` 硬编码，python SDK 引用）、MCP 工具名/originator 等线上标识（待自建后端阶段处理）。
+> - **保持不变**：辅助 bin 名（`grevo-tui`、`grevo-linux-sandbox` 等，与 arg0 哨兵值/CI 矩阵/安装布局强耦合）、app-server schema fixture 文件名（`codex_app_server_protocol*.json` 硬编码，python SDK 引用）、MCP 工具名/originator 等线上标识（待自建后端阶段处理）。
 >
 > **目录名实施（同日追加）**：全部 codex 命名目录已改名——`codex-rs/` → **`grevo-rs/`**、6 个 crate 目录（`codex-api`、`codex-backend-openapi-models`、`codex-client`、`codex-experimental-api-macros`、`codex-home`、`codex-mcp` → `grevo-*`）、npm 包装目录 `codex-cli/` → `grevo-cli/`、打包脚本包 `scripts/codex_package` → `scripts/grevo_package`、本地开发目录 `.codex/` → `.grevo/`。所有 BUILD 标签（`//grevo-rs/...`）、CI 路径、`defs.bzl` 路径运算、AGENTS.md、devcontainer、VSCode 配置同步更新。仍保留 codex 名的：辅助 bin 名、少量文件名（`codex.js`、`codex.ts`、`build_codex_package.py`、`docs/codex_mcp_interface.md` 等文件级命名，未在本轮范围）、`.github/codex/` 内部 agent 自动化目录、法律文件中的 OpenAI 归属。本清单中更早的 `codex-rs/...` 路径引用为历史记录。
 
@@ -431,7 +431,7 @@ npm/Rust 双端契约：`CODEX_MANAGED_BY_*` + `CODEX_MANAGED_PACKAGE_ROOT`（`c
 | A5 | `release/build-fm-cargo.sh`（`dist/codex`、`/usr/local/bin/codex`、AppImage 名）、`release/build-fm.sh`、`release/Dockerfile`、`release/Dockerfile.cargo`      | 产物/容器内路径/`ENTRYPOINT ["codex"]`/镜像 tag → grevo                                      |
 | A6 | 根 `justfile:14-36`、`.codex/environments/environment.toml`（Run 命令 `--bin codex`）、根 `package.json` scripts                                             | `--bin codex` → `--bin grevo`（开发工具联动，机械）                                          |
 
-> arg0 机制**不需要动**：`apply_patch`/`codex-linux-sandbox`/`codex-execve-wrapper` 等 helper 名是内部契约（两端同仓库），保留原样即可工作。
+> arg0 机制**不需要动**：`apply_patch`/`grevo-linux-sandbox`/`grevo-execve-wrapper` 等 helper 名是内部契约（两端同仓库），保留原样即可工作。
 
 #### B. 目录与配置约定 `.codex` → `.grevo`
 
@@ -461,13 +461,13 @@ npm/Rust 双端契约：`CODEX_MANAGED_BY_*` + `CODEX_MANAGED_PACKAGE_ROOT`（`c
 | C7  | `codex-rs/fm/license/src/license.rs:35,173`                                                                                 | "Codex license is unavailable…"、display 默认名 "Codex" → Grevo                                                                  |
 | C8  | `announcement_tip.toml` + `tui/src/tooltips.rs:7`                                                                           | 公告内容去掉 openai 链接；抓取 URL 换自有地址（或先置空停用）                                                                    |
 | C9  | 更新检查 URL：`cli/src/doctor/updates.rs:25`、`tui/src/updates.rs:57-58`、`tui/src/npm_registry.rs`、`update_action.rs`     | 指向 openai/npm/brew 的地址换自有或接受 404（fork 走自有分发时可直接禁用更新提示）                                               |
-| C10 | TUI insta 快照（约 38 个）                                                                                                  | `just test -p codex-tui` → `cargo insta accept -p codex-tui` 重生                                                                |
+| C10 | TUI insta 快照（约 38 个）                                                                                                  | `just test -p grevo-tui` → `cargo insta accept -p grevo-tui` 重生                                                                |
 
 ### 15.2 P1 可选加强（默认不做，想要再做）
 
 - **模型自称**：`core/gpt_5_codex_prompt.md` 等基础 prompt 与 `models-manager/models.json` 14 处 "You are Codex" → "You are Grevo"（删 "led by OpenAI"）。代价：`core/src/session/tests.rs:1307` 断言同步 + 模型行为回归。不改不影响功能，只是模型自我介绍仍是 Codex。
 - 长尾错误文案（`protocol/src/error.rs`、`chatgpt` crate、`core/src/session_rollout_init_error.rs` 等）里的 Codex。
-- MCP serverInfo/工具名 `codex-mcp-server`/`codex` → grevo（自己 IDE 对接时再改，两端同批）。
+- MCP serverInfo/工具名 `grevo-mcp-server`/`codex` → grevo（自己 IDE 对接时再改，两端同批）。
 - `fm/license` 的 `FMSH_CODEX_LIC_*` 环境变量改名（需 license 服务端配合）。
 
 ### 15.3 明确保留不动（最小方案的边界）
@@ -475,7 +475,7 @@ npm/Rust 双端契约：`CODEX_MANAGED_BY_*` + `CODEX_MANAGED_PACKAGE_ROOT`（`c
 | 保留项                                                                                  | 理由                                                                                    |
 |------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|
 | ~~110 个 `codex-*` crate/包名、lib 名~~                                                  | **已于同日全量改为 `grevo-*`**（见上方扩展实施记录）                                    |
-| `codex-tui`、`codex-exec`、`codex-linux-sandbox` 等 29 个辅助 bin 名 + arg0 哨兵         | 内部/开发者可见；日志文件名 `codex-tui.log` 随主目录迁移，无品牌冲突                    |
+| `grevo-tui`、`grevo-exec`、`grevo-linux-sandbox` 等 29 个辅助 bin 名 + arg0 哨兵         | 内部/开发者可见；日志文件名 `grevo-tui.log` 随主目录迁移，无品牌冲突                    |
 | `CODEX_SANDBOX*` 及其余全部 `CODEX_*` 环境变量                                          | 内部契约；仅新增 `GREVO_HOME` 一个新变量（优先级高于 `CODEX_HOME`）                     |
 | originator `codex_cli_rs`、UA、MCP serverInfo/工具名、`x-codex-*` 头                     | 后端是自己的，按 §15.2 节奏再切；现阶段保留零成本                                       |
 | 5 个 SQLite 库、rollout 格式、`sessions/` 等子目录名                                     | §3.4 已确认无品牌词，随主目录迁移数据全保留                                             |
@@ -491,7 +491,7 @@ npm/Rust 双端契约：`CODEX_MANAGED_BY_*` + `CODEX_MANAGED_PACKAGE_ROOT`（`c
 
 ### 15.5 验证清单
 
-`cargo build -p codex-cli` → `just fmt` → `just test -p codex-tui`（快照重生）→ 若动 B3/B4 跑 `cargo test -p codex-protocol codex-config` → 手工冒烟：`grevo` 启动（观察旧数据自动迁移）、`config.toml`/技能/插件加载、`~/.grevo/sessions` 新会话写入、旧 `~/.codex` 已不在（被 rename）、`grevo --help` 与补全输出、`release/build-fm-cargo.sh` 出 `dist/grevo` + AppImage 可执行。
+`cargo build -p codex-cli` → `just fmt` → `just test -p grevo-tui`（快照重生）→ 若动 B3/B4 跑 `cargo test -p codex-protocol codex-config` → 手工冒烟：`grevo` 启动（观察旧数据自动迁移）、`config.toml`/技能/插件加载、`~/.grevo/sessions` 新会话写入、旧 `~/.codex` 已不在（被 rename）、`grevo --help` 与补全输出、`release/build-fm-cargo.sh` 出 `dist/grevo` + AppImage 可执行。
 
 ---
 
@@ -504,15 +504,15 @@ npm/Rust 双端契约：`CODEX_MANAGED_BY_*` + `CODEX_MANAGED_PACKAGE_ROOT`（`c
 | 仓库约定目录                            | `.codex/`（skills/config/hooks/agents）                              | `.grevo/`                                                             | B（双保护旧目录）          |
 | 插件清单                                | `.codex-plugin/plugin.json`                                          | `.grevo-plugin/plugin.json`                                           | B（双读）                  |
 | originator                              | `codex_cli_rs`                                                       | `grevo_cli_rs`                                                        | B（本机旧会话字符串兼容）  |
-| MCP serverInfo / 工具                   | `codex-mcp-server` / `Codex` / 工具 `codex`                          | `grevo-mcp-server` / `Grevo` / `grevo`                                | A（同步 IDE）              |
-| clientInfo                              | `codex-tui`                                                          | `grevo-tui`                                                           | B                          |
+| MCP serverInfo / 工具                   | `grevo-mcp-server` / `Codex` / 工具 `codex`                          | `grevo-mcp-server` / `Grevo` / `grevo`                                | A（同步 IDE）              |
+| clientInfo                              | `grevo-tui`                                                          | `grevo-tui`                                                           | B                          |
 | env 前缀                                | `CODEX_*`（Tier 2）                                                  | `GREVO_*`                                                             | B（`CODEX_SANDBOX*` 除外） |
 | 提示词自称                              | "You are Codex … Codex CLI"                                          | "You are Grevo … Grevo CLI"                                           | A（快照/行为回归）         |
 | npm/PyPI                                | `@openai/codex*` / `openai-codex*`                                   | `@<yourorg>/grevo*` / `grevo*`                                        | A（新身份）                |
-| 日志/标记                               | `codex-tui.log`、`.codex-system-skills.marker`、`codex-package.json` | `grevo-tui.log`、`.grevo-system-skills.marker`、`grevo-package.json`  | A/B                        |
+| 日志/标记                               | `grevo-tui.log`、`.codex-system-skills.marker`、`codex-package.json` | `grevo-tui.log`、`.grevo-system-skills.marker`、`grevo-package.json`  | A/B                        |
 | 后端 URL 与 `x-codex-*`/`x-openai-*` 头 | `chatgpt.com/backend-api/codex`、`x-codex-turn-state` 等             | 自建后端地址 + `x-grevo-*`（客户端与后端同批切换）；OpenAI 专有项移除 | B/A                        |
 | ChatGPT 登录 / OAuth                    | `auth.openai.com`、`app_EMoam…`、端口 1455、JWT `chatgpt_*` claim    | 自有认证（fm-license / LMClient / UKey）或整块移除                    | A                          |
 
 ## 附录 B：改名后必须重生成/联动的生成物
 
-`codex-rs/Cargo.lock`、`MODULE.bazel.lock`（`just bazel-lock-update`）、`pnpm-lock.yaml`、`core/config.schema.json`（`just write-config-schema`）、app-server-protocol/hooks schema fixtures（`just write-app-server-schema`）、TUI insta 快照（`cargo insta accept -p codex-tui`，约 38 个文件）、`blob-size-allowlist.txt` 与 `.gitattributes` 中 schema 路径、dotslash 配置、macOS entitlements 文件名、`docs/install.md` 的产物名。
+`codex-rs/Cargo.lock`、`MODULE.bazel.lock`（`just bazel-lock-update`）、`pnpm-lock.yaml`、`core/config.schema.json`（`just write-config-schema`）、app-server-protocol/hooks schema fixtures（`just write-app-server-schema`）、TUI insta 快照（`cargo insta accept -p grevo-tui`，约 38 个文件）、`blob-size-allowlist.txt` 与 `.gitattributes` 中 schema 路径、dotslash 配置、macOS entitlements 文件名、`docs/install.md` 的产物名。

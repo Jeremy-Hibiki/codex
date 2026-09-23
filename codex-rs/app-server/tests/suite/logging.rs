@@ -25,7 +25,7 @@ const READ_TIMEOUT: Duration = Duration::from_secs(10);
 #[test]
 fn standalone_app_server_emits_json_info_events() -> Result<()> {
     let codex_home = TempDir::new()?;
-    let event = app_server_json_shutdown_event("codex-app-server", &[], codex_home.path())?;
+    let event = app_server_json_shutdown_event("grevo-app-server", &[], codex_home.path())?;
 
     assert_eq!(
         event,

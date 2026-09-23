@@ -53,10 +53,10 @@ PACKAGE_VARIANTS: dict[str, PackageVariant] = {
         cargo_bin="codex",
         executable_stem="codex",
     ),
-    "codex-app-server": PackageVariant(
-        name="codex-app-server",
-        cargo_bin="codex-app-server",
-        executable_stem="codex-app-server",
+    "grevo-app-server": PackageVariant(
+        name="grevo-app-server",
+        cargo_bin="grevo-app-server",
+        executable_stem="grevo-app-server",
     ),
 }
 

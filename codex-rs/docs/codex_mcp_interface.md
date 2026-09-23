@@ -3,7 +3,7 @@
 This document describes Codex's experimental MCP server interface: a JSON-RPC API that runs over the Model Context Protocol (MCP) transport to control a local Codex engine.
 
 - Status: experimental and subject to change without notice
-- Server binary: `codex mcp-server` (or `codex-mcp-server`)
+- Server binary: `codex mcp-server` (or `grevo-mcp-server`)
 - Transport: standard MCP over stdio (JSON-RPC 2.0, line-delimited)
 
 ## Overview

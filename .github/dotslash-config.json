@@ -28,59 +28,59 @@
         }
       }
     },
-    "codex-app-server": {
+    "grevo-app-server": {
       "platforms": {
         "macos-aarch64": {
-          "regex": "^codex-app-server-package-aarch64-apple-darwin\\.tar\\.zst$",
-          "path": "bin/codex-app-server"
+          "regex": "^grevo-app-server-package-aarch64-apple-darwin\\.tar\\.zst$",
+          "path": "bin/grevo-app-server"
         },
         "macos-x86_64": {
-          "regex": "^codex-app-server-package-x86_64-apple-darwin\\.tar\\.zst$",
-          "path": "bin/codex-app-server"
+          "regex": "^grevo-app-server-package-x86_64-apple-darwin\\.tar\\.zst$",
+          "path": "bin/grevo-app-server"
         },
         "linux-x86_64": {
-          "regex": "^codex-app-server-package-x86_64-unknown-linux-musl\\.tar\\.zst$",
-          "path": "bin/codex-app-server"
+          "regex": "^grevo-app-server-package-x86_64-unknown-linux-musl\\.tar\\.zst$",
+          "path": "bin/grevo-app-server"
         },
         "linux-aarch64": {
-          "regex": "^codex-app-server-package-aarch64-unknown-linux-musl\\.tar\\.zst$",
-          "path": "bin/codex-app-server"
+          "regex": "^grevo-app-server-package-aarch64-unknown-linux-musl\\.tar\\.zst$",
+          "path": "bin/grevo-app-server"
         },
         "windows-x86_64": {
-          "regex": "^codex-app-server-package-x86_64-pc-windows-msvc\\.tar\\.zst$",
-          "path": "bin/codex-app-server.exe"
+          "regex": "^grevo-app-server-package-x86_64-pc-windows-msvc\\.tar\\.zst$",
+          "path": "bin/grevo-app-server.exe"
         },
         "windows-aarch64": {
-          "regex": "^codex-app-server-package-aarch64-pc-windows-msvc\\.tar\\.zst$",
-          "path": "bin/codex-app-server.exe"
+          "regex": "^grevo-app-server-package-aarch64-pc-windows-msvc\\.tar\\.zst$",
+          "path": "bin/grevo-app-server.exe"
         }
       }
     },
-    "codex-responses-api-proxy": {
+    "grevo-responses-api-proxy": {
       "platforms": {
         "macos-aarch64": {
-          "regex": "^codex-responses-api-proxy-aarch64-apple-darwin\\.zst$",
-          "path": "codex-responses-api-proxy"
+          "regex": "^grevo-responses-api-proxy-aarch64-apple-darwin\\.zst$",
+          "path": "grevo-responses-api-proxy"
         },
         "macos-x86_64": {
-          "regex": "^codex-responses-api-proxy-x86_64-apple-darwin\\.zst$",
-          "path": "codex-responses-api-proxy"
+          "regex": "^grevo-responses-api-proxy-x86_64-apple-darwin\\.zst$",
+          "path": "grevo-responses-api-proxy"
         },
         "linux-x86_64": {
-          "regex": "^codex-responses-api-proxy-x86_64-unknown-linux-musl\\.zst$",
-          "path": "codex-responses-api-proxy"
+          "regex": "^grevo-responses-api-proxy-x86_64-unknown-linux-musl\\.zst$",
+          "path": "grevo-responses-api-proxy"
         },
         "linux-aarch64": {
-          "regex": "^codex-responses-api-proxy-aarch64-unknown-linux-musl\\.zst$",
-          "path": "codex-responses-api-proxy"
+          "regex": "^grevo-responses-api-proxy-aarch64-unknown-linux-musl\\.zst$",
+          "path": "grevo-responses-api-proxy"
         },
         "windows-x86_64": {
-          "regex": "^codex-responses-api-proxy-x86_64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex-responses-api-proxy.exe"
+          "regex": "^grevo-responses-api-proxy-x86_64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "grevo-responses-api-proxy.exe"
         },
         "windows-aarch64": {
-          "regex": "^codex-responses-api-proxy-aarch64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex-responses-api-proxy.exe"
+          "regex": "^grevo-responses-api-proxy-aarch64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "grevo-responses-api-proxy.exe"
         }
       }
     },
@@ -96,27 +96,27 @@
         }
       }
     },
-    "codex-command-runner": {
+    "grevo-command-runner": {
       "platforms": {
         "windows-x86_64": {
-          "regex": "^codex-command-runner-x86_64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex-command-runner.exe"
+          "regex": "^grevo-command-runner-x86_64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "grevo-command-runner.exe"
         },
         "windows-aarch64": {
-          "regex": "^codex-command-runner-aarch64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex-command-runner.exe"
+          "regex": "^grevo-command-runner-aarch64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "grevo-command-runner.exe"
         }
       }
     },
-    "codex-windows-sandbox-setup": {
+    "grevo-windows-sandbox-setup": {
       "platforms": {
         "windows-x86_64": {
-          "regex": "^codex-windows-sandbox-setup-x86_64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex-windows-sandbox-setup.exe"
+          "regex": "^grevo-windows-sandbox-setup-x86_64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "grevo-windows-sandbox-setup.exe"
         },
         "windows-aarch64": {
-          "regex": "^codex-windows-sandbox-setup-aarch64-pc-windows-msvc\\.exe\\.zst$",
-          "path": "codex-windows-sandbox-setup.exe"
+          "regex": "^grevo-windows-sandbox-setup-aarch64-pc-windows-msvc\\.exe\\.zst$",
+          "path": "grevo-windows-sandbox-setup.exe"
         }
       }
     }

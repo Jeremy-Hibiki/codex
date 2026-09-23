@@ -60,9 +60,9 @@ fn host_program_override_takes_precedence() {
 #[test]
 fn host_program_is_next_to_the_main_executable_even_when_missing() {
     let executable_name = if cfg!(windows) {
-        "codex-code-mode-host.exe"
+        "grevo-code-mode-host.exe"
     } else {
-        "codex-code-mode-host"
+        "grevo-code-mode-host"
     };
 
     assert_eq!(
@@ -77,9 +77,9 @@ fn host_program_is_next_to_the_main_executable_even_when_missing() {
 #[test]
 fn host_program_falls_back_to_its_name_when_main_executable_is_unknown() {
     let executable_name = if cfg!(windows) {
-        "codex-code-mode-host.exe"
+        "grevo-code-mode-host.exe"
     } else {
-        "codex-code-mode-host"
+        "grevo-code-mode-host"
     };
 
     assert_eq!(
@@ -96,7 +96,7 @@ fn host_program_falls_back_to_its_name_when_main_executable_is_unknown() {
 
 #[test]
 fn missing_host_error_limits_the_displayed_path_to_512_bytes() {
-    let executable = "codex-code-mode-host-does-not-exist";
+    let executable = "grevo-code-mode-host-does-not-exist";
     let host_program = format!("{}{executable}", "missing-directory/".repeat(/*n*/ 64));
     let expected_suffix = &host_program[host_program.len() - (512 - "...".len())..];
     let error = ConnectionError::Spawn {
@@ -112,7 +112,7 @@ fn missing_host_error_limits_the_displayed_path_to_512_bytes() {
 
 #[test]
 fn missing_host_error_preserves_utf8_boundaries_when_truncating_the_path() {
-    let executable = "codex-code-mode-host-does-not-exist";
+    let executable = "grevo-code-mode-host-does-not-exist";
     let host_program = format!("{}{executable}", "🦀".repeat(/*n*/ 256));
     let error = ConnectionError::Spawn {
         host_program: PathBuf::from(host_program),
@@ -132,7 +132,7 @@ fn missing_host_error_preserves_utf8_boundaries_when_truncating_the_path() {
 #[tokio::test]
 async fn provider_falls_back_to_in_process_session_when_host_is_missing() {
     let provider = ProcessOwnedCodeModeSessionProvider::with_host_program(
-        "codex-code-mode-host-does-not-exist".into(),
+        "grevo-code-mode-host-does-not-exist".into(),
     );
 
     let session = provider
@@ -312,7 +312,7 @@ async fn websocket_provider_executes_over_shared_connector() {
 #[tokio::test]
 async fn provider_returns_missing_host_error_when_in_process_fallback_is_disabled() {
     let provider = ProcessOwnedCodeModeSessionProvider::with_host_program(
-        "codex-code-mode-host-does-not-exist".into(),
+        "grevo-code-mode-host-does-not-exist".into(),
     )
     .without_in_process_fallback();
 
@@ -322,7 +322,7 @@ async fn provider_returns_missing_host_error_when_in_process_fallback_is_disable
         .err()
         .expect("missing host should fail when in-process fallback is disabled");
 
-    assert!(error.contains("failed to spawn code-mode host codex-code-mode-host-does-not-exist"));
+    assert!(error.contains("failed to spawn code-mode host grevo-code-mode-host-does-not-exist"));
     assert!(provider.process_host().is_some());
 }
 

@@ -1,14 +1,14 @@
-//! Entry-point for the `codex-exec` binary.
+//! Entry-point for the `grevo-exec` binary.
 //!
-//! When this CLI is invoked normally, it parses the standard `codex-exec` CLI
+//! When this CLI is invoked normally, it parses the standard `grevo-exec` CLI
 //! options and launches the non-interactive Codex agent. However, if it is
-//! invoked with arg0 as `codex-linux-sandbox`, we instead treat the invocation
-//! as a request to run the logic for the standalone `codex-linux-sandbox`
+//! invoked with arg0 as `grevo-linux-sandbox`, we instead treat the invocation
+//! as a request to run the logic for the standalone `grevo-linux-sandbox`
 //! executable (i.e., parse any -s args and then run a *sandboxed* command under
 //! Landlock + seccomp.
 //!
 //! This allows us to ship a completely separate set of functionality as part
-//! of the `codex-exec` binary.
+//! of the `grevo-exec` binary.
 use clap::Parser;
 use codex_arg0::Arg0DispatchPaths;
 use codex_arg0::arg0_dispatch_or_else;
@@ -32,7 +32,7 @@ fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|err| eprintln!("WARNING: failed to disable process dumping: {err}"));
     arg0_dispatch_or_else(|arg0_paths: Arg0DispatchPaths| async move {
         let top_cli = TopCli::parse();
-        // The standalone `codex-exec` binary is a product entry point that can
+        // The standalone `grevo-exec` binary is a product entry point that can
         // start Codex work; it must hold a license for the process lifetime.
         // Helper dispatches (apply_patch, sandbox) exit inside
         // `arg0_dispatch_or_else` before this closure runs.

@@ -4674,7 +4674,7 @@ async fn emit_subagent_session_started_includes_fork_lineage_and_originator() {
     emit_subagent_session_started(
         &analytics_events_client,
         AppServerClientMetadata {
-            client_name: Some("codex-tui".to_string()),
+            client_name: Some("grevo-tui".to_string()),
             client_version: Some("1.0.0".to_string()),
         },
         SessionId::from(child_thread_id),

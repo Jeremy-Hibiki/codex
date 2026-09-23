@@ -256,7 +256,7 @@ fn sample_thread_start_response(
 fn sample_app_server_client_metadata() -> CodexAppServerClientMetadata {
     CodexAppServerClientMetadata {
         product_client_id: DEFAULT_ORIGINATOR.to_string(),
-        client_name: Some("codex-tui".to_string()),
+        client_name: Some("grevo-tui".to_string()),
         client_version: Some("1.0.0".to_string()),
         rpc_transport: AppServerRpcTransport::Stdio,
         experimental_api_enabled: Some(true),
@@ -612,13 +612,13 @@ async fn ingest_initialize(reducer: &mut AnalyticsReducer, out: &mut Vec<TrackEv
                 connection_id: 7,
                 params: InitializeParams {
                     client_info: ClientInfo {
-                        name: "codex-tui".to_string(),
+                        name: "grevo-tui".to_string(),
                         title: None,
                         version: "1.0.0".to_string(),
                     },
                     capabilities: None,
                 },
-                product_client_id: "codex-tui".to_string(),
+                product_client_id: "grevo-tui".to_string(),
                 runtime: sample_runtime_metadata(),
                 rpc_transport: AppServerRpcTransport::Stdio,
             },
@@ -801,7 +801,7 @@ fn sample_initialize_fact(connection_id: u64) -> AnalyticsFact {
         connection_id,
         params: InitializeParams {
             client_info: ClientInfo {
-                name: "codex-tui".to_string(),
+                name: "grevo-tui".to_string(),
                 title: None,
                 version: "1.0.0".to_string(),
             },
@@ -1461,7 +1461,7 @@ fn compaction_event_serializes_expected_shape() {
                 "turn_id": "turn-1",
                 "app_server_client": {
                     "product_client_id": DEFAULT_ORIGINATOR,
-                    "client_name": "codex-tui",
+                    "client_name": "grevo-tui",
                     "client_version": "1.0.0",
                     "rpc_transport": "stdio",
                     "experimental_api_enabled": true
@@ -1536,7 +1536,7 @@ fn thread_initialized_event_serializes_expected_shape() {
             session_id: "session-thread-0".to_string(),
             app_server_client: CodexAppServerClientMetadata {
                 product_client_id: DEFAULT_ORIGINATOR.to_string(),
-                client_name: Some("codex-tui".to_string()),
+                client_name: Some("grevo-tui".to_string()),
                 client_version: Some("1.0.0".to_string()),
                 rpc_transport: AppServerRpcTransport::Stdio,
                 experimental_api_enabled: Some(true),
@@ -1569,7 +1569,7 @@ fn thread_initialized_event_serializes_expected_shape() {
                 "session_id": "session-thread-0",
                 "app_server_client": {
                     "product_client_id": DEFAULT_ORIGINATOR,
-                    "client_name": "codex-tui",
+                    "client_name": "grevo-tui",
                     "client_version": "1.0.0",
                     "rpc_transport": "stdio",
                     "experimental_api_enabled": true
@@ -1605,7 +1605,7 @@ fn command_execution_event_serializes_expected_shape() {
                 item_id: "item-1".to_string(),
                 app_server_client: CodexAppServerClientMetadata {
                     product_client_id: "codex_tui".to_string(),
-                    client_name: Some("codex-tui".to_string()),
+                    client_name: Some("grevo-tui".to_string()),
                     client_version: Some("1.2.3".to_string()),
                     rpc_transport: AppServerRpcTransport::Websocket,
                     experimental_api_enabled: Some(true),
@@ -1657,7 +1657,7 @@ fn command_execution_event_serializes_expected_shape() {
                 "item_id": "item-1",
                 "app_server_client": {
                     "product_client_id": "codex_tui",
-                    "client_name": "codex-tui",
+                    "client_name": "grevo-tui",
                     "client_version": "1.2.3",
                     "rpc_transport": "websocket",
                     "experimental_api_enabled": true
@@ -1709,7 +1709,7 @@ fn review_event_serializes_expected_shape() {
             review_id: "review-1".to_string(),
             app_server_client: CodexAppServerClientMetadata {
                 product_client_id: "codex_tui".to_string(),
-                client_name: Some("codex-tui".to_string()),
+                client_name: Some("grevo-tui".to_string()),
                 client_version: Some("1.2.3".to_string()),
                 rpc_transport: AppServerRpcTransport::Websocket,
                 experimental_api_enabled: Some(true),
@@ -1747,7 +1747,7 @@ fn review_event_serializes_expected_shape() {
                 "review_id": "review-1",
                 "app_server_client": {
                     "product_client_id": "codex_tui",
-                    "client_name": "codex-tui",
+                    "client_name": "grevo-tui",
                     "client_version": "1.2.3",
                     "rpc_transport": "websocket",
                     "experimental_api_enabled": true
@@ -1802,7 +1802,7 @@ async fn initialize_caches_client_and_thread_lifecycle_publishes_once_initialize
                 connection_id: 7,
                 params: InitializeParams {
                     client_info: ClientInfo {
-                        name: "codex-tui".to_string(),
+                        name: "grevo-tui".to_string(),
                         title: None,
                         version: "1.0.0".to_string(),
                     },
@@ -1851,7 +1851,7 @@ async fn initialize_caches_client_and_thread_lifecycle_publishes_once_initialize
     );
     assert_eq!(
         payload[0]["event_params"]["app_server_client"]["client_name"],
-        "codex-tui"
+        "grevo-tui"
     );
     assert_eq!(
         payload[0]["event_params"]["app_server_client"]["client_version"],
@@ -1925,7 +1925,7 @@ async fn thread_originator_overrides_shared_connection_across_thread_events() {
                 "thread_id": "thread-work",
                 "app_server_client": {
                     "product_client_id": TEST_PRODUCT_CLIENT_ID,
-                    "client_name": "codex-tui",
+                    "client_name": "grevo-tui",
                     "client_version": "1.0.0",
                     "rpc_transport": "websocket",
                     "experimental_api_enabled": false,
@@ -1935,7 +1935,7 @@ async fn thread_originator_overrides_shared_connection_across_thread_events() {
                 "thread_id": "thread-default",
                 "app_server_client": {
                     "product_client_id": DEFAULT_ORIGINATOR,
-                    "client_name": "codex-tui",
+                    "client_name": "grevo-tui",
                     "client_version": "1.0.0",
                     "rpc_transport": "websocket",
                     "experimental_api_enabled": false,
@@ -2107,7 +2107,7 @@ async fn compaction_event_ingests_custom_fact() {
                 connection_id: 7,
                 params: InitializeParams {
                     client_info: ClientInfo {
-                        name: "codex-tui".to_string(),
+                        name: "grevo-tui".to_string(),
                         title: None,
                         version: "1.0.0".to_string(),
                     },
@@ -2200,7 +2200,7 @@ async fn compaction_event_ingests_custom_fact() {
     );
     assert_eq!(
         payload[0]["event_params"]["app_server_client"]["client_name"],
-        "codex-tui"
+        "grevo-tui"
     );
     assert_eq!(
         payload[0]["event_params"]["app_server_client"]["rpc_transport"],
@@ -2238,7 +2238,7 @@ async fn guardian_review_event_ingests_custom_fact_with_optional_target_item() {
                 connection_id: 7,
                 params: InitializeParams {
                     client_info: ClientInfo {
-                        name: "codex-tui".to_string(),
+                        name: "grevo-tui".to_string(),
                         title: None,
                         version: "1.0.0".to_string(),
                     },
@@ -2511,7 +2511,7 @@ async fn item_lifecycle_notifications_publish_command_execution_event() {
     assert_eq!(payload[0]["event_params"]["execution_duration_ms"], 42);
     assert_eq!(
         payload[0]["event_params"]["app_server_client"]["client_name"],
-        "codex-tui"
+        "grevo-tui"
     );
     assert_eq!(payload[0]["event_params"]["thread_source"], "user");
 }
@@ -2855,8 +2855,8 @@ fn subagent_thread_started_review_serializes_expected_shape() {
             thread_id: "thread-review".to_string(),
             parent_thread_id: None,
             forked_from_thread_id: None,
-            product_client_id: "codex-tui".to_string(),
-            client_name: "codex-tui".to_string(),
+            product_client_id: "grevo-tui".to_string(),
+            client_name: "grevo-tui".to_string(),
             client_version: "1.0.0".to_string(),
             model: "gpt-5".to_string(),
             ephemeral: false,
@@ -2869,11 +2869,11 @@ fn subagent_thread_started_review_serializes_expected_shape() {
     assert_eq!(payload["event_params"]["thread_source"], "subagent");
     assert_eq!(
         payload["event_params"]["app_server_client"]["product_client_id"],
-        "codex-tui"
+        "grevo-tui"
     );
     assert_eq!(
         payload["event_params"]["app_server_client"]["client_name"],
-        "codex-tui"
+        "grevo-tui"
     );
     assert_eq!(
         payload["event_params"]["app_server_client"]["client_version"],
@@ -2907,8 +2907,8 @@ fn subagent_thread_started_thread_spawn_serializes_thread_lineage() {
             thread_id: "thread-spawn".to_string(),
             parent_thread_id: Some(parent_thread_id.to_string()),
             forked_from_thread_id: Some(forked_from_thread_id.to_string()),
-            product_client_id: "codex-tui".to_string(),
-            client_name: "codex-tui".to_string(),
+            product_client_id: "grevo-tui".to_string(),
+            client_name: "grevo-tui".to_string(),
             client_version: "1.0.0".to_string(),
             model: "gpt-5".to_string(),
             ephemeral: true,
@@ -2946,8 +2946,8 @@ fn subagent_thread_started_memory_consolidation_serializes_expected_shape() {
             thread_id: "thread-memory".to_string(),
             parent_thread_id: None,
             forked_from_thread_id: None,
-            product_client_id: "codex-tui".to_string(),
-            client_name: "codex-tui".to_string(),
+            product_client_id: "grevo-tui".to_string(),
+            client_name: "grevo-tui".to_string(),
             client_version: "1.0.0".to_string(),
             model: "gpt-5".to_string(),
             ephemeral: false,
@@ -2973,8 +2973,8 @@ fn subagent_thread_started_other_serializes_expected_shape() {
             thread_id: "thread-guardian".to_string(),
             parent_thread_id: None,
             forked_from_thread_id: None,
-            product_client_id: "codex-tui".to_string(),
-            client_name: "codex-tui".to_string(),
+            product_client_id: "grevo-tui".to_string(),
+            client_name: "grevo-tui".to_string(),
             client_version: "1.0.0".to_string(),
             model: "gpt-5".to_string(),
             ephemeral: false,
@@ -2999,8 +2999,8 @@ fn subagent_thread_started_other_serializes_explicit_parent_thread_id() {
             thread_id: "thread-guardian".to_string(),
             parent_thread_id: Some(parent_thread_id.to_string()),
             forked_from_thread_id: None,
-            product_client_id: "codex-tui".to_string(),
-            client_name: "codex-tui".to_string(),
+            product_client_id: "grevo-tui".to_string(),
+            client_name: "grevo-tui".to_string(),
             client_version: "1.0.0".to_string(),
             model: "gpt-5".to_string(),
             ephemeral: false,
@@ -3030,8 +3030,8 @@ async fn subagent_thread_started_publishes_without_initialize() {
                     thread_id: "thread-review".to_string(),
                     parent_thread_id: None,
                     forked_from_thread_id: None,
-                    product_client_id: "codex-tui".to_string(),
-                    client_name: "codex-tui".to_string(),
+                    product_client_id: "grevo-tui".to_string(),
+                    client_name: "grevo-tui".to_string(),
                     client_version: "1.0.0".to_string(),
                     model: "gpt-5".to_string(),
                     ephemeral: false,
@@ -3048,7 +3048,7 @@ async fn subagent_thread_started_publishes_without_initialize() {
     assert_eq!(payload[0]["event_type"], "codex_thread_initialized");
     assert_eq!(
         payload[0]["event_params"]["app_server_client"]["product_client_id"],
-        "codex-tui"
+        "grevo-tui"
     );
     assert_eq!(payload[0]["event_params"]["thread_source"], "subagent");
     assert_eq!(payload[0]["event_params"]["subagent_source"], "review");
@@ -3231,7 +3231,7 @@ async fn subagent_events_keep_thread_originator_with_explicit_turn_connection() 
     );
     assert_eq!(
         event.event_params.app_server_client.client_name.as_deref(),
-        Some("codex-tui")
+        Some("grevo-tui")
     );
 }
 
@@ -3249,8 +3249,8 @@ async fn subagent_tool_items_inherit_parent_connection_metadata() {
                     thread_id: "thread-subagent".to_string(),
                     parent_thread_id: Some("thread-1".to_string()),
                     forked_from_thread_id: None,
-                    product_client_id: "codex-tui".to_string(),
-                    client_name: "codex-tui".to_string(),
+                    product_client_id: "grevo-tui".to_string(),
+                    client_name: "grevo-tui".to_string(),
                     client_version: "1.0.0".to_string(),
                     model: "gpt-5".to_string(),
                     ephemeral: false,
@@ -3317,7 +3317,7 @@ async fn subagent_tool_items_inherit_parent_connection_metadata() {
     assert_eq!(payload[0]["event_params"]["parent_thread_id"], "thread-1");
     assert_eq!(
         payload[0]["event_params"]["app_server_client"]["client_name"],
-        "codex-tui"
+        "grevo-tui"
     );
 }
 
@@ -4115,7 +4115,7 @@ fn turn_event_serializes_expected_shape() {
                 "submission_type": null,
                 "app_server_client": {
                     "product_client_id": "codex_cli_rs",
-                    "client_name": "codex-tui",
+                    "client_name": "grevo-tui",
                     "client_version": "1.0.0",
                     "rpc_transport": "stdio",
                     "experimental_api_enabled": true
@@ -4242,7 +4242,7 @@ async fn accepted_turn_steer_emits_expected_event() {
     );
     assert_eq!(
         payload["event_params"]["app_server_client"]["product_client_id"],
-        json!("codex-tui")
+        json!("grevo-tui")
     );
     assert_eq!(
         payload["event_params"]["runtime"]["codex_rs_version"],
@@ -4273,7 +4273,7 @@ async fn rejected_turn_steer_uses_request_connection_metadata() {
     assert_eq!(payload["event_params"]["num_input_images"], json!(1));
     assert_eq!(
         payload["event_params"]["app_server_client"]["product_client_id"],
-        json!("codex-tui")
+        json!("grevo-tui")
     );
     assert_eq!(
         payload["event_params"]["runtime"]["codex_rs_version"],
@@ -4455,8 +4455,8 @@ async fn turn_lifecycle_emits_turn_event() {
     assert_eq!(
         payload["event_params"]["app_server_client"],
         json!({
-            "product_client_id": "codex-tui",
-            "client_name": "codex-tui",
+            "product_client_id": "grevo-tui",
+            "client_name": "grevo-tui",
             "client_version": "1.0.0",
             "rpc_transport": "stdio",
             "experimental_api_enabled": null,

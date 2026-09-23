@@ -166,7 +166,7 @@ async fn run_websocket_listener(bind_address: SocketAddr) -> Result<()> {
     let state = WebSocketListenerState {
         limits: Arc::new(HostLimits::new()),
     };
-    info!("codex-code-mode-host listening on ws://{local_addr}");
+    info!("grevo-code-mode-host listening on ws://{local_addr}");
     println!("ws://{local_addr}");
     io::stdout()
         .flush()

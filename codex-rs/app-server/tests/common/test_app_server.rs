@@ -159,7 +159,7 @@ pub struct TestAppServer {
     _owned_codex_home: Option<TempDir>,
 }
 
-pub const DEFAULT_CLIENT_NAME: &str = "codex-app-server-tests";
+pub const DEFAULT_CLIENT_NAME: &str = "grevo-app-server-tests";
 pub const DISABLE_PLUGIN_STARTUP_TASKS_ARG: &str = "--disable-plugin-startup-tasks-for-tests";
 const DISABLE_MANAGED_CONFIG_ENV_VAR: &str = "CODEX_APP_SERVER_DISABLE_MANAGED_CONFIG";
 const CODE_MODE_HOST_PATH_ENV_VAR: &str = "CODEX_CODE_MODE_HOST_PATH";
@@ -261,7 +261,7 @@ impl TestAppServer {
         let mut process = cmd
             .kill_on_drop(true)
             .spawn()
-            .context("codex-mcp-server proc should start")?;
+            .context("grevo-mcp-server proc should start")?;
         let stdin = process
             .stdin
             .take()
@@ -1994,7 +1994,7 @@ impl TestAppServerBuilder {
             .iter()
             .any(|(key, _)| key == CODE_MODE_HOST_PATH_ENV_VAR)
             && let Ok(code_mode_host_program) =
-                codex_utils_cargo_bin::cargo_bin("codex-code-mode-host")
+                codex_utils_cargo_bin::cargo_bin("grevo-code-mode-host")
         {
             env_overrides.insert(
                 0,
@@ -2006,8 +2006,8 @@ impl TestAppServerBuilder {
         }
         let program = match program {
             Some(program) => program,
-            None => codex_utils_cargo_bin::cargo_bin("codex-app-server")
-                .context("should find binary for codex-app-server")?,
+            None => codex_utils_cargo_bin::cargo_bin("grevo-app-server")
+                .context("should find binary for grevo-app-server")?,
         };
         let env_overrides = env_overrides
             .iter()
@@ -2031,7 +2031,7 @@ impl TestAppServerBuilder {
 
 impl Drop for TestAppServer {
     fn drop(&mut self) {
-        // These tests spawn a `codex-app-server` child process.
+        // These tests spawn a `grevo-app-server` child process.
         //
         // We keep that child alive for the test and rely on Tokio's `kill_on_drop(true)` when this
         // helper is dropped. Tokio documents kill-on-drop as best-effort: dropping requests

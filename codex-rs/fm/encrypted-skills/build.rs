@@ -12,7 +12,7 @@
 //!
 //! - **shared** (dev/test default): propagating `-l fmsh_ukey_sdk` + `-L`. The
 //!   rlib metadata carries them into the final link of every dependent — which
-//!   is exactly what non-CLI targets need: `codex-tui`, `codex-app-server`,
+//!   is exactly what non-CLI targets need: `grevo-tui`, `grevo-app-server`,
 //!   `codex-core` test binaries pull the wrapper's objects and would otherwise
 //!   fail to resolve `FM_*`. The `.so` lives in the wrapper's vendor directory,
 //!   so the extra NEEDED is harmless outside release distribution.
@@ -70,7 +70,7 @@ fn emit_static(lib_dir: &str) {
 
 /// Propagating: baked into this crate's rlib metadata and replayed at every
 /// dependent's final link. A package-scoped `-l` here would leave
-/// `codex-tui`/`codex-app-server`/`codex-core` test binaries with undefined
+/// `grevo-tui`/`grevo-app-server`/`codex-core` test binaries with undefined
 /// `FM_*` symbols (only `codex-cli` links the SDK itself).
 fn emit_shared(lib_dir: &str) {
     println!("cargo:rustc-link-search=native={lib_dir}");

@@ -86,7 +86,7 @@ def parse_args() -> argparse.Namespace:
         "--code-mode-host-bin",
         type=Path,
         help=(
-            "Optional prebuilt codex-code-mode-host executable. If omitted, "
+            "Optional prebuilt grevo-code-mode-host executable. If omitted, "
             "the host is built with Cargo."
         ),
     )
@@ -113,21 +113,21 @@ def parse_args() -> argparse.Namespace:
         help="Optional prebuilt zsh executable instead of fetching from a manifest.",
     )
     parser.add_argument(
-        "--codex-command-runner-bin",
+        "--grevo-command-runner-bin",
         type=Path,
         help=(
-            "Optional prebuilt Windows codex-command-runner.exe executable. "
-            "If omitted for Windows targets, codex-command-runner is built "
+            "Optional prebuilt Windows grevo-command-runner.exe executable. "
+            "If omitted for Windows targets, grevo-command-runner is built "
             "with Cargo."
         ),
     )
     parser.add_argument(
-        "--codex-windows-sandbox-setup-bin",
+        "--grevo-windows-sandbox-setup-bin",
         type=Path,
         help=(
-            "Optional prebuilt Windows codex-windows-sandbox-setup.exe "
+            "Optional prebuilt Windows grevo-windows-sandbox-setup.exe "
             "executable. If omitted for Windows targets, "
-            "codex-windows-sandbox-setup is built with Cargo."
+            "grevo-windows-sandbox-setup is built with Cargo."
         ),
     )
     parser.add_argument(
@@ -174,13 +174,13 @@ def main() -> int:
         ),
         codex_command_runner_bin=resolve_optional_input_path(
             args.codex_command_runner_bin,
-            "prebuilt Windows codex-command-runner.exe executable",
-            "--codex-command-runner-bin",
+            "prebuilt Windows grevo-command-runner.exe executable",
+            "--grevo-command-runner-bin",
         ),
         codex_windows_sandbox_setup_bin=resolve_optional_input_path(
             args.codex_windows_sandbox_setup_bin,
-            "prebuilt Windows codex-windows-sandbox-setup.exe executable",
-            "--codex-windows-sandbox-setup-bin",
+            "prebuilt Windows grevo-windows-sandbox-setup.exe executable",
+            "--grevo-windows-sandbox-setup-bin",
         ),
     )
     version = read_workspace_version()

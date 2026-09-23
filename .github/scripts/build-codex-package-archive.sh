@@ -13,8 +13,8 @@ Usage: build-codex-package-archive.sh \
   [--rg-bin <path>] \
   [--zsh-bin <path>] \
   [--zsh-manifest <path>] \
-  [--codex-command-runner-bin <path>] \
-  [--codex-windows-sandbox-setup-bin <path>] \
+  [--grevo-command-runner-bin <path>] \
+  [--grevo-windows-sandbox-setup-bin <path>] \
   [--target-suffixed-entrypoint]
 EOF
 }
@@ -70,18 +70,18 @@ while [[ $# -gt 0 ]]; do
       resource_args+=(--zsh-manifest "${2:?--zsh-manifest requires a value}")
       shift 2
       ;;
-    --codex-command-runner-bin)
+    --grevo-command-runner-bin)
       resource_args+=(
-        --codex-command-runner-bin
-        "${2:?--codex-command-runner-bin requires a value}"
+        --grevo-command-runner-bin
+        "${2:?--grevo-command-runner-bin requires a value}"
       )
       command_runner_bin_provided="true"
       shift 2
       ;;
-    --codex-windows-sandbox-setup-bin)
+    --grevo-windows-sandbox-setup-bin)
       resource_args+=(
-        --codex-windows-sandbox-setup-bin
-        "${2:?--codex-windows-sandbox-setup-bin requires a value}"
+        --grevo-windows-sandbox-setup-bin
+        "${2:?--grevo-windows-sandbox-setup-bin requires a value}"
       )
       sandbox_setup_bin_provided="true"
       shift 2
@@ -114,9 +114,9 @@ case "$bundle" in
     archive_stem="codex-package"
     ;;
   app-server)
-    variant="codex-app-server"
-    entrypoint="codex-app-server"
-    archive_stem="codex-app-server-package"
+    variant="grevo-app-server"
+    entrypoint="grevo-app-server"
+    archive_stem="grevo-app-server-package"
     ;;
   *)
     echo "No Codex package variant for bundle: $bundle" >&2
@@ -131,7 +131,7 @@ case "$target" in
     ;;
 esac
 
-code_mode_host_bin="${entrypoint_dir%/}/codex-code-mode-host${exe_suffix}"
+code_mode_host_bin="${entrypoint_dir%/}/grevo-code-mode-host${exe_suffix}"
 if [[ "$code_mode_host_bin_provided" == "false" && -f "$code_mode_host_bin" ]]; then
   resource_args+=(--code-mode-host-bin "$code_mode_host_bin")
 fi
@@ -149,13 +149,13 @@ case "$target" in
     fi
     ;;
   *windows*)
-    command_runner_bin="${entrypoint_dir%/}/codex-command-runner.exe"
-    sandbox_setup_bin="${entrypoint_dir%/}/codex-windows-sandbox-setup.exe"
+    command_runner_bin="${entrypoint_dir%/}/grevo-command-runner.exe"
+    sandbox_setup_bin="${entrypoint_dir%/}/grevo-windows-sandbox-setup.exe"
     if [[ "$command_runner_bin_provided" == "false" && -f "$command_runner_bin" ]]; then
-      resource_args+=(--codex-command-runner-bin "$command_runner_bin")
+      resource_args+=(--grevo-command-runner-bin "$command_runner_bin")
     fi
     if [[ "$sandbox_setup_bin_provided" == "false" && -f "$sandbox_setup_bin" ]]; then
-      resource_args+=(--codex-windows-sandbox-setup-bin "$sandbox_setup_bin")
+      resource_args+=(--grevo-windows-sandbox-setup-bin "$sandbox_setup_bin")
     fi
     ;;
 esac

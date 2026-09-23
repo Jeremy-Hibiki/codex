@@ -50,7 +50,7 @@ if (!targetTriple) {
 
 const vendorRoot = path.join(__dirname, "..", "vendor");
 const archRoot = path.join(vendorRoot, targetTriple);
-const binaryBaseName = "codex-responses-api-proxy";
+const binaryBaseName = "grevo-responses-api-proxy";
 const binaryPath = path.join(
   archRoot,
   binaryBaseName,

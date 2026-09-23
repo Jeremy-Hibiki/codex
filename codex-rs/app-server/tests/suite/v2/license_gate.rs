@@ -1,6 +1,6 @@
 //! License request-gate tests for app-server.
 //!
-//! These tests spawn the real `codex-app-server` binary with the debug-only
+//! These tests spawn the real `grevo-app-server` binary with the debug-only
 //! test env vars that force the license into the "lost" state, then verify
 //! that requests which start new Codex work are rejected while other requests
 //! still work.

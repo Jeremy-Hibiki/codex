@@ -1809,7 +1809,7 @@ fn selected_and_resumed_threads_use_server_capability_for_v1_and_v2_children() -
                 parent_thread_id: Some(root_thread_id),
                 timestamp: timestamp.clone(),
                 cwd: app.config.cwd.to_path_buf(),
-                originator: "codex-tui-test".to_string(),
+                originator: "grevo-tui-test".to_string(),
                 cli_version: "0.0.0".to_string(),
                 source: RolloutSessionSource::SubAgent(SubAgentSource::ThreadSpawn {
                     parent_thread_id: root_thread_id,

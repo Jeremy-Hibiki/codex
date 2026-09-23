@@ -141,12 +141,14 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     set -eu; \
     export FMSH_UKEY_SDK_LINK FMSH_UKEY_LIBSTDCPP; \
     if [ "$CARGO_PROFILE" = "debug" ]; then \
-    cargo build -p codex-cli --bin grevo \
-    && cp target/debug/grevo /codex-grevo; \
+    cargo build -p codex-cli -p codex-code-mode-host \
+    && cp target/debug/grevo /codex-grevo \
+    && cp target/debug/grevo-code-mode-host /grevo-code-mode-host; \
     else \
-    cargo build --release -p codex-cli --bin grevo \
+    cargo build --release -p codex-cli -p codex-code-mode-host \
     && strip target/release/grevo \
-    && cp target/release/grevo /codex-grevo; \
+    && cp target/release/grevo /codex-grevo \
+    && cp target/release/grevo-code-mode-host /grevo-code-mode-host; \
     fi
 
 # ── bundle runtime libs ───────────────────────────────────────────────────
@@ -158,6 +160,7 @@ ARG FMSH_UKEY_SDK_LINK
 RUN --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     mkdir -p /codex/lib \
     && cp /codex-grevo /codex/grevo \
+    && cp /grevo-code-mode-host /codex/grevo-code-mode-host \
     && SDK_LIB="$(find /root/.cargo/git/checkouts/fmsh-ukey-lib-* -path '*/vendor/fmsh-ukey-sdk/linux/lib' | head -1)" \
     && if [ "$FMSH_UKEY_SDK_LINK" != "static" ]; then \
     cp -fL "$SDK_LIB"/libfmsh_ukey_sdk.so.0 /codex/lib/; \
@@ -181,7 +184,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     $( [ "$FMSH_UKEY_SDK_LINK" = "static" ] || echo libssl3 )
 
 COPY --from=builder /codex/grevo /usr/local/bin/grevo
+COPY --from=builder /codex/grevo-code-mode-host /usr/local/bin/grevo-code-mode-host
 COPY --from=builder /codex/lib /usr/local/bin/lib
-RUN chmod +x /usr/local/bin/grevo
+RUN chmod +x /usr/local/bin/grevo /usr/local/bin/grevo-code-mode-host
 
 ENTRYPOINT ["grevo"]

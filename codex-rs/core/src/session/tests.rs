@@ -8017,7 +8017,7 @@ async fn refreshed_mcp_binding_captures_current_approval_authority() {
 
 #[tokio::test]
 async fn mcp_elicitation_reviewer_uses_latest_runtime_authority() {
-    let (session, old_turn, rx) = make_session_and_context_with_rx().await;
+    let (session, old_turn, _rx) = make_session_and_context_with_rx().await;
     assert_eq!(old_turn.config.approvals_reviewer, ApprovalsReviewer::User);
     session
         .spawn_task(
@@ -8030,15 +8030,6 @@ async fn mcp_elicitation_reviewer_uses_latest_runtime_authority() {
         )
         .await;
 
-    session
-        .update_settings(SessionSettingsUpdate {
-            approvals_reviewer: Some(ApprovalsReviewer::AutoReview),
-            ..Default::default()
-        })
-        .await
-        .expect("reviewer settings should update");
-    session.refresh_mcp_if_dirty().await;
-
     let request = codex_mcp::ElicitationReviewRequest {
         server_name: "browser-use".to_string(),
         request_id: rmcp::model::NumberOrString::Number(7),
@@ -8048,6 +8039,7 @@ async fn mcp_elicitation_reviewer_uses_latest_runtime_authority() {
                     ("codex_approval_kind".to_string(), json!("mcp_tool_call")),
                     ("codex_request_type".to_string(), json!("approval_request")),
                     ("tool_name".to_string(), json!("access_browser_origin")),
+                    ("tool_params".to_string(), json!("invalid")),
                 ]))),
                 message: "Allow origin?".to_string(),
                 requested_schema: rmcp::model::ElicitationSchema::builder()
@@ -8056,18 +8048,34 @@ async fn mcp_elicitation_reviewer_uses_latest_runtime_authority() {
             },
         ),
     };
-    assert!(
+    assert_eq!(
         session
             .mcp_elicitation_reviewer()
             .review(request.clone())
             .await
-            .expect("elicitation review should succeed")
-            .is_some()
+            .expect("elicitation review should succeed"),
+        None
     );
-    assert!(
-        std::iter::from_fn(|| rx.try_recv().ok())
-            .any(|event| matches!(event.msg, EventMsg::GuardianAssessment(_))),
-        "a valid elicitation should reach Guardian"
+
+    session
+        .update_settings(SessionSettingsUpdate {
+            approvals_reviewer: Some(ApprovalsReviewer::AutoReview),
+            ..Default::default()
+        })
+        .await
+        .expect("reviewer settings should update");
+    session.refresh_mcp_if_dirty().await;
+    assert_eq!(
+        session
+            .mcp_elicitation_reviewer()
+            .review(request.clone())
+            .await
+            .expect("elicitation review should succeed"),
+        Some(ElicitationResponse {
+            action: ElicitationAction::Decline,
+            content: None,
+            meta: Some(json!({ "approvals_reviewer": "auto_review" })),
+        })
     );
 
     session

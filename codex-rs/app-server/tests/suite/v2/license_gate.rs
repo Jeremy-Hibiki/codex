@@ -11,6 +11,7 @@ use codex_app_server_protocol::ConfigReadParams;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ThreadStartParams;
+use codex_core::exec_env::CODEX_THREAD_ID_ENV_VAR;
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::time::timeout;
@@ -24,6 +25,7 @@ async fn license_lost_blocks_thread_start() -> Result<()> {
         .with_codex_home(codex_home.path())
         .without_auto_env()
         .with_env_overrides(&[
+            (CODEX_THREAD_ID_ENV_VAR, None),
             (fm_license::TEST_BYPASS_ENV_VAR, Some("1")),
             (fm_license::TEST_FORCE_LOST_ENV_VAR, Some("1")),
         ])
@@ -53,6 +55,7 @@ async fn license_lost_allows_non_work_requests() -> Result<()> {
         .with_codex_home(codex_home.path())
         .without_auto_env()
         .with_env_overrides(&[
+            (CODEX_THREAD_ID_ENV_VAR, None),
             (fm_license::TEST_BYPASS_ENV_VAR, Some("1")),
             (fm_license::TEST_FORCE_LOST_ENV_VAR, Some("1")),
         ])

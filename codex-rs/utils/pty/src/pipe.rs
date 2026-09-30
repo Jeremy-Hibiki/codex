@@ -53,6 +53,17 @@ impl ChildTerminator for PipeChildTerminator {
                     Err(crate::process::unsupported_signal(signal))
                 }
             }
+            ProcessSignal::Terminate => {
+                #[cfg(unix)]
+                {
+                    crate::process_group::terminate_process_group(self.process_group_id).map(|_| ())
+                }
+
+                #[cfg(not(unix))]
+                {
+                    Err(crate::process::unsupported_signal(signal))
+                }
+            }
         }
     }
 

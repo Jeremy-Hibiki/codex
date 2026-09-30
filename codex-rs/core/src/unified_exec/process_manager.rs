@@ -486,7 +486,6 @@ impl UnifiedExecProcessManager {
                 request.tty,
                 deferred_network_approval.clone(),
                 network_denial_monitor,
-                Arc::clone(&transcript),
                 Arc::clone(&initial_exec_command_active),
             )
             .await;
@@ -544,7 +543,7 @@ impl UnifiedExecProcessManager {
                 &request,
                 cwd.clone(),
                 plugin_attribution.clone(),
-                Arc::clone(&transcript),
+                process.aggregated_output_buffer(),
                 text.clone(),
                 message.clone(),
                 wall_time,
@@ -565,7 +564,7 @@ impl UnifiedExecProcessManager {
                 &request,
                 cwd.clone(),
                 plugin_attribution.clone(),
-                Arc::clone(&transcript),
+                process.aggregated_output_buffer(),
                 text.clone(),
                 message.clone(),
                 wall_time,
@@ -625,7 +624,7 @@ impl UnifiedExecProcessManager {
                     &request,
                     cwd.clone(),
                     plugin_attribution.clone(),
-                    Arc::clone(&transcript),
+                    process.aggregated_output_buffer(),
                     text.clone(),
                     message.clone(),
                     wall_time,
@@ -644,7 +643,7 @@ impl UnifiedExecProcessManager {
                 cwd.clone(),
                 Some(process_id.to_string()),
                 plugin_attribution.clone(),
-                Arc::clone(&transcript),
+                process.aggregated_output_buffer(),
                 text.clone(),
                 exit,
                 wall_time,
@@ -954,7 +953,6 @@ impl UnifiedExecProcessManager {
         tty: bool,
         network_approval: Option<DeferredNetworkApproval>,
         network_denial_monitor: Option<tokio::task::JoinHandle<()>>,
-        transcript: Arc<tokio::sync::Mutex<HeadTailBuffer>>,
         initial_exec_command_active: Arc<AtomicBool>,
     ) {
         let entry = ProcessEntry {
@@ -991,7 +989,7 @@ impl UnifiedExecProcessManager {
             cwd,
             process_id,
             plugin_attribution,
-            transcript,
+            process.aggregated_output_buffer(),
             started_at,
             network_denial_monitor,
         );

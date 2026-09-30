@@ -897,8 +897,17 @@ fn register_synthetic_mount_targets(
                         marker_dir.display()
                     )
                 });
+                let path_was_removed = match fs::symlink_metadata(target.path()) {
+                    Ok(_) => false,
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => true,
+                    Err(err) => panic!(
+                        "failed to inspect synthetic bubblewrap mount target {}: {err}",
+                        target.path().display()
+                    ),
+                };
                 let target = if target.preserves_pre_existing_path()
-                    && synthetic_mount_marker_dir_has_active_synthetic_owner(&marker_dir)
+                    && (path_was_removed
+                        || synthetic_mount_marker_dir_has_synthetic_owner(&marker_dir))
                 {
                     match target.kind() {
                         crate::bwrap::SyntheticMountTargetKind::EmptyFile => {
@@ -971,8 +980,8 @@ fn synthetic_mount_marker_contents(target: &crate::bwrap::SyntheticMountTarget) 
     }
 }
 
-fn synthetic_mount_marker_dir_has_active_synthetic_owner(marker_dir: &Path) -> bool {
-    synthetic_mount_marker_dir_has_active_process_matching(marker_dir, |path| {
+fn synthetic_mount_marker_dir_has_synthetic_owner(marker_dir: &Path) -> bool {
+    synthetic_mount_marker_dir_has_process_matching(marker_dir, StaleMarkerPolicy::Match, |path| {
         match fs::read(path) {
             Ok(contents) => contents == SYNTHETIC_MOUNT_MARKER_SYNTHETIC,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
@@ -985,11 +994,18 @@ fn synthetic_mount_marker_dir_has_active_synthetic_owner(marker_dir: &Path) -> b
 }
 
 fn synthetic_mount_marker_dir_has_active_process(marker_dir: &Path) -> bool {
-    synthetic_mount_marker_dir_has_active_process_matching(marker_dir, |_| true)
+    synthetic_mount_marker_dir_has_process_matching(marker_dir, StaleMarkerPolicy::Ignore, |_| true)
 }
 
-fn synthetic_mount_marker_dir_has_active_process_matching(
+#[derive(Clone, Copy)]
+enum StaleMarkerPolicy {
+    Ignore,
+    Match,
+}
+
+fn synthetic_mount_marker_dir_has_process_matching(
     marker_dir: &Path,
+    stale_marker_policy: StaleMarkerPolicy,
     matches_marker: impl Fn(&Path) -> bool,
 ) -> bool {
     let entries = match fs::read_dir(marker_dir) {
@@ -1015,6 +1031,7 @@ fn synthetic_mount_marker_dir_has_active_process_matching(
         else {
             continue;
         };
+        let matches_marker = matches_marker(&path);
         if !process_is_active(pid) {
             match fs::remove_file(&path) {
                 Ok(()) => {}
@@ -1024,9 +1041,11 @@ fn synthetic_mount_marker_dir_has_active_process_matching(
                     path.display()
                 ),
             }
+            if matches!(stale_marker_policy, StaleMarkerPolicy::Match) && matches_marker {
+                return true;
+            }
             continue;
         }
-        let matches_marker = matches_marker(&path);
         if matches_marker {
             return true;
         }
@@ -1254,7 +1273,7 @@ fn synthetic_mount_marker_dir(path: &Path) -> PathBuf {
 
 fn synthetic_mount_registry_root() -> PathBuf {
     let effective_uid = unsafe { libc::geteuid() };
-    std::env::temp_dir().join(format!(
+    Path::new("/tmp").join(format!(
         "codex-bwrap-synthetic-mount-targets-{effective_uid}"
     ))
 }

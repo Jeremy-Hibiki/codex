@@ -319,11 +319,11 @@ fn cleanup_synthetic_mount_targets_removes_only_empty_mount_targets() {
 }
 
 #[test]
-fn synthetic_mount_registry_root_is_unique_to_effective_user() {
+fn synthetic_mount_registry_root_is_stable_and_unique_to_effective_user() {
     let effective_uid = unsafe { libc::geteuid() };
     assert_eq!(
         synthetic_mount_registry_root(),
-        std::env::temp_dir().join(format!(
+        std::path::Path::new("/tmp").join(format!(
             "codex-bwrap-synthetic-mount-targets-{effective_uid}"
         ))
     );
@@ -370,6 +370,43 @@ fn cleanup_synthetic_mount_targets_removes_transient_file_after_concurrent_owner
 
     std::fs::remove_file(active_marker).expect("remove active marker");
     cleanup_synthetic_mount_targets(&second_registrations);
+
+    assert!(!empty_file.exists());
+}
+
+#[test]
+fn cleanup_synthetic_mount_targets_removes_path_left_by_dead_owner() {
+    let temp_dir = tempfile::TempDir::new().expect("tempdir");
+    let empty_file = temp_dir.path().join(".git");
+    let first_target = crate::bwrap::SyntheticMountTarget::missing(&empty_file);
+    let first_registrations = register_synthetic_mount_targets(&[first_target]);
+    std::fs::write(&empty_file, "").expect("create transient empty file");
+
+    std::fs::remove_file(&first_registrations[0].marker_file).expect("remove live marker");
+    let dead_marker = first_registrations[0].marker_dir.join(i32::MAX.to_string());
+    std::fs::write(&dead_marker, SYNTHETIC_MOUNT_MARKER_SYNTHETIC).expect("write dead marker");
+
+    let metadata = std::fs::symlink_metadata(&empty_file).expect("stat empty file");
+    let second_target =
+        crate::bwrap::SyntheticMountTarget::existing_empty_file(&empty_file, &metadata);
+    let second_registrations = register_synthetic_mount_targets(&[second_target]);
+    cleanup_synthetic_mount_targets(&second_registrations);
+
+    assert!(!empty_file.exists());
+}
+
+#[test]
+fn cleanup_synthetic_mount_targets_removes_path_recreated_after_discovery() {
+    let temp_dir = tempfile::TempDir::new().expect("tempdir");
+    let empty_file = temp_dir.path().join(".git");
+    std::fs::write(&empty_file, "").expect("create transient empty file");
+    let metadata = std::fs::symlink_metadata(&empty_file).expect("stat empty file");
+    let target = crate::bwrap::SyntheticMountTarget::existing_empty_file(&empty_file, &metadata);
+    std::fs::remove_file(&empty_file).expect("remove transient empty file");
+
+    let registrations = register_synthetic_mount_targets(&[target]);
+    std::fs::write(&empty_file, "").expect("recreate transient empty file");
+    cleanup_synthetic_mount_targets(&registrations);
 
     assert!(!empty_file.exists());
 }

@@ -1766,6 +1766,7 @@ mod tests {
         assert_empty_file_bound_without_perms(&args.args, &blocked);
         assert_empty_directory_mounted_read_only(&args.args, &workspace.join(".git"));
         assert_empty_directory_mounted_read_only(&args.args, &workspace.join(".agents"));
+        assert_empty_directory_mounted_read_only(&args.args, &workspace.join(".grevo"));
         assert_empty_directory_mounted_read_only(&args.args, &workspace.join(".codex"));
         assert_eq!(args.preserved_files.len(), 1);
         assert_eq!(
@@ -1774,6 +1775,7 @@ mod tests {
                 blocked.clone(),
                 workspace.join(".git"),
                 workspace.join(".agents"),
+                workspace.join(".grevo"),
                 workspace.join(".codex"),
             ]
         );
@@ -1808,12 +1810,14 @@ mod tests {
 
         assert_empty_file_bound_without_perms(&args.args, &dot_git);
         assert_empty_directory_mounted_read_only(&args.args, &workspace.join(".agents"));
+        assert_empty_directory_mounted_read_only(&args.args, &workspace.join(".grevo"));
         assert_empty_directory_mounted_read_only(&args.args, &workspace.join(".codex"));
         assert_eq!(
             synthetic_mount_target_paths(&args),
             vec![
                 dot_git.clone(),
                 workspace.join(".agents"),
+                workspace.join(".grevo"),
                 workspace.join(".codex"),
             ]
         );
@@ -2083,9 +2087,11 @@ mod tests {
             vec![
                 PathBuf::from("/.git"),
                 PathBuf::from("/.agents"),
+                PathBuf::from("/.grevo"),
                 PathBuf::from("/.codex"),
                 PathBuf::from("/dev/.git"),
                 PathBuf::from("/dev/.agents"),
+                PathBuf::from("/dev/.grevo"),
                 PathBuf::from("/dev/.codex"),
             ]
         );
@@ -2121,6 +2127,12 @@ mod tests {
                 "--perms".to_string(),
                 "555".to_string(),
                 "--tmpfs".to_string(),
+                "/.grevo".to_string(),
+                "--remount-ro".to_string(),
+                "/.grevo".to_string(),
+                "--perms".to_string(),
+                "555".to_string(),
+                "--tmpfs".to_string(),
                 "/.codex".to_string(),
                 "--remount-ro".to_string(),
                 "/.codex".to_string(),
@@ -2143,6 +2155,12 @@ mod tests {
                 "/dev/.agents".to_string(),
                 "--remount-ro".to_string(),
                 "/dev/.agents".to_string(),
+                "--perms".to_string(),
+                "555".to_string(),
+                "--tmpfs".to_string(),
+                "/dev/.grevo".to_string(),
+                "--remount-ro".to_string(),
+                "/dev/.grevo".to_string(),
                 "--perms".to_string(),
                 "555".to_string(),
                 "--tmpfs".to_string(),

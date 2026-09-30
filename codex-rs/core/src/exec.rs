@@ -1024,8 +1024,33 @@ async fn consume_output(
         outcome = &mut expiration_wait => {
             match outcome {
                 Some(ExecExpirationOutcome::TimedOut) => {
-                    kill_child_process_group(&mut child)?;
-                    child.start_kill()?;
+                    let process_group_id = child.id();
+                    let should_escalate = if let Some(process_group_id) = process_group_id {
+                        codex_utils_pty::process_group::terminate_process_group(process_group_id)?
+                    } else {
+                        false
+                    };
+                    match tokio::time::timeout(
+                        CANCELLATION_TERMINATION_GRACE_PERIOD,
+                        child.wait(),
+                    )
+                    .await
+                    {
+                        Ok(status) => {
+                            status?;
+                            if should_escalate
+                                && let Some(process_group_id) = process_group_id
+                            {
+                                codex_utils_pty::process_group::kill_process_group(
+                                    process_group_id,
+                                )?;
+                            }
+                        }
+                        Err(_) => {
+                            kill_child_process_group(&mut child)?;
+                            child.start_kill()?;
+                        }
+                    }
                     (
                         synthetic_exit_status(EXIT_CODE_SIGNAL_BASE + TIMEOUT_CODE),
                         true,

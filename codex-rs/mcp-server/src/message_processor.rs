@@ -238,7 +238,7 @@ impl MessageProcessor {
         }
 
         let server_info =
-            Implementation::new("codex-mcp-server", env!("CARGO_PKG_VERSION")).with_title("Codex");
+            Implementation::new("grevo-mcp-server", env!("CARGO_PKG_VERSION")).with_title("Codex");
 
         // Preserve Codex's existing non-spec `serverInfo.user_agent` field.
         let mut server_info_value = match serde_json::to_value(&server_info) {

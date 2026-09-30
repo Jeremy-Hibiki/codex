@@ -68,23 +68,6 @@ async fn handle_spawn_agent(
             "Agent depth limit reached. Solve the task yourself.".to_string(),
         ));
     }
-    session
-        .emit_turn_item_started(
-            &turn,
-            &TurnItem::CollabAgentToolCall(CollabAgentToolCallItem {
-                id: call_id.clone(),
-                tool: CollabAgentTool::SpawnAgent,
-                status: CollabAgentToolCallStatus::InProgress,
-                sender_thread_id: session.thread_id,
-                receiver_thread_ids: Vec::new(),
-                receiver_agents: Vec::new(),
-                prompt: Some(prompt.clone()),
-                model: Some(String::new()),
-                reasoning_effort: Some(args.reasoning_effort.clone().unwrap_or_default()),
-                agents_states: Default::default(),
-            }),
-        )
-        .await;
     let mut config =
         build_agent_spawn_config(&session.get_base_instructions().await, turn.as_ref())?;
     if let Some(service_tier) = args.service_tier.as_ref() {
@@ -112,6 +95,24 @@ async fn handle_spawn_agent(
     )
     .await?;
     apply_spawn_agent_runtime_overrides(&mut config, turn.as_ref())?;
+
+    session
+        .emit_turn_item_started(
+            &turn,
+            &TurnItem::CollabAgentToolCall(CollabAgentToolCallItem {
+                id: call_id.clone(),
+                tool: CollabAgentTool::SpawnAgent,
+                status: CollabAgentToolCallStatus::InProgress,
+                sender_thread_id: session.thread_id,
+                receiver_thread_ids: Vec::new(),
+                receiver_agents: Vec::new(),
+                prompt: Some(prompt.clone()),
+                model: config.model.clone(),
+                reasoning_effort: config.model_reasoning_effort.clone(),
+                agents_states: Default::default(),
+            }),
+        )
+        .await;
 
     let result = Box::pin(session.services.agent_control.spawn_agent_with_metadata(
         config,

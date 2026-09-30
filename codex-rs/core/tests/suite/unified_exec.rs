@@ -2934,8 +2934,13 @@ async fn unified_exec_formats_large_output_summary() -> Result<()> {
     let script = format!(
         r#"python3 - <<'PY'
 import sys
+import time
 sys.stdout.write("HEAD\n")
-sys.stdout.write("token token \n" * {output_repetitions})
+sys.stdout.flush()
+for _ in range({output_repetitions} // 1000):
+    sys.stdout.write("token token \n" * 1000)
+    sys.stdout.flush()
+    time.sleep(0.005)
 sys.stdout.write("TAIL\n")
 PY
 "#
@@ -2968,12 +2973,15 @@ PY
         _ => None,
     })
     .await;
-    assert!(end_event.aggregated_output.contains("HEAD\n"));
-    assert!(end_event.aggregated_output.contains("TAIL\n"));
-    assert_regex_match(
-        r"\.\.\. \d+ bytes omitted \.\.\.",
-        &end_event.aggregated_output,
+    let end_output = end_event.aggregated_output.replace("\r\n", "\n");
+    assert!(
+        end_output.contains("HEAD\n"),
+        "start: {:?}, len: {}",
+        end_output.chars().take(100).collect::<String>(),
+        end_output.len()
     );
+    assert!(end_output.contains("TAIL\n"));
+    assert_regex_match(r"\.\.\. \d+ bytes omitted \.\.\.", &end_output);
 
     wait_for_event(&test.codex, |event| {
         matches!(event, EventMsg::TurnComplete(_))

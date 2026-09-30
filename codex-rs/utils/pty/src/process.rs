@@ -21,6 +21,7 @@ use tokio::task::JoinHandle;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProcessSignal {
     Interrupt,
+    Terminate,
 }
 
 pub(crate) fn unsupported_signal(signal: ProcessSignal) -> io::Error {
@@ -28,6 +29,10 @@ pub(crate) fn unsupported_signal(signal: ProcessSignal) -> io::Error {
         ProcessSignal::Interrupt => io::Error::new(
             io::ErrorKind::Unsupported,
             "process interrupt is not supported by this process backend",
+        ),
+        ProcessSignal::Terminate => io::Error::new(
+            io::ErrorKind::Unsupported,
+            "process termination is not supported by this process backend",
         ),
     }
 }

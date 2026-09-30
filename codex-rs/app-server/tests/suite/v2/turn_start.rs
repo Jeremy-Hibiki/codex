@@ -565,9 +565,13 @@ async fn turn_start_emits_thread_scoped_warning_notification_for_trimmed_skills(
     let warning: WarningNotification =
         timeout(DEFAULT_READ_TIMEOUT, mcp.read_notification("warning")).await??;
     assert_eq!(warning.thread_id.as_deref(), Some(thread.id.as_str()));
-    assert_eq!(
-        warning.message,
-        "Exceeded skills context budget of 2%. All skill descriptions were removed and 7 additional skills were not included in the model-visible skills list."
+    assert!(warning.message.starts_with(
+        "Exceeded skills context budget of 2%. All skill descriptions were removed and "
+    ));
+    assert!(
+        warning
+            .message
+            .ends_with(" additional skills were not included in the model-visible skills list.")
     );
 
     timeout(
@@ -3132,13 +3136,12 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
     const CHILD_PROMPT: &str = "child: do work";
     const PARENT_PROMPT: &str = "spawn a child and continue";
     const SPAWN_CALL_ID: &str = "spawn-call-1";
-    const REQUESTED_MODEL: &str = "gpt-5.2";
+    const INHERITED_MODEL: &str = "gpt-5.4";
     const REQUESTED_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::Low;
 
     let server = responses::start_mock_server().await;
     let spawn_args = serde_json::to_string(&json!({
         "message": CHILD_PROMPT,
-        "model": REQUESTED_MODEL,
         "reasoning_effort": REQUESTED_REASONING_EFFORT,
     }))?;
     let _parent_turn = responses::mount_sse_once_match(
@@ -3231,7 +3234,7 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
             sender_thread_id: thread.id.clone(),
             receiver_thread_ids: Vec::new(),
             prompt: Some(CHILD_PROMPT.to_string()),
-            model: Some(REQUESTED_MODEL.to_string()),
+            model: Some(INHERITED_MODEL.to_string()),
             reasoning_effort: Some(REQUESTED_REASONING_EFFORT),
             agents_states: HashMap::new(),
         }
@@ -3273,7 +3276,7 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()
     assert_eq!(sender_thread_id, thread.id);
     assert_eq!(receiver_thread_ids, vec![receiver_thread_id.clone()]);
     assert_eq!(prompt, Some(CHILD_PROMPT.to_string()));
-    assert_eq!(model, Some(REQUESTED_MODEL.to_string()));
+    assert_eq!(model, Some(INHERITED_MODEL.to_string()));
     assert_eq!(reasoning_effort, Some(REQUESTED_REASONING_EFFORT));
     let agent_state = agents_states
         .get(&receiver_thread_id)

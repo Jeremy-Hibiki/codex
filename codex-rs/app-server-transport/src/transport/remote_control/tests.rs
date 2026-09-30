@@ -1946,9 +1946,14 @@ async fn remote_control_waits_for_account_id_before_enrolling() {
         AuthKeyringBackendKind::default(),
     )
     .expect("auth with account id should save");
+    let mut auth_change_rx = auth_manager.auth_change_receiver();
     auth_manager.reload().await;
+    timeout(Duration::from_millis(100), auth_change_rx.changed())
+        .await
+        .expect("account id change should notify remote control")
+        .expect("auth change sender should remain open");
 
-    let enroll_request = timeout(Duration::from_millis(100), accept_http_request(&listener))
+    let enroll_request = timeout(Duration::from_millis(500), accept_http_request(&listener))
         .await
         .expect("auth change should wake remote control before the retry delay");
     assert_eq!(

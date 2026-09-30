@@ -67,6 +67,15 @@ impl ChildTerminator for PtyChildTerminator {
 
                 Err(crate::process::unsupported_signal(signal))
             }
+            ProcessSignal::Terminate => {
+                #[cfg(unix)]
+                if let Some(process_group_id) = self.process_group_id {
+                    return crate::process_group::terminate_process_group(process_group_id)
+                        .map(|_| ());
+                }
+
+                Err(crate::process::unsupported_signal(signal))
+            }
         }
     }
 
@@ -101,6 +110,9 @@ impl ChildTerminator for RawPidTerminator {
         match signal {
             ProcessSignal::Interrupt => {
                 crate::process_group::interrupt_process_group(self.process_group_id)
+            }
+            ProcessSignal::Terminate => {
+                crate::process_group::terminate_process_group(self.process_group_id).map(|_| ())
             }
         }
     }

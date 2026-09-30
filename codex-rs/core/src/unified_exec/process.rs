@@ -34,6 +34,7 @@ use super::head_tail_buffer::HeadTailBuffer;
 use super::process_state::ProcessState;
 
 const EARLY_EXIT_GRACE_PERIOD: Duration = Duration::from_millis(150);
+const LINUX_SANDBOX_TERMINATION_GRACE_PERIOD: Duration = Duration::from_millis(50);
 pub(crate) trait SpawnLifecycle: std::fmt::Debug + Send + Sync {
     /// Returns file descriptors that must stay open across the child `exec()`.
     ///
@@ -89,6 +90,7 @@ pub(crate) struct UnifiedExecProcess {
     process_handle: ProcessHandle,
     output_tx: broadcast::Sender<Vec<u8>>,
     output_buffer: OutputBuffer,
+    aggregated_output_buffer: OutputBuffer,
     output_notify: Arc<Notify>,
     output_closed: Arc<AtomicBool>,
     output_closed_notify: Arc<Notify>,
@@ -119,6 +121,7 @@ impl UnifiedExecProcess {
         spawn_lifecycle: Option<SpawnLifecycleHandle>,
     ) -> Self {
         let output_buffer = Arc::new(Mutex::new(HeadTailBuffer::default()));
+        let aggregated_output_buffer = Arc::new(Mutex::new(HeadTailBuffer::default()));
         let output_notify = Arc::new(Notify::new());
         let output_closed = Arc::new(AtomicBool::new(false));
         let output_closed_notify = Arc::new(Notify::new());
@@ -131,6 +134,7 @@ impl UnifiedExecProcess {
             process_handle,
             output_tx,
             output_buffer,
+            aggregated_output_buffer,
             output_notify,
             output_closed,
             output_closed_notify,
@@ -180,6 +184,10 @@ impl UnifiedExecProcess {
         }
     }
 
+    pub(super) fn aggregated_output_buffer(&self) -> OutputBuffer {
+        Arc::clone(&self.aggregated_output_buffer)
+    }
+
     pub(super) fn output_receiver(&self) -> tokio::sync::broadcast::Receiver<Vec<u8>> {
         self.output_tx.subscribe()
     }
@@ -221,9 +229,18 @@ impl UnifiedExecProcess {
         }
     }
 
+    fn terminate_local_process(&self, process_handle: &ExecCommandSession) {
+        if self.sandbox_type == SandboxType::LinuxSeccomp
+            && process_handle.signal(PtyProcessSignal::Terminate).is_ok()
+        {
+            std::thread::sleep(LINUX_SANDBOX_TERMINATION_GRACE_PERIOD);
+        }
+        process_handle.terminate();
+    }
+
     pub(super) fn terminate(&self) {
         match &self.process_handle {
-            ProcessHandle::Local(process_handle) => process_handle.terminate(),
+            ProcessHandle::Local(process_handle) => self.terminate_local_process(process_handle),
             ProcessHandle::ExecServer(process_handle) => {
                 let process_handle = Arc::clone(process_handle);
                 tokio::spawn(async move {
@@ -236,7 +253,7 @@ impl UnifiedExecProcess {
 
     pub(super) async fn terminate_confirmed(&self) -> Result<(), UnifiedExecError> {
         match &self.process_handle {
-            ProcessHandle::Local(process_handle) => process_handle.terminate(),
+            ProcessHandle::Local(process_handle) => self.terminate_local_process(process_handle),
             ProcessHandle::ExecServer(process_handle) => {
                 process_handle
                     .terminate()
@@ -350,6 +367,7 @@ impl UnifiedExecProcess {
         managed.output_task = Some(Self::spawn_local_output_task(
             output_rx,
             Arc::clone(&managed.output_buffer),
+            Arc::clone(&managed.aggregated_output_buffer),
             Arc::clone(&managed.output_notify),
             Arc::clone(&managed.output_closed),
             Arc::clone(&managed.output_closed_notify),
@@ -403,6 +421,7 @@ impl UnifiedExecProcess {
         managed.output_task = Some(Self::spawn_exec_server_output_task(
             started,
             output_handles,
+            managed.aggregated_output_buffer(),
             managed.output_tx.clone(),
             managed.state_tx.clone(),
         ));
@@ -431,6 +450,7 @@ impl UnifiedExecProcess {
     fn spawn_exec_server_output_task(
         started: StartedExecProcess,
         output_handles: OutputHandles,
+        aggregated_output_buffer: OutputBuffer,
         output_tx: broadcast::Sender<Vec<u8>>,
         state_tx: watch::Sender<ProcessState>,
     ) -> JoinHandle<()> {
@@ -511,9 +531,11 @@ impl UnifiedExecProcess {
                     } = response;
                     for chunk in chunks.into_iter().filter(|chunk| chunk.seq > last_seq) {
                         let bytes = chunk.chunk.into_inner();
-                        let mut guard = output_buffer.lock().await;
-                        guard.push_chunk(bytes.clone());
-                        drop(guard);
+                        output_buffer.lock().await.push_chunk(bytes.clone());
+                        aggregated_output_buffer
+                            .lock()
+                            .await
+                            .push_chunk(bytes.clone());
                         let _ = output_tx.send(bytes);
                         output_notify.notify_waiters();
                     }
@@ -554,9 +576,11 @@ impl UnifiedExecProcess {
                         }
                         last_seq = chunk.seq;
                         let bytes = chunk.chunk.into_inner();
-                        let mut guard = output_buffer.lock().await;
-                        guard.push_chunk(bytes.clone());
-                        drop(guard);
+                        output_buffer.lock().await.push_chunk(bytes.clone());
+                        aggregated_output_buffer
+                            .lock()
+                            .await
+                            .push_chunk(bytes.clone());
                         let _ = output_tx.send(bytes);
                         output_notify.notify_waiters();
                     }
@@ -598,6 +622,7 @@ impl UnifiedExecProcess {
     fn spawn_local_output_task(
         mut receiver: tokio::sync::broadcast::Receiver<Vec<u8>>,
         buffer: OutputBuffer,
+        aggregated_output_buffer: OutputBuffer,
         output_notify: Arc<Notify>,
         output_closed: Arc<AtomicBool>,
         output_closed_notify: Arc<Notify>,
@@ -611,9 +636,11 @@ impl UnifiedExecProcess {
             loop {
                 match receiver.recv().await {
                     Ok(chunk) => {
-                        let mut guard = buffer.lock().await;
-                        guard.push_chunk(chunk.clone());
-                        drop(guard);
+                        buffer.lock().await.push_chunk(chunk.clone());
+                        aggregated_output_buffer
+                            .lock()
+                            .await
+                            .push_chunk(chunk.clone());
                         let _ = output_tx.send(chunk);
                         output_notify.notify_waiters();
                     }

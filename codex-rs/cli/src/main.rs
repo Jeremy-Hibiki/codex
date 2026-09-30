@@ -968,10 +968,13 @@ pub(crate) fn build_version() -> String {
 }
 
 fn requests_full_access(shared: &SharedCliOptions) -> bool {
-    fm_product_policy::full_access_requested(matches!(
-        shared.sandbox_mode,
-        Some(codex_utils_cli::SandboxModeCliArg::DangerFullAccess)
-    ))
+    fm_product_policy::full_access_requested(
+        shared.dangerously_bypass_approvals_and_sandbox
+            || matches!(
+                shared.sandbox_mode,
+                Some(codex_utils_cli::SandboxModeCliArg::DangerFullAccess)
+            ),
+    )
 }
 
 fn subcommand_requests_full_access(subcommand: &Subcommand) -> bool {
@@ -1061,7 +1064,13 @@ async fn cli_main(
     };
     #[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
     let _license_guard = if license_required {
-        Some(fm_license::init_entry()?)
+        let app_server_handles_signals = matches!(subcommand.as_ref(), Some(Subcommand::AppServer(app_server)) if app_server.subcommand.is_none())
+            || matches!(subcommand.as_ref(), Some(Subcommand::RemoteControl(remote_control)) if remote_control.starts_app_server());
+        Some(if app_server_handles_signals {
+            fm_license::verify_at_startup()?
+        } else {
+            fm_license::init_entry()?
+        })
     } else {
         None
     };

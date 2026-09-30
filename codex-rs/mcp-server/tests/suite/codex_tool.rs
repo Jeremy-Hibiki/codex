@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use app_test_support::ChatGptAuthFixture;
 use app_test_support::write_chatgpt_auth;
 use codex_config::types::AuthCredentialsStoreMode;
+use codex_core::exec_env::CODEX_THREAD_ID_ENV_VAR;
 use codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR;
 use codex_mcp_server::CodexToolCallParam;
 use codex_mcp_server::ExecApprovalElicitRequestParams;
@@ -508,6 +509,7 @@ async fn license_lost_blocks_codex_tool_call() -> anyhow::Result<()> {
         &[
             (fm_license::TEST_BYPASS_ENV_VAR, Some("1")),
             (fm_license::TEST_FORCE_LOST_ENV_VAR, Some("1")),
+            (CODEX_THREAD_ID_ENV_VAR, None),
         ],
     )
     .await?;

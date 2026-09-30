@@ -4,6 +4,10 @@ use codex_app_server_protocol::PluginAvailability;
 use codex_utils_absolute_path::test_support::PathExt;
 use pretty_assertions::assert_eq;
 
+// Keep the test cwd outside /tmp and the same display length as the snapshot path.
+const TEST_PROJECT_PATH: &str = "/var/project";
+const SNAPSHOT_PROJECT_PATH: &str = "/tmp/project";
+
 pub(super) async fn test_config() -> Config {
     // Start from the built-in defaults so tests do not inherit host/system config.
     let codex_home = tempfile::Builder::new()
@@ -18,14 +22,14 @@ pub(super) async fn test_config() -> Config {
     config.codex_home = codex_home.abs();
     config.sqlite = codex_state::SqliteConfig::new_for_testing(codex_home.as_path().abs());
     config.log_dir = codex_home.join("log");
-    config.cwd = PathBuf::from(test_path_display("/tmp/project")).abs();
+    config.cwd = test_project_path().abs();
     config.config_layer_stack = ConfigLayerStack::default();
     config.startup_warnings.clear();
     config
 }
 
 pub(super) fn test_project_path() -> PathBuf {
-    PathBuf::from(test_path_display("/tmp/project"))
+    test_path_buf(TEST_PROJECT_PATH)
 }
 
 pub(super) fn truncated_path_variants(path: &str) -> Vec<String> {
@@ -38,26 +42,32 @@ pub(super) fn truncated_path_variants(path: &str) -> Vec<String> {
 pub(super) fn normalize_snapshot_paths(text: impl Into<String>) -> String {
     let mut text = text.into();
 
-    for unix_path in ["/tmp/project", "/tmp/hooks.json"] {
-        let platform_path = test_path_display(unix_path);
-        if platform_path != unix_path {
-            text = text.replace(&platform_path, unix_path);
+    for (test_path, snapshot_path) in [
+        (TEST_PROJECT_PATH, SNAPSHOT_PROJECT_PATH),
+        ("/tmp/hooks.json", "/tmp/hooks.json"),
+    ] {
+        let platform_path = test_path_display(test_path);
+        if platform_path != snapshot_path {
+            text = text.replace(&platform_path, snapshot_path);
         }
     }
 
-    let platform_test_cwd = test_path_display("/tmp/project");
-    if platform_test_cwd == "/tmp/project" {
+    let platform_test_cwd = test_path_display(TEST_PROJECT_PATH);
+    if platform_test_cwd == SNAPSHOT_PROJECT_PATH {
         text
     } else {
         for platform_prefix in truncated_path_variants(&platform_test_cwd)
             .into_iter()
             .rev()
         {
-            let unix_prefix: String = "/tmp/project"
+            let snapshot_prefix: String = SNAPSHOT_PROJECT_PATH
                 .chars()
                 .take(platform_prefix.chars().count())
                 .collect();
-            text = text.replace(&format!("{platform_prefix}…"), &format!("{unix_prefix}…"));
+            text = text.replace(
+                &format!("{platform_prefix}…"),
+                &format!("{snapshot_prefix}…"),
+            );
         }
 
         text
@@ -65,10 +75,10 @@ pub(super) fn normalize_snapshot_paths(text: impl Into<String>) -> String {
 }
 
 pub(super) fn normalized_backend_snapshot<T: std::fmt::Display>(value: &T) -> String {
-    let platform_test_cwd = test_path_display("/tmp/project");
+    let platform_test_cwd = test_path_display(TEST_PROJECT_PATH);
     let rendered = format!("{value}");
 
-    if platform_test_cwd == "/tmp/project" {
+    if platform_test_cwd == SNAPSHOT_PROJECT_PATH {
         return rendered;
     }
 
